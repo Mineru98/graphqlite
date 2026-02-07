@@ -13,7 +13,8 @@ typedef enum property_type {
     PROP_TYPE_INTEGER,
     PROP_TYPE_TEXT,
     PROP_TYPE_REAL,
-    PROP_TYPE_BOOLEAN
+    PROP_TYPE_BOOLEAN,
+    PROP_TYPE_JSON
 } property_type;
 
 /* Schema manager - handles DDL and property key caching */
@@ -79,6 +80,10 @@ int cypher_schema_get_edge_property(cypher_schema_manager *manager,
 int cypher_schema_delete_edge_property(cypher_schema_manager *manager,
                                       int edge_id, const char *key);
 
+/* Bulk property deletion (for SET n = {map} replace semantics) */
+int cypher_schema_delete_all_node_properties(cypher_schema_manager *manager, int node_id);
+int cypher_schema_delete_all_edge_properties(cypher_schema_manager *manager, int edge_id);
+
 /* Node operations */
 int cypher_schema_create_node(cypher_schema_manager *manager);
 int cypher_schema_delete_node(cypher_schema_manager *manager, int node_id);
@@ -115,6 +120,8 @@ extern const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_INT;
 extern const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_TEXT;
 extern const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_REAL;
 extern const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_BOOL;
+extern const char* CYPHER_SCHEMA_DDL_NODE_PROPS_JSON;
+extern const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_JSON;
 
 /* Index creation SQL */
 extern const char* CYPHER_SCHEMA_INDEX_EDGES_SOURCE;
@@ -130,5 +137,7 @@ extern const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_INT;
 extern const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_TEXT;
 extern const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_REAL;
 extern const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_BOOL;
+extern const char* CYPHER_SCHEMA_INDEX_NODE_PROPS_JSON;
+extern const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_JSON;
 
 #endif /* CYPHER_SCHEMA_H */

@@ -385,6 +385,9 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
             append_sql(ctx, "), ");
             append_sql(ctx, "(SELECT CAST(epb.value AS INTEGER) FROM %sedge_props_bool epb JOIN %sproperty_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
             append_string_literal(ctx, prop->property_name);
+            append_sql(ctx, "), ");
+            append_sql(ctx, "(SELECT epj.value FROM %sedge_props_json epj JOIN %sproperty_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_string_literal(ctx, prop->property_name);
             append_sql(ctx, ")))");
         } else {
             append_sql(ctx, "(SELECT COALESCE(");
@@ -398,6 +401,9 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
             append_sql(ctx, "(SELECT CASE WHEN epb.value THEN 'true' ELSE 'false' END FROM %sedge_props_bool epb JOIN %sproperty_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_string_literal(ctx, prop->property_name);
+            append_sql(ctx, "), ");
+            append_sql(ctx, "(SELECT epj.value FROM %sedge_props_json epj JOIN %sproperty_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, ")))");
         }
@@ -423,6 +429,11 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
         append_sql(ctx, "(SELECT CAST(npb.value AS INTEGER) FROM %snode_props_bool npb JOIN %sproperty_keys pk ON npb.key_id = pk.id WHERE npb.node_id = %s%s AND pk.key = ",
                    gprefix, gprefix, alias, skip_id_suffix ? "" : ".id");
         append_string_literal(ctx, prop->property_name);
+        append_sql(ctx, "), ");
+        /* JSON properties */
+        append_sql(ctx, "(SELECT npj.value FROM %snode_props_json npj JOIN %sproperty_keys pk ON npj.key_id = pk.id WHERE npj.node_id = %s%s AND pk.key = ",
+                   gprefix, gprefix, alias, skip_id_suffix ? "" : ".id");
+        append_string_literal(ctx, prop->property_name);
         append_sql(ctx, ")))");
     } else {
         /* Node property access for RETURN clauses - convert everything to text */
@@ -440,6 +451,11 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
         append_string_literal(ctx, prop->property_name);
         append_sql(ctx, "), ");
         append_sql(ctx, "(SELECT CASE WHEN npb.value THEN 'true' ELSE 'false' END FROM %snode_props_bool npb JOIN %sproperty_keys pk ON npb.key_id = pk.id WHERE npb.node_id = %s%s AND pk.key = ",
+                   gprefix, gprefix, alias, skip_id_suffix ? "" : ".id");
+        append_string_literal(ctx, prop->property_name);
+        append_sql(ctx, "), ");
+        /* JSON properties (already TEXT) */
+        append_sql(ctx, "(SELECT npj.value FROM %snode_props_json npj JOIN %sproperty_keys pk ON npj.key_id = pk.id WHERE npj.node_id = %s%s AND pk.key = ",
                    gprefix, gprefix, alias, skip_id_suffix ? "" : ".id");
         append_string_literal(ctx, prop->property_name);
         append_sql(ctx, ")))");

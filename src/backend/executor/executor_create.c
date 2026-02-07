@@ -100,6 +100,17 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                             /* Skip null properties for now */
                                             continue;
                                     }
+                                } else if (pair->value->type == AST_NODE_MAP || pair->value->type == AST_NODE_LIST) {
+                                    /* Map or list literal - serialize to JSON and store as JSON type */
+                                    char *json_str = serialize_ast_to_json(pair->value);
+                                    if (json_str) {
+                                        if (cypher_schema_set_node_property(executor->schema_mgr, node_id, pair->key, PROP_TYPE_JSON, json_str) == 0) {
+                                            result->properties_set++;
+                                            CYPHER_DEBUG("Set JSON property '%s' on node %d", pair->key, node_id);
+                                        }
+                                        free(json_str);
+                                    }
+                                    continue;
                                 } else if (pair->value->type == AST_NODE_PARAMETER && executor->params_json) {
                                     /* Handle parameter substitution */
                                     cypher_parameter *param = (cypher_parameter*)pair->value;
@@ -125,6 +136,8 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                         } else if (prop_type == PROP_TYPE_BOOLEAN) {
                                             bool_buf = *(int*)str_buf;
                                             prop_value = &bool_buf;
+                                        } else if (prop_type == PROP_TYPE_JSON) {
+                                            prop_value = str_buf;
                                         }
                                     } else {
                                         CYPHER_DEBUG("Parameter '%s' not found in params_json", param->name);
@@ -258,6 +271,17 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                             /* Skip null properties for now */
                                             continue;
                                     }
+                                } else if (pair->value->type == AST_NODE_MAP || pair->value->type == AST_NODE_LIST) {
+                                    /* Map or list literal - serialize to JSON and store as JSON type */
+                                    char *json_str = serialize_ast_to_json(pair->value);
+                                    if (json_str) {
+                                        if (cypher_schema_set_node_property(executor->schema_mgr, target_node_id, pair->key, PROP_TYPE_JSON, json_str) == 0) {
+                                            result->properties_set++;
+                                            CYPHER_DEBUG("Set JSON property '%s' on target node %d", pair->key, target_node_id);
+                                        }
+                                        free(json_str);
+                                    }
+                                    continue;
                                 } else if (pair->value->type == AST_NODE_PARAMETER && executor->params_json) {
                                     /* Handle parameter substitution */
                                     cypher_parameter *param = (cypher_parameter*)pair->value;
@@ -281,6 +305,8 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                         } else if (prop_type == PROP_TYPE_BOOLEAN) {
                                             bool_buf2 = *(int*)str_buf2;
                                             prop_value = &bool_buf2;
+                                        } else if (prop_type == PROP_TYPE_JSON) {
+                                            prop_value = str_buf2;
                                         }
                                     } else {
                                         CYPHER_DEBUG("Parameter '%s' not found in params_json", param->name);
@@ -332,7 +358,17 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                             property_type prop_type = PROP_TYPE_TEXT;
                             const void *prop_value = NULL;
 
-                            if (pair->value->type == AST_NODE_LITERAL) {
+                            if (pair->value->type == AST_NODE_MAP || pair->value->type == AST_NODE_LIST) {
+                                /* Map or list literal - serialize to JSON and store as JSON type */
+                                char *json_str = serialize_ast_to_json(pair->value);
+                                if (json_str) {
+                                    if (cypher_schema_set_edge_property(executor->schema_mgr, edge_id, pair->key, PROP_TYPE_JSON, json_str) == 0) {
+                                        result->properties_set++;
+                                        CYPHER_DEBUG("Set JSON edge property '%s' on edge %d", pair->key, edge_id);
+                                    }
+                                    free(json_str);
+                                }
+                            } else if (pair->value->type == AST_NODE_LITERAL) {
                                 cypher_literal *lit = (cypher_literal*)pair->value;
                                 switch (lit->literal_type) {
                                     case LITERAL_STRING:

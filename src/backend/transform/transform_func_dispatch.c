@@ -110,6 +110,14 @@ static const transform_func_entry dispatch_table[] = {
     {"randomUUID",      transform_randomuuid_function},
     {"randomuuid",      transform_randomuuid_function},
 
+    /* JSON functions */
+    {"json_get",        transform_json_get_function},
+    {"jsonGet",         transform_json_get_function},
+    {"json_keys",       transform_json_keys_function},
+    {"jsonKeys",        transform_json_keys_function},
+    {"json_type",       transform_json_type_function},
+    {"jsonType",        transform_json_type_function},
+
     /* Graph algorithm functions - PageRank */
     {"pageRank",        transform_pagerank_function},
     {"pagerank",        transform_pagerank_function},

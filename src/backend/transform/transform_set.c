@@ -13,9 +13,12 @@
 
 /* Forward declarations */
 static int transform_set_item(cypher_transform_context *ctx, cypher_set_item *item);
-static int generate_property_update(cypher_transform_context *ctx, 
-                                   const char *variable, const char *property_name, 
+static int generate_property_update(cypher_transform_context *ctx,
+                                   const char *variable, const char *property_name,
                                    ast_node *value_expr);
+static int generate_bulk_property_update(cypher_transform_context *ctx,
+                                        const char *variable, cypher_map *map,
+                                        bool is_merge);
 static int generate_label_add(cypher_transform_context *ctx,
                              const char *variable, const char *label_name);
 
@@ -80,13 +83,21 @@ static int transform_set_item(cypher_transform_context *ctx, cypher_set_item *it
         return generate_label_add(ctx, var_id->name, label_expr->label_name);
     }
     
+    /* Check for bulk SET: SET n = {map} or SET n += {map} */
+    if (item->property->type == AST_NODE_IDENTIFIER && item->expr &&
+        item->expr->type == AST_NODE_MAP) {
+        cypher_identifier *var_id = (cypher_identifier*)item->property;
+        return generate_bulk_property_update(ctx, var_id->name,
+                                            (cypher_map*)item->expr, item->is_merge);
+    }
+
     /* Otherwise, it should be a property access expression (n.prop) */
     if (!item->expr) {
         ctx->has_error = true;
         ctx->error_message = strdup("SET property assignment requires a value");
         return -1;
     }
-    
+
     if (item->property->type != AST_NODE_PROPERTY) {
         ctx->has_error = true;
         ctx->error_message = strdup("SET target must be a property (variable.property) or label (variable:Label)");
@@ -139,8 +150,12 @@ static int generate_property_update(cypher_transform_context *ctx,
     bool is_text = false;
     bool is_integer = false;
     bool is_real = false;
-    
-    if (value_expr->type == AST_NODE_LITERAL) {
+    bool is_json = false;
+
+    if (value_expr->type == AST_NODE_MAP || value_expr->type == AST_NODE_LIST) {
+        /* Map or list literal — store as JSON */
+        is_json = true;
+    } else if (value_expr->type == AST_NODE_LITERAL) {
         cypher_literal *lit = (cypher_literal*)value_expr;
         switch (lit->literal_type) {
             case LITERAL_STRING:
@@ -163,10 +178,12 @@ static int generate_property_update(cypher_transform_context *ctx,
         /* For non-literal expressions, default to text */
         is_text = true;
     }
-    
+
     /* Choose the appropriate property table */
     const char *prop_table;
-    if (is_integer) {
+    if (is_json) {
+        prop_table = "node_props_json";
+    } else if (is_integer) {
         prop_table = "node_props_int";
     } else if (is_real) {
         prop_table = "node_props_real";
@@ -211,6 +228,70 @@ static int generate_property_update(cypher_transform_context *ctx,
     }
     
     CYPHER_DEBUG("Generated property update SQL");
+    return 0;
+}
+
+/* Generate SQL for bulk property SET (SET n = {map} or SET n += {map}) */
+static int generate_bulk_property_update(cypher_transform_context *ctx,
+                                        const char *variable, cypher_map *map,
+                                        bool is_merge)
+{
+    CYPHER_DEBUG("Generating bulk property %s for %s with %d pairs",
+                 is_merge ? "+=" : "=", variable, map->pairs ? map->pairs->count : 0);
+
+    /* Get the table alias for the variable */
+    const char *table_alias = transform_var_get_alias(ctx->var_ctx, variable);
+    if (!table_alias) {
+        ctx->has_error = true;
+        ctx->error_message = strdup("Unknown variable in bulk SET clause");
+        return -1;
+    }
+
+    bool is_edge = transform_var_is_edge(ctx->var_ctx, variable);
+
+    /* For replace mode (=), delete all existing properties first */
+    if (!is_merge) {
+        const char *entity_col = is_edge ? "edge_id" : "node_id";
+        const char *node_tables[] = {"node_props_text", "node_props_int", "node_props_real", "node_props_bool", "node_props_json"};
+        const char *edge_tables[] = {"edge_props_text", "edge_props_int", "edge_props_real", "edge_props_bool", "edge_props_json"};
+        const char **tables = is_edge ? edge_tables : node_tables;
+
+        for (int i = 0; i < 5; i++) {
+            if (ctx->sql_size > 0) {
+                append_sql(ctx, "; ");
+            }
+            append_sql(ctx, "DELETE FROM %s WHERE %s = ", tables[i], entity_col);
+
+            /* Get entity ID — use subquery from unified builder */
+            if (ctx->unified_builder && !dbuf_is_empty(&ctx->unified_builder->from)) {
+                append_sql(ctx, "(SELECT %s.id FROM %s", table_alias, dbuf_get(&ctx->unified_builder->from));
+                if (!dbuf_is_empty(&ctx->unified_builder->joins)) {
+                    append_sql(ctx, " %s", dbuf_get(&ctx->unified_builder->joins));
+                }
+                if (!dbuf_is_empty(&ctx->unified_builder->where)) {
+                    append_sql(ctx, " WHERE %s", dbuf_get(&ctx->unified_builder->where));
+                }
+                append_sql(ctx, ")");
+            } else {
+                append_sql(ctx, "%s.id", table_alias);
+            }
+        }
+    }
+
+    /* Now INSERT each map pair into the appropriate property table */
+    if (map->pairs) {
+        for (int i = 0; i < map->pairs->count; i++) {
+            cypher_map_pair *pair = (cypher_map_pair*)map->pairs->items[i];
+            if (!pair || !pair->key || !pair->value) continue;
+
+            /* Use generate_property_update for each pair — it handles type routing */
+            if (generate_property_update(ctx, variable, pair->key, pair->value) < 0) {
+                return -1;
+            }
+        }
+    }
+
+    CYPHER_DEBUG("Generated bulk property %s SQL", is_merge ? "+=" : "=");
     return 0;
 }
 

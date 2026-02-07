@@ -758,15 +758,16 @@ cypher_set* make_cypher_set(ast_list *items)
     return set;
 }
 
-cypher_set_item* make_cypher_set_item(ast_node *property, ast_node *expr)
+cypher_set_item* make_cypher_set_item(ast_node *property, ast_node *expr, bool is_merge)
 {
     cypher_set_item *item = (cypher_set_item*)ast_node_create(AST_NODE_SET_ITEM, -1, sizeof(cypher_set_item));
     if (!item) {
         return NULL;
     }
-    
+
     item->property = property;
     item->expr = expr;
+    item->is_merge = is_merge;
     return item;
 }
 

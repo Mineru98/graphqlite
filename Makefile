@@ -438,7 +438,7 @@ test-constraints: extension
 	@echo "All functional tests completed successfully!"
 
 # Generate coverage report
-coverage: test
+coverage: test-unit
 	@echo "Generating coverage report..."
 	@for obj in $(BUILD_PARSER_DIR)/*.cov.o; do \
 		gcov -o $(BUILD_PARSER_DIR) $$obj; \

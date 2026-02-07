@@ -89,6 +89,18 @@ CREATE TABLE IF NOT EXISTS other_graph.edge_props_bool (
     value INTEGER,
     PRIMARY KEY (edge_id, key_id)
 );
+CREATE TABLE IF NOT EXISTS other_graph.node_props_json (
+    node_id INTEGER NOT NULL,
+    key_id INTEGER NOT NULL,
+    value TEXT NOT NULL CHECK (json_valid(value)),
+    PRIMARY KEY (node_id, key_id)
+);
+CREATE TABLE IF NOT EXISTS other_graph.edge_props_json (
+    edge_id INTEGER NOT NULL,
+    key_id INTEGER NOT NULL,
+    value TEXT NOT NULL CHECK (json_valid(value)),
+    PRIMARY KEY (edge_id, key_id)
+);
 
 SELECT 'Schema created in other_graph' as status;
 

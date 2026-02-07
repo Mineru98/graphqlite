@@ -222,6 +222,125 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
             continue;
         }
 
+        /* Handle bulk SET (SET n = {map} or SET n += {map}) */
+        if (item->property->type == AST_NODE_IDENTIFIER) {
+            cypher_identifier *var_id = (cypher_identifier*)item->property;
+
+            if (!item->expr) {
+                set_result_error(result, "Bulk SET requires a value expression");
+                return -1;
+            }
+
+            /* Resolve the map expression — must be a map literal or parameter */
+            cypher_map *map = NULL;
+            bool free_param_map = false;
+
+            if (item->expr->type == AST_NODE_MAP) {
+                map = (cypher_map*)item->expr;
+            } else if (item->expr->type == AST_NODE_PARAMETER && executor->params_json) {
+                /* Parameter — must resolve to a JSON object for bulk SET */
+                set_result_error(result, "Parameterized bulk SET (SET n = $param) is not yet supported");
+                return -1;
+            } else {
+                set_result_error(result, "Bulk SET value must be a map literal");
+                return -1;
+            }
+
+            /* Determine if node or edge */
+            bool is_edge = is_variable_edge(var_map, var_id->name);
+            int entity_id;
+
+            if (is_edge) {
+                entity_id = get_variable_edge_id(var_map, var_id->name);
+                if (entity_id < 0) {
+                    char error[256];
+                    snprintf(error, sizeof(error), "Unbound edge variable in bulk SET: %s", var_id->name);
+                    set_result_error(result, error);
+                    return -1;
+                }
+            } else {
+                entity_id = get_variable_node_id(var_map, var_id->name);
+                if (entity_id < 0) {
+                    char error[256];
+                    snprintf(error, sizeof(error), "Unbound variable in bulk SET: %s", var_id->name);
+                    set_result_error(result, error);
+                    return -1;
+                }
+            }
+
+            /* For replace mode (=), delete all existing properties first */
+            if (!item->is_merge) {
+                if (is_edge) {
+                    cypher_schema_delete_all_edge_properties(executor->schema_mgr, entity_id);
+                } else {
+                    cypher_schema_delete_all_node_properties(executor->schema_mgr, entity_id);
+                }
+            }
+
+            /* Set each property from the map */
+            if (map && map->pairs) {
+                for (int j = 0; j < map->pairs->count; j++) {
+                    cypher_map_pair *pair = (cypher_map_pair*)map->pairs->items[j];
+                    if (!pair || !pair->key || !pair->value) continue;
+
+                    property_type pt = PROP_TYPE_TEXT;
+                    const void *pv = NULL;
+                    static char bulk_str_buf[4096];
+
+                    if (pair->value->type == AST_NODE_LITERAL) {
+                        cypher_literal *lit = (cypher_literal*)pair->value;
+                        switch (lit->literal_type) {
+                            case LITERAL_STRING:
+                                pt = PROP_TYPE_TEXT;
+                                pv = lit->value.string;
+                                break;
+                            case LITERAL_INTEGER:
+                                pt = PROP_TYPE_INTEGER;
+                                pv = &lit->value.integer;
+                                break;
+                            case LITERAL_DECIMAL:
+                                pt = PROP_TYPE_REAL;
+                                pv = &lit->value.decimal;
+                                break;
+                            case LITERAL_BOOLEAN:
+                                pt = PROP_TYPE_BOOLEAN;
+                                pv = &lit->value.boolean;
+                                break;
+                            case LITERAL_NULL:
+                                continue; /* Skip null values */
+                        }
+                    } else if (pair->value->type == AST_NODE_MAP || pair->value->type == AST_NODE_LIST) {
+                        char *json_str = serialize_ast_to_json(pair->value);
+                        if (!json_str) {
+                            set_result_error(result, "Failed to serialize map/list value in bulk SET");
+                            return -1;
+                        }
+                        pt = PROP_TYPE_JSON;
+                        /* Store in static buffer for schema call */
+                        strncpy(bulk_str_buf, json_str, sizeof(bulk_str_buf) - 1);
+                        bulk_str_buf[sizeof(bulk_str_buf) - 1] = '\0';
+                        free(json_str);
+                        pv = bulk_str_buf;
+                    } else {
+                        continue; /* Skip unsupported value types */
+                    }
+
+                    int rc;
+                    if (is_edge) {
+                        rc = cypher_schema_set_edge_property(executor->schema_mgr, entity_id, pair->key, pt, pv);
+                    } else {
+                        rc = cypher_schema_set_node_property(executor->schema_mgr, entity_id, pair->key, pt, pv);
+                    }
+                    if (rc == 0) {
+                        result->properties_set++;
+                    }
+                }
+            }
+
+            (void)free_param_map; /* Suppress unused warning */
+            continue;
+        }
+
         /* Handle property assignment (SET n.prop = value) */
         if (item->property->type != AST_NODE_PROPERTY) {
             set_result_error(result, "SET target must be a property or label");
@@ -295,6 +414,42 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                     /* Skip null properties for now */
                     continue;
             }
+        } else if (item->expr->type == AST_NODE_MAP || item->expr->type == AST_NODE_LIST) {
+            /* Map or list literal - serialize to JSON and store as JSON type */
+            char *json_str = serialize_ast_to_json(item->expr);
+            if (!json_str) {
+                set_result_error(result, "Failed to serialize map/list to JSON");
+                return -1;
+            }
+            prop_type = PROP_TYPE_JSON;
+            prop_value = json_str;
+
+            /* Set property and free json_str immediately */
+            if (is_edge) {
+                if (cypher_schema_set_edge_property(executor->schema_mgr, entity_id, prop->property_name, prop_type, prop_value) == 0) {
+                    result->properties_set++;
+                    CYPHER_DEBUG("Set JSON property '%s' on edge %d", prop->property_name, entity_id);
+                } else {
+                    free(json_str);
+                    char error[512];
+                    snprintf(error, sizeof(error), "Failed to set JSON property '%s' on edge %d", prop->property_name, entity_id);
+                    set_result_error(result, error);
+                    return -1;
+                }
+            } else {
+                if (cypher_schema_set_node_property(executor->schema_mgr, entity_id, prop->property_name, prop_type, prop_value) == 0) {
+                    result->properties_set++;
+                    CYPHER_DEBUG("Set JSON property '%s' on node %d", prop->property_name, entity_id);
+                } else {
+                    free(json_str);
+                    char error[512];
+                    snprintf(error, sizeof(error), "Failed to set JSON property '%s' on node %d", prop->property_name, entity_id);
+                    set_result_error(result, error);
+                    return -1;
+                }
+            }
+            free(json_str);
+            continue;
         } else if (item->expr->type == AST_NODE_PARAMETER && executor->params_json) {
             /* Handle parameter substitution */
             cypher_parameter *param = (cypher_parameter*)item->expr;
@@ -315,6 +470,8 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                 } else if (prop_type == PROP_TYPE_BOOLEAN) {
                     set_bool_buf = *(int*)set_str_buf;
                     prop_value = &set_bool_buf;
+                } else if (prop_type == PROP_TYPE_JSON) {
+                    prop_value = set_str_buf;
                 }
             } else {
                 char error[256];
@@ -323,7 +480,7 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                 return -1;
             }
         } else {
-            set_result_error(result, "SET value must be a literal or parameter");
+            set_result_error(result, "SET value must be a literal, map, list, or parameter");
             return -1;
         }
 

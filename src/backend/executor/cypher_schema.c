@@ -106,11 +106,27 @@ const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_REAL =
     "  PRIMARY KEY (edge_id, key_id)"
     ")";
 
-const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_BOOL = 
+const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_BOOL =
     "CREATE TABLE IF NOT EXISTS edge_props_bool ("
     "  edge_id INTEGER NOT NULL REFERENCES edges(id) ON DELETE CASCADE,"
     "  key_id INTEGER NOT NULL REFERENCES property_keys(id),"
     "  value INTEGER NOT NULL CHECK (value IN (0, 1)),"
+    "  PRIMARY KEY (edge_id, key_id)"
+    ")";
+
+const char* CYPHER_SCHEMA_DDL_NODE_PROPS_JSON =
+    "CREATE TABLE IF NOT EXISTS node_props_json ("
+    "  node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,"
+    "  key_id INTEGER NOT NULL REFERENCES property_keys(id),"
+    "  value TEXT NOT NULL CHECK (json_valid(value)),"
+    "  PRIMARY KEY (node_id, key_id)"
+    ")";
+
+const char* CYPHER_SCHEMA_DDL_EDGE_PROPS_JSON =
+    "CREATE TABLE IF NOT EXISTS edge_props_json ("
+    "  edge_id INTEGER NOT NULL REFERENCES edges(id) ON DELETE CASCADE,"
+    "  key_id INTEGER NOT NULL REFERENCES property_keys(id),"
+    "  value TEXT NOT NULL CHECK (json_valid(value)),"
     "  PRIMARY KEY (edge_id, key_id)"
     ")";
 
@@ -152,8 +168,14 @@ const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_TEXT =
 const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_REAL = 
     "CREATE INDEX IF NOT EXISTS idx_edge_props_real_key_value ON edge_props_real(key_id, value, edge_id)";
 
-const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_BOOL = 
+const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_BOOL =
     "CREATE INDEX IF NOT EXISTS idx_edge_props_bool_key_value ON edge_props_bool(key_id, value, edge_id)";
+
+const char* CYPHER_SCHEMA_INDEX_NODE_PROPS_JSON =
+    "CREATE INDEX IF NOT EXISTS idx_node_props_json_key_value ON node_props_json(key_id, node_id)";
+
+const char* CYPHER_SCHEMA_INDEX_EDGE_PROPS_JSON =
+    "CREATE INDEX IF NOT EXISTS idx_edge_props_json_key_value ON edge_props_json(key_id, edge_id)";
 
 /* Property key cache implementation */
 
@@ -299,7 +321,11 @@ int cypher_schema_create_tables(cypher_schema_manager *manager)
     if (execute_ddl(manager->db, CYPHER_SCHEMA_DDL_EDGE_PROPS_TEXT, "edge_props_text table") < 0) return -1;
     if (execute_ddl(manager->db, CYPHER_SCHEMA_DDL_EDGE_PROPS_REAL, "edge_props_real table") < 0) return -1;
     if (execute_ddl(manager->db, CYPHER_SCHEMA_DDL_EDGE_PROPS_BOOL, "edge_props_bool table") < 0) return -1;
-    
+
+    /* Create JSON property tables */
+    if (execute_ddl(manager->db, CYPHER_SCHEMA_DDL_NODE_PROPS_JSON, "node_props_json table") < 0) return -1;
+    if (execute_ddl(manager->db, CYPHER_SCHEMA_DDL_EDGE_PROPS_JSON, "edge_props_json table") < 0) return -1;
+
     return 0;
 }
 
@@ -330,7 +356,11 @@ int cypher_schema_create_indexes(cypher_schema_manager *manager)
     if (execute_ddl(manager->db, CYPHER_SCHEMA_INDEX_EDGE_PROPS_TEXT, "edge props text index") < 0) return -1;
     if (execute_ddl(manager->db, CYPHER_SCHEMA_INDEX_EDGE_PROPS_REAL, "edge props real index") < 0) return -1;
     if (execute_ddl(manager->db, CYPHER_SCHEMA_INDEX_EDGE_PROPS_BOOL, "edge props bool index") < 0) return -1;
-    
+
+    /* Create JSON property indexes */
+    if (execute_ddl(manager->db, CYPHER_SCHEMA_INDEX_NODE_PROPS_JSON, "node props json index") < 0) return -1;
+    if (execute_ddl(manager->db, CYPHER_SCHEMA_INDEX_EDGE_PROPS_JSON, "edge props json index") < 0) return -1;
+
     return 0;
 }
 
@@ -428,6 +458,7 @@ const char* cypher_schema_property_type_name(property_type type)
         case PROP_TYPE_TEXT:    return "TEXT";
         case PROP_TYPE_REAL:    return "REAL";
         case PROP_TYPE_BOOLEAN: return "BOOLEAN";
+        case PROP_TYPE_JSON:    return "JSON";
         default:                return "UNKNOWN";
     }
 }
@@ -665,10 +696,10 @@ int cypher_schema_set_node_property(cypher_schema_manager *manager,
     }
     
     /* Clean up the property from all other type tables to avoid COALESCE conflicts */
-    const char *cleanup_tables[] = {"node_props_text", "node_props_int", "node_props_real", "node_props_bool"};
+    const char *cleanup_tables[] = {"node_props_text", "node_props_int", "node_props_real", "node_props_bool", "node_props_json"};
     const char *cleanup_sql = "DELETE FROM %s WHERE node_id = ? AND key_id = ?";
-    
-    for (int i = 0; i < 4; i++) {
+
+    for (int i = 0; i < 5; i++) {
         char cleanup_query[256];
         snprintf(cleanup_query, sizeof(cleanup_query), cleanup_sql, cleanup_tables[i]);
         
@@ -700,22 +731,25 @@ int cypher_schema_set_node_property(cypher_schema_manager *manager,
         case PROP_TYPE_BOOLEAN:
             table_name = "node_props_bool";
             break;
+        case PROP_TYPE_JSON:
+            table_name = "node_props_json";
+            break;
         default:
             return -1;
     }
-    
+
     snprintf(sql, sizeof(sql), sql_template, table_name);
-    
+
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(manager->db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         CYPHER_DEBUG("Failed to prepare property insert statement: %s", sqlite3_errmsg(manager->db));
         return -1;
     }
-    
+
     sqlite3_bind_int(stmt, 1, node_id);
     sqlite3_bind_int(stmt, 2, key_id);
-    
+
     /* Bind value based on type */
     switch (type) {
         case PROP_TYPE_INTEGER:
@@ -729,6 +763,9 @@ int cypher_schema_set_node_property(cypher_schema_manager *manager,
             break;
         case PROP_TYPE_BOOLEAN:
             sqlite3_bind_int(stmt, 3, *(const int*)value ? 1 : 0);
+            break;
+        case PROP_TYPE_JSON:
+            sqlite3_bind_text(stmt, 3, (const char*)value, -1, SQLITE_STATIC);
             break;
     }
     
@@ -846,22 +883,25 @@ int cypher_schema_set_edge_property(cypher_schema_manager *manager,
         case PROP_TYPE_BOOLEAN:
             table_name = "edge_props_bool";
             break;
+        case PROP_TYPE_JSON:
+            table_name = "edge_props_json";
+            break;
         default:
             return -1;
     }
-    
+
     snprintf(sql, sizeof(sql), sql_template, table_name);
-    
+
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(manager->db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         CYPHER_DEBUG("Failed to prepare edge property insert statement: %s", sqlite3_errmsg(manager->db));
         return -1;
     }
-    
+
     sqlite3_bind_int(stmt, 1, edge_id);
     sqlite3_bind_int(stmt, 2, key_id);
-    
+
     /* Bind value based on type */
     switch (type) {
         case PROP_TYPE_INTEGER:
@@ -875,6 +915,9 @@ int cypher_schema_set_edge_property(cypher_schema_manager *manager,
             break;
         case PROP_TYPE_BOOLEAN:
             sqlite3_bind_int(stmt, 3, *(const int*)value ? 1 : 0);
+            break;
+        case PROP_TYPE_JSON:
+            sqlite3_bind_text(stmt, 3, (const char*)value, -1, SQLITE_STATIC);
             break;
     }
     
@@ -907,10 +950,10 @@ int cypher_schema_delete_node_property(cypher_schema_manager *manager,
     }
 
     /* Delete from all property tables - we don't know which type it is */
-    const char *tables[] = {"node_props_text", "node_props_int", "node_props_real", "node_props_bool"};
+    const char *tables[] = {"node_props_text", "node_props_int", "node_props_real", "node_props_bool", "node_props_json"};
     int deleted = 0;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         char sql[256];
         snprintf(sql, sizeof(sql), "DELETE FROM %s WHERE node_id = ? AND key_id = ?", tables[i]);
 
@@ -951,10 +994,10 @@ int cypher_schema_delete_edge_property(cypher_schema_manager *manager,
     }
 
     /* Delete from all property tables - we don't know which type it is */
-    const char *tables[] = {"edge_props_text", "edge_props_int", "edge_props_real", "edge_props_bool"};
+    const char *tables[] = {"edge_props_text", "edge_props_int", "edge_props_real", "edge_props_bool", "edge_props_json"};
     int deleted = 0;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         char sql[256];
         snprintf(sql, sizeof(sql), "DELETE FROM %s WHERE edge_id = ? AND key_id = ?", tables[i]);
 
@@ -976,6 +1019,62 @@ int cypher_schema_delete_edge_property(cypher_schema_manager *manager,
     }
 
     return deleted > 0 ? 0 : -1;
+}
+
+/* Delete all properties from a node (all 5 typed tables) */
+int cypher_schema_delete_all_node_properties(cypher_schema_manager *manager, int node_id)
+{
+    if (!manager || !manager->db || node_id < 0) {
+        return -1;
+    }
+
+    const char *tables[] = {"node_props_text", "node_props_int", "node_props_real", "node_props_bool", "node_props_json"};
+
+    for (int i = 0; i < 5; i++) {
+        char sql[256];
+        snprintf(sql, sizeof(sql), "DELETE FROM %s WHERE node_id = ?", tables[i]);
+
+        sqlite3_stmt *stmt;
+        int rc = sqlite3_prepare_v2(manager->db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            continue;
+        }
+
+        sqlite3_bind_int(stmt, 1, node_id);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    CYPHER_DEBUG("Deleted all properties from node %d", node_id);
+    return 0;
+}
+
+/* Delete all properties from an edge (all 5 typed tables) */
+int cypher_schema_delete_all_edge_properties(cypher_schema_manager *manager, int edge_id)
+{
+    if (!manager || !manager->db || edge_id < 0) {
+        return -1;
+    }
+
+    const char *tables[] = {"edge_props_text", "edge_props_int", "edge_props_real", "edge_props_bool", "edge_props_json"};
+
+    for (int i = 0; i < 5; i++) {
+        char sql[256];
+        snprintf(sql, sizeof(sql), "DELETE FROM %s WHERE edge_id = ?", tables[i]);
+
+        sqlite3_stmt *stmt;
+        int rc = sqlite3_prepare_v2(manager->db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            continue;
+        }
+
+        sqlite3_bind_int(stmt, 1, edge_id);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    CYPHER_DEBUG("Deleted all properties from edge %d", edge_id);
+    return 0;
 }
 
 /* Remove a label from a node */

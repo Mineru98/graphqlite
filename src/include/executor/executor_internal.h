@@ -119,6 +119,9 @@ int delete_node_by_id(cypher_executor *executor, int64_t node_id, bool detach);
 int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *path,
                                        cypher_result *result, variable_map *var_map);
 
+/* AST map/list to JSON string serialization */
+char* serialize_ast_to_json(ast_node *expr);
+
 /* Result building functions */
 int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_return *return_clause,
                         cypher_result *result, cypher_transform_context *ctx);

@@ -164,14 +164,16 @@ int transform_properties_function(cypher_transform_context *ctx, cypher_function
             "(SELECT ept.value FROM %sedge_props_text ept WHERE ept.edge_id = %s%s AND ept.key_id = pk.id), "
             "(SELECT epi.value FROM %sedge_props_int epi WHERE epi.edge_id = %s%s AND epi.key_id = pk.id), "
             "(SELECT epr.value FROM %sedge_props_real epr WHERE epr.edge_id = %s%s AND epr.key_id = pk.id), "
-            "(SELECT epb.value FROM %sedge_props_bool epb WHERE epb.edge_id = %s%s AND epb.key_id = pk.id))) "
+            "(SELECT epb.value FROM %sedge_props_bool epb WHERE epb.edge_id = %s%s AND epb.key_id = pk.id), "
+            "(SELECT epj.value FROM %sedge_props_json epj WHERE epj.edge_id = %s%s AND epj.key_id = pk.id))) "
             "FROM %sproperty_keys pk WHERE "
             "EXISTS (SELECT 1 FROM %sedge_props_text WHERE edge_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %sedge_props_int WHERE edge_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %sedge_props_real WHERE edge_id = %s%s AND key_id = pk.id) OR "
-            "EXISTS (SELECT 1 FROM %sedge_props_bool WHERE edge_id = %s%s AND key_id = pk.id))",
-            gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix,
-            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
+            "EXISTS (SELECT 1 FROM %sedge_props_bool WHERE edge_id = %s%s AND key_id = pk.id) OR "
+            "EXISTS (SELECT 1 FROM %sedge_props_json WHERE edge_id = %s%s AND key_id = pk.id))",
+            gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix,
+            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
     } else {
         /* For nodes, query node property tables */
         /* Use separate EXISTS checks with OR - SQLite doesn't handle EXISTS with UNION ALL correctly */
@@ -179,14 +181,16 @@ int transform_properties_function(cypher_transform_context *ctx, cypher_function
             "(SELECT npt.value FROM %snode_props_text npt WHERE npt.node_id = %s%s AND npt.key_id = pk.id), "
             "(SELECT npi.value FROM %snode_props_int npi WHERE npi.node_id = %s%s AND npi.key_id = pk.id), "
             "(SELECT npr.value FROM %snode_props_real npr WHERE npr.node_id = %s%s AND npr.key_id = pk.id), "
-            "(SELECT npb.value FROM %snode_props_bool npb WHERE npb.node_id = %s%s AND npb.key_id = pk.id))) "
+            "(SELECT npb.value FROM %snode_props_bool npb WHERE npb.node_id = %s%s AND npb.key_id = pk.id), "
+            "(SELECT npj.value FROM %snode_props_json npj WHERE npj.node_id = %s%s AND npj.key_id = pk.id))) "
             "FROM %sproperty_keys pk WHERE "
             "EXISTS (SELECT 1 FROM %snode_props_text WHERE node_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %snode_props_int WHERE node_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %snode_props_real WHERE node_id = %s%s AND key_id = pk.id) OR "
-            "EXISTS (SELECT 1 FROM %snode_props_bool WHERE node_id = %s%s AND key_id = pk.id))",
-            gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix,
-            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
+            "EXISTS (SELECT 1 FROM %snode_props_bool WHERE node_id = %s%s AND key_id = pk.id) OR "
+            "EXISTS (SELECT 1 FROM %snode_props_json WHERE node_id = %s%s AND key_id = pk.id))",
+            gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix,
+            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
     }
 
     return 0;
@@ -287,8 +291,9 @@ int transform_keys_function(cypher_transform_context *ctx, cypher_function_call 
             "EXISTS (SELECT 1 FROM %sedge_props_text WHERE edge_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %sedge_props_int WHERE edge_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %sedge_props_real WHERE edge_id = %s%s AND key_id = pk.id) OR "
-            "EXISTS (SELECT 1 FROM %sedge_props_bool WHERE edge_id = %s%s AND key_id = pk.id))",
-            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
+            "EXISTS (SELECT 1 FROM %sedge_props_bool WHERE edge_id = %s%s AND key_id = pk.id) OR "
+            "EXISTS (SELECT 1 FROM %sedge_props_json WHERE edge_id = %s%s AND key_id = pk.id))",
+            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
     } else {
         /* For nodes, query node property tables */
         /* Use separate EXISTS checks with OR - SQLite doesn't handle EXISTS with UNION ALL correctly */
@@ -296,8 +301,9 @@ int transform_keys_function(cypher_transform_context *ctx, cypher_function_call 
             "EXISTS (SELECT 1 FROM %snode_props_text WHERE node_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %snode_props_int WHERE node_id = %s%s AND key_id = pk.id) OR "
             "EXISTS (SELECT 1 FROM %snode_props_real WHERE node_id = %s%s AND key_id = pk.id) OR "
-            "EXISTS (SELECT 1 FROM %snode_props_bool WHERE node_id = %s%s AND key_id = pk.id))",
-            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
+            "EXISTS (SELECT 1 FROM %snode_props_bool WHERE node_id = %s%s AND key_id = pk.id) OR "
+            "EXISTS (SELECT 1 FROM %snode_props_json WHERE node_id = %s%s AND key_id = pk.id))",
+            gprefix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix, gprefix, alias, id_suffix);
     }
 
     return 0;

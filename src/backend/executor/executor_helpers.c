@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 #include "executor/executor_internal.h"
+#include "executor/json_builder.h"
 #include "transform/transform_helpers.h"
 #include "parser/cypher_ast.h"
 
@@ -126,7 +127,7 @@ int get_param_value(const char *params_json, const char *param_name,
                     memcpy(json_val, json_start, value_size - 1);
                     json_val[value_size - 1] = '\0';
                 }
-                *out_type = PROP_TYPE_TEXT;
+                *out_type = PROP_TYPE_JSON;
                 return 0;
             }
             return -1;
@@ -329,4 +330,103 @@ int bind_params_from_json(sqlite3_stmt *stmt, const char *params_json)
     }
 
     return 0;
+}
+
+/* Append a JSON-escaped string value (with quotes) to a json_builder */
+static void jbuf_add_json_string(json_builder *jb, const char *str)
+{
+    jbuf_append(jb, "\"");
+    if (str) {
+        for (const char *p = str; *p; p++) {
+            switch (*p) {
+                case '"':  jbuf_append(jb, "\\\""); break;
+                case '\\': jbuf_append(jb, "\\\\"); break;
+                case '\n': jbuf_append(jb, "\\n"); break;
+                case '\r': jbuf_append(jb, "\\r"); break;
+                case '\t': jbuf_append(jb, "\\t"); break;
+                default:   jbuf_appendf(jb, "%c", *p); break;
+            }
+        }
+    }
+    jbuf_append(jb, "\"");
+}
+
+/* Recursively serialize an AST expression node to JSON in a json_builder */
+static void serialize_ast_node(json_builder *jb, ast_node *expr)
+{
+    if (!expr) {
+        jbuf_append(jb, "null");
+        return;
+    }
+
+    switch (expr->type) {
+        case AST_NODE_MAP: {
+            cypher_map *map = (cypher_map*)expr;
+            jbuf_append(jb, "{");
+            if (map->pairs) {
+                for (int i = 0; i < map->pairs->count; i++) {
+                    if (i > 0) jbuf_append(jb, ",");
+                    cypher_map_pair *pair = (cypher_map_pair*)map->pairs->items[i];
+                    jbuf_add_json_string(jb, pair->key);
+                    jbuf_append(jb, ":");
+                    serialize_ast_node(jb, pair->value);
+                }
+            }
+            jbuf_append(jb, "}");
+            break;
+        }
+        case AST_NODE_LIST: {
+            cypher_list *list = (cypher_list*)expr;
+            jbuf_append(jb, "[");
+            if (list->items) {
+                for (int i = 0; i < list->items->count; i++) {
+                    if (i > 0) jbuf_append(jb, ",");
+                    serialize_ast_node(jb, list->items->items[i]);
+                }
+            }
+            jbuf_append(jb, "]");
+            break;
+        }
+        case AST_NODE_LITERAL: {
+            cypher_literal *lit = (cypher_literal*)expr;
+            switch (lit->literal_type) {
+                case LITERAL_STRING:
+                    jbuf_add_json_string(jb, lit->value.string);
+                    break;
+                case LITERAL_INTEGER:
+                    jbuf_appendf(jb, "%lld", (long long)lit->value.integer);
+                    break;
+                case LITERAL_DECIMAL:
+                    jbuf_appendf(jb, "%g", lit->value.decimal);
+                    break;
+                case LITERAL_BOOLEAN:
+                    jbuf_append(jb, lit->value.boolean ? "true" : "false");
+                    break;
+                case LITERAL_NULL:
+                    jbuf_append(jb, "null");
+                    break;
+            }
+            break;
+        }
+        default:
+            /* Unsupported expression type in JSON context — emit null */
+            jbuf_append(jb, "null");
+            break;
+    }
+}
+
+/* Serialize an AST map or list node to a JSON string.
+ * Returns a malloc'd string that the caller must free, or NULL on error. */
+char* serialize_ast_to_json(ast_node *expr)
+{
+    if (!expr) return NULL;
+    if (expr->type != AST_NODE_MAP && expr->type != AST_NODE_LIST) return NULL;
+
+    json_builder jb;
+    jbuf_init(&jb, 256);
+    if (!jbuf_ok(&jb)) return NULL;
+
+    serialize_ast_node(&jb, expr);
+
+    return jbuf_take(&jb);
 }

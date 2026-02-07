@@ -211,8 +211,9 @@ typedef struct cypher_set {
 /* SET item (e.g., n.prop = value) */
 typedef struct cypher_set_item {
     ast_node base;
-    ast_node *property;   /* Property to set (n.prop) */
+    ast_node *property;   /* Property to set (n.prop) or variable (n) for bulk SET */
     ast_node *expr;       /* Expression to set it to */
+    bool is_merge;        /* true for += (merge), false for = (replace) */
 } cypher_set_item;
 
 /* DELETE clause */
@@ -502,7 +503,7 @@ cypher_load_csv* make_cypher_load_csv(char *file_path, char *variable, bool with
 cypher_create* make_cypher_create(ast_list *pattern);
 cypher_merge* make_cypher_merge(ast_list *pattern, ast_list *on_create, ast_list *on_match);
 cypher_set* make_cypher_set(ast_list *items);
-cypher_set_item* make_cypher_set_item(ast_node *property, ast_node *expr);
+cypher_set_item* make_cypher_set_item(ast_node *property, ast_node *expr, bool is_merge);
 cypher_delete* make_cypher_delete(ast_list *items, bool detach);
 cypher_delete_item* make_delete_item(char *variable);
 cypher_remove* make_cypher_remove(ast_list *items);

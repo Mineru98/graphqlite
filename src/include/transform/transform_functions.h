@@ -72,6 +72,13 @@ int transform_aggregate_with_property(cypher_transform_context *ctx, cypher_func
 int transform_type_function(cypher_transform_context *ctx, cypher_function_call *func);
 
 /*
+ * JSON functions - transform_func_list.c
+ */
+int transform_json_get_function(cypher_transform_context *ctx, cypher_function_call *func);
+int transform_json_keys_function(cypher_transform_context *ctx, cypher_function_call *func);
+int transform_json_type_function(cypher_transform_context *ctx, cypher_function_call *func);
+
+/*
  * Predicate expressions - transform_expr_predicate.c
  */
 int transform_exists_expression(cypher_transform_context *ctx, cypher_exists_expr *exists_expr);
