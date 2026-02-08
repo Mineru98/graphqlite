@@ -757,6 +757,67 @@ static void test_return_union_chain(void)
     }
 }
 
+/* Test RETURN with nested property access (JSON) */
+static void test_return_nested_property(void)
+{
+    char *sql = transform_to_sql("MATCH (n) RETURN n.meta.role");
+    CU_ASSERT_PTR_NOT_NULL(sql);
+    if (sql) {
+        /* Should use json_extract for nested access */
+        CU_ASSERT_PTR_NOT_NULL(strstr(sql, "json_extract"));
+        free(sql);
+    }
+}
+
+/* Test RETURN with bracket subscript notation */
+static void test_return_bracket_subscript(void)
+{
+    char *sql = transform_to_sql("MATCH (n) RETURN n[\"name\"]");
+    CU_ASSERT_PTR_NOT_NULL(sql);
+    if (sql) {
+        free(sql);
+    }
+}
+
+/* Test RETURN node variable (renders as JSON object) */
+static void test_return_node_object(void)
+{
+    char *sql = transform_to_sql("MATCH (n:Test) RETURN n");
+    CU_ASSERT_PTR_NOT_NULL(sql);
+    if (sql) {
+        /* Should generate node rendering SQL */
+        CU_ASSERT_PTR_NOT_NULL(strstr(sql, "json_object"));
+        free(sql);
+    }
+}
+
+/* Test RETURN edge variable */
+static void test_return_edge_object(void)
+{
+    char *sql = transform_to_sql("MATCH ()-[r:KNOWS]->() RETURN r");
+    CU_ASSERT_PTR_NOT_NULL(sql);
+    if (sql) {
+        /* Should generate edge rendering SQL */
+        CU_ASSERT_PTR_NOT_NULL(strstr(sql, "json_object"));
+        free(sql);
+    }
+}
+
+/* Test RETURN with GROUP BY (aggregation) */
+static void test_return_group_by(void)
+{
+    /* Verify aggregation with non-aggregate column produces COUNT in SQL.
+     * Note: for simple MATCH+RETURN, the transform may rely on SQLite's
+     * implicit grouping rather than explicit GROUP BY. */
+    char *sql = transform_to_sql("MATCH (n) RETURN n.label, count(n)");
+    CU_ASSERT_PTR_NOT_NULL(sql);
+    if (sql) {
+        CU_ASSERT_PTR_NOT_NULL(strstr(sql, "COUNT("));
+        CU_ASSERT_PTR_NOT_NULL(strstr(sql, "\"n.label\""));
+        free(sql);
+    }
+}
+
 /* Register test suite */
 int register_return_tests(void)
 {
@@ -810,6 +871,11 @@ int register_return_tests(void)
     if (!CU_add_test(suite, "UNION", test_return_union)) return -1;
     if (!CU_add_test(suite, "UNION ALL", test_return_union_all)) return -1;
     if (!CU_add_test(suite, "UNION chain", test_return_union_chain)) return -1;
+    if (!CU_add_test(suite, "RETURN nested property", test_return_nested_property)) return -1;
+    if (!CU_add_test(suite, "RETURN bracket subscript", test_return_bracket_subscript)) return -1;
+    if (!CU_add_test(suite, "RETURN node object", test_return_node_object)) return -1;
+    if (!CU_add_test(suite, "RETURN edge object", test_return_edge_object)) return -1;
+    if (!CU_add_test(suite, "RETURN GROUP BY", test_return_group_by)) return -1;
 
     return 0;
 }

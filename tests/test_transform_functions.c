@@ -1058,6 +1058,400 @@ static void test_list_comprehension(void)
     }
 }
 
+/* Test size() function on list */
+static void test_size_function(void)
+{
+    const char *query = "MATCH (n) RETURN size(labels(n))";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("size() function query failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test size() on string */
+static void test_size_string(void)
+{
+    const char *query = "MATCH (n) RETURN size(n.name)";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("size() on string failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test reverse() function */
+static void test_reverse_function(void)
+{
+    /* reverse() maps to REVERSE in SQL - verify transform only since
+     * SQLite doesn't have a built-in REVERSE function */
+    const char *query = "RETURN reverse(\"hello\")";
+    ast_node *ast = parse_cypher_query(query);
+    CU_ASSERT_PTR_NOT_NULL(ast);
+    if (!ast) return;
+
+    cypher_transform_context *ctx = cypher_transform_create_context(test_db);
+    CU_ASSERT_PTR_NOT_NULL(ctx);
+    if (!ctx) {
+        cypher_parser_free_result(ast);
+        return;
+    }
+
+    int rc = cypher_transform_generate_sql(ctx, (cypher_query*)ast);
+    CU_ASSERT_EQUAL(rc, 0);
+    if (rc == 0 && ctx->sql_buffer) {
+        CU_ASSERT_PTR_NOT_NULL(strstr(ctx->sql_buffer, "REVERSE"));
+    }
+
+    cypher_transform_free_context(ctx);
+    cypher_parser_free_result(ast);
+}
+
+/* Test coalesce() with multiple arguments */
+static void test_coalesce_multi(void)
+{
+    const char *query = "MATCH (n) RETURN coalesce(n.nickname, n.name, \"unknown\")";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("coalesce() multi-arg failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test nested JSON property access in RETURN */
+static void test_nested_json_return(void)
+{
+    const char *query = "MATCH (n) RETURN n.meta.role";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Nested JSON return failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test bracket subscript access */
+static void test_bracket_subscript(void)
+{
+    const char *query = "MATCH (n) RETURN n[\"name\"]";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bracket subscript failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test keys() function in WHERE */
+static void test_keys_in_where(void)
+{
+    const char *query = "MATCH (n) RETURN keys(n)";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test properties() for edge */
+static void test_properties_edge(void)
+{
+    const char *query = "MATCH ()-[r]->() RETURN properties(r)";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test map literal in RETURN */
+static void test_map_literal_return(void)
+{
+    const char *query = "RETURN {name: \"test\", age: 30} AS result";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Map literal return failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test list literal in RETURN */
+static void test_list_literal_return(void)
+{
+    const char *query = "RETURN [1, 2, 3] AS result";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("List literal return failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test toString() function */
+static void test_tostring_function(void)
+{
+    const char *query = "RETURN toString(42)";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test toInteger() function */
+static void test_tointeger_function(void)
+{
+    const char *query = "RETURN toInteger(\"42\")";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test toFloat() function */
+static void test_tofloat_function(void)
+{
+    const char *query = "RETURN toFloat(\"3.14\")";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test toBoolean() function */
+static void test_toboolean_function(void)
+{
+    const char *query = "RETURN toBoolean(\"true\")";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test head() function */
+static void test_head_function(void)
+{
+    const char *query = "RETURN head([1, 2, 3])";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("head() failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test last() function */
+static void test_last_function(void)
+{
+    const char *query = "RETURN last([1, 2, 3])";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("last() failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test tail() function */
+static void test_tail_function(void)
+{
+    const char *query = "RETURN tail([1, 2, 3])";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("tail() failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test range() function with 2 arguments */
+static void test_range_function(void)
+{
+    const char *query = "RETURN range(1, 5)";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("range() failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test range() function with 3 arguments (step) */
+static void test_range_function_step(void)
+{
+    const char *query = "RETURN range(0, 10, 2)";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("range() with step failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test collect() aggregate function */
+static void test_collect_function(void)
+{
+    const char *query = "MATCH (n:Person) RETURN collect(n.name)";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("collect() failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test date() function - no args */
+static void test_date_function_noargs(void)
+{
+    const char *query = "RETURN date()";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("date() failed: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test date() function - with argument */
+static void test_date_function_arg(void)
+{
+    const char *query = "RETURN date(\"2024-01-15\")";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test time() function */
+static void test_time_function(void)
+{
+    const char *query = "RETURN time()";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test datetime() function */
+static void test_datetime_function(void)
+{
+    const char *query = "RETURN datetime()";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        cypher_free_result(result);
+    }
+}
+
+/* Test json_keys() function - transform only */
+static void test_json_keys_function(void)
+{
+    ast_node *ast = parse_cypher_query("RETURN json_keys(\"{}\")");
+    CU_ASSERT_PTR_NOT_NULL(ast);
+    if (!ast) return;
+
+    cypher_transform_context *ctx = cypher_transform_create_context(test_db);
+    CU_ASSERT_PTR_NOT_NULL(ctx);
+    if (!ctx) {
+        cypher_parser_free_result(ast);
+        return;
+    }
+
+    int rc = cypher_transform_generate_sql(ctx, (cypher_query*)ast);
+    CU_ASSERT_EQUAL(rc, 0);
+    if (rc == 0 && ctx->sql_buffer) {
+        CU_ASSERT_PTR_NOT_NULL(strstr(ctx->sql_buffer, "json_group_array"));
+        CU_ASSERT_PTR_NOT_NULL(strstr(ctx->sql_buffer, "json_each"));
+    }
+
+    cypher_transform_free_context(ctx);
+    cypher_parser_free_result(ast);
+}
+
+/* Test json_type() function - transform only */
+static void test_json_type_function(void)
+{
+    ast_node *ast = parse_cypher_query("RETURN json_type(\"[1,2]\")");
+    CU_ASSERT_PTR_NOT_NULL(ast);
+    if (!ast) return;
+
+    cypher_transform_context *ctx = cypher_transform_create_context(test_db);
+    CU_ASSERT_PTR_NOT_NULL(ctx);
+    if (!ctx) {
+        cypher_parser_free_result(ast);
+        return;
+    }
+
+    int rc = cypher_transform_generate_sql(ctx, (cypher_query*)ast);
+    CU_ASSERT_EQUAL(rc, 0);
+    if (rc == 0 && ctx->sql_buffer) {
+        CU_ASSERT_PTR_NOT_NULL(strstr(ctx->sql_buffer, "json_type"));
+    }
+
+    cypher_transform_free_context(ctx);
+    cypher_parser_free_result(ast);
+}
+
 /* Initialize the functions transform test suite */
 int init_transform_functions_suite(void)
 {
@@ -1083,7 +1477,33 @@ int init_transform_functions_suite(void)
         !CU_add_test(suite, "Timestamp and UUID functions", test_timestamp_uuid_functions) ||
         !CU_add_test(suite, "Function error handling", test_function_error_handling) ||
         !CU_add_test(suite, "Multiple relationship types transform", test_multiple_relationship_types_transform) ||
-        !CU_add_test(suite, "List comprehension", test_list_comprehension)) {
+        !CU_add_test(suite, "List comprehension", test_list_comprehension) ||
+        !CU_add_test(suite, "size() on list", test_size_function) ||
+        !CU_add_test(suite, "size() on string", test_size_string) ||
+        !CU_add_test(suite, "reverse()", test_reverse_function) ||
+        !CU_add_test(suite, "coalesce() multi-arg", test_coalesce_multi) ||
+        !CU_add_test(suite, "Nested JSON property return", test_nested_json_return) ||
+        !CU_add_test(suite, "Bracket subscript access", test_bracket_subscript) ||
+        !CU_add_test(suite, "keys() function", test_keys_in_where) ||
+        !CU_add_test(suite, "properties() edge", test_properties_edge) ||
+        !CU_add_test(suite, "Map literal in RETURN", test_map_literal_return) ||
+        !CU_add_test(suite, "List literal in RETURN", test_list_literal_return) ||
+        !CU_add_test(suite, "toString()", test_tostring_function) ||
+        !CU_add_test(suite, "toInteger()", test_tointeger_function) ||
+        !CU_add_test(suite, "toFloat()", test_tofloat_function) ||
+        !CU_add_test(suite, "toBoolean()", test_toboolean_function) ||
+        !CU_add_test(suite, "head()", test_head_function) ||
+        !CU_add_test(suite, "last()", test_last_function) ||
+        !CU_add_test(suite, "tail()", test_tail_function) ||
+        !CU_add_test(suite, "range()", test_range_function) ||
+        !CU_add_test(suite, "range() with step", test_range_function_step) ||
+        !CU_add_test(suite, "collect()", test_collect_function) ||
+        !CU_add_test(suite, "date() no args", test_date_function_noargs) ||
+        !CU_add_test(suite, "date() with arg", test_date_function_arg) ||
+        !CU_add_test(suite, "time()", test_time_function) ||
+        !CU_add_test(suite, "datetime()", test_datetime_function) ||
+        !CU_add_test(suite, "json_keys()", test_json_keys_function) ||
+        !CU_add_test(suite, "json_type()", test_json_type_function)) {
         return CU_get_error();
     }
     

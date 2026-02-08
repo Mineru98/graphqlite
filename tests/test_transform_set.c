@@ -314,6 +314,171 @@ static void test_set_label_without_match(void)
     }
 }
 
+/* Test bulk SET n = {map} transform */
+static void test_set_bulk_replace(void)
+{
+    const char *query = "MATCH (n:Person) SET n = {name: \"Alice\", age: 30}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bulk SET replace transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test bulk SET n += {map} transform */
+static void test_set_bulk_merge(void)
+{
+    const char *query = "MATCH (n:Person) SET n += {status: \"active\"}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bulk SET merge transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test bulk SET on relationship */
+static void test_set_bulk_edge(void)
+{
+    const char *query = "MATCH (a)-[r:KNOWS]->(b) SET r = {weight: 10}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bulk SET edge transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test bulk SET edge merge */
+static void test_set_bulk_edge_merge(void)
+{
+    const char *query = "MATCH (a)-[r:KNOWS]->(b) SET r += {extra: true}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bulk SET edge merge transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test bulk SET with empty map */
+static void test_set_bulk_empty_map(void)
+{
+    const char *query = "MATCH (n:Test) SET n = {}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bulk SET empty map transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test bulk SET with mixed types */
+static void test_set_bulk_mixed_types(void)
+{
+    const char *query = "MATCH (n:Test) SET n = {str: \"hello\", num: 42, dec: 3.14, flag: true}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bulk SET mixed types transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test bulk SET with JSON nested values */
+static void test_set_bulk_json_nested(void)
+{
+    const char *query = "MATCH (n:Test) SET n = {name: \"A\", meta: {role: \"admin\"}, tags: [1, 2, 3]}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Bulk SET JSON nested transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test SET with JSON map as property value */
+static void test_set_json_map_value(void)
+{
+    const char *query = "MATCH (n:Test) SET n.meta = {role: \"admin\", level: 5}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("SET JSON map value transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test SET with list as property value */
+static void test_set_list_value(void)
+{
+    const char *query = "MATCH (n:Test) SET n.tags = [1, 2, 3]";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("SET list value transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test mixed property and bulk SET in one query */
+static void test_set_mixed_property_bulk(void)
+{
+    const char *query = "MATCH (n:Test) SET n.age = 25, n += {role: \"dev\"}";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("Mixed property and bulk SET transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
+/* Test SET with relationship property */
+static void test_set_relationship_property(void)
+{
+    const char *query = "MATCH (a)-[r:KNOWS]->(b) SET r.since = 2024";
+    cypher_query_result *result = parse_and_transform(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+    if (result) {
+        CU_ASSERT_FALSE(result->has_error);
+        if (result->has_error) {
+            printf("SET relationship property transform error: %s\n", result->error_message);
+        }
+        cypher_free_result(result);
+    }
+}
+
 /* Initialize the SET transform test suite */
 int init_transform_set_suite(void)
 {
@@ -334,7 +499,18 @@ int init_transform_set_suite(void)
         !CU_add_test(suite, "SET label operations", test_set_label_operations) ||
         !CU_add_test(suite, "SET multiple labels", test_set_multiple_labels) ||
         !CU_add_test(suite, "SET mixed operations", test_set_mixed_operations) ||
-        !CU_add_test(suite, "SET label without MATCH", test_set_label_without_match)) {
+        !CU_add_test(suite, "SET label without MATCH", test_set_label_without_match) ||
+        !CU_add_test(suite, "Bulk SET replace", test_set_bulk_replace) ||
+        !CU_add_test(suite, "Bulk SET merge", test_set_bulk_merge) ||
+        !CU_add_test(suite, "Bulk SET edge", test_set_bulk_edge) ||
+        !CU_add_test(suite, "Bulk SET edge merge", test_set_bulk_edge_merge) ||
+        !CU_add_test(suite, "Bulk SET empty map", test_set_bulk_empty_map) ||
+        !CU_add_test(suite, "Bulk SET mixed types", test_set_bulk_mixed_types) ||
+        !CU_add_test(suite, "Bulk SET JSON nested", test_set_bulk_json_nested) ||
+        !CU_add_test(suite, "SET JSON map value", test_set_json_map_value) ||
+        !CU_add_test(suite, "SET list value", test_set_list_value) ||
+        !CU_add_test(suite, "SET mixed property and bulk", test_set_mixed_property_bulk) ||
+        !CU_add_test(suite, "SET relationship property", test_set_relationship_property)) {
         return CU_get_error();
     }
     
