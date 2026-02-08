@@ -28,11 +28,16 @@ SELECT 'Test 1.3 - Vertex with mixed property types:' as test_name;
 SELECT cypher('CREATE (data:TestNode {str: "text", int: 42, float: 3.14, bool: false})') as result;
 SELECT cypher('MATCH (n:TestNode) RETURN n') as mixed_properties;
 
-SELECT 'Test 1.4 - Vertex without properties:' as test_name;
+SELECT 'Test 1.4 - Vertex with multiple labels (issue #21):' as test_name;
+SELECT cypher('CREATE (n:LabelA:LabelB:LabelC {id: "multi"})') as result;
+SELECT cypher('MATCH (n {id: "multi"}) RETURN n') as multi_label_vertex;
+-- Expected: labels array should contain ["LabelA", "LabelB", "LabelC"]
+
+SELECT 'Test 1.5 - Vertex without properties:' as test_name;
 SELECT cypher('CREATE (empty:EmptyNode)') as result;
 SELECT cypher('MATCH (n:EmptyNode) RETURN n') as empty_vertex;
 
-SELECT 'Test 1.5 - Vertex without label:' as test_name;
+SELECT 'Test 1.6 - Vertex without label:' as test_name;
 SELECT cypher('CREATE (unlabeled {type: "unlabeled"})') as result;
 SELECT cypher('MATCH (n {type: "unlabeled"}) RETURN n') as unlabeled_vertex;
 

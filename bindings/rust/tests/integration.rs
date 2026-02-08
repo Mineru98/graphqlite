@@ -1554,6 +1554,24 @@ fn test_match_multiple_labels() {
     assert_eq!(results[0].get::<String>("n.name").unwrap(), "Both");
 }
 
+#[test]
+fn test_return_node_all_labels() {
+    // Issue #21: RETURN n should include all labels, not just the first
+    let conn = test_connection();
+
+    conn.cypher("CREATE (n:Alpha:Beta:Gamma {name: 'multilabel'})").unwrap();
+
+    let results = conn.cypher("MATCH (n:Alpha {name: 'multilabel'}) RETURN n").unwrap();
+    assert_eq!(results.len(), 1);
+
+    // The returned vertex should contain all three labels
+    let node = results[0].get_value("n").expect("missing column n");
+    let node_str = format!("{:?}", node);
+    assert!(node_str.contains("Alpha"), "Missing label Alpha in: {}", node_str);
+    assert!(node_str.contains("Beta"), "Missing label Beta in: {}", node_str);
+    assert!(node_str.contains("Gamma"), "Missing label Gamma in: {}", node_str);
+}
+
 // =============================================================================
 // OPTIONAL MATCH Tests
 // =============================================================================

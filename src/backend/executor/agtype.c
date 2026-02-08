@@ -160,13 +160,22 @@ agtype_value* agtype_value_create_vertex(int64_t id, const char* label)
 {
     agtype_value *val = malloc(sizeof(agtype_value));
     if (!val) return NULL;
-    
+
     val->type = AGTV_VERTEX;
     val->val.entity.id = id;
-    val->val.entity.label = label ? strdup(label) : NULL;
+    /* Store label as JSON array string for multi-label support */
+    if (label) {
+        size_t len = strlen(label) + 5; /* [""] + null */
+        val->val.entity.label = malloc(len);
+        if (val->val.entity.label) {
+            snprintf(val->val.entity.label, len, "[\"%s\"]", label);
+        }
+    } else {
+        val->val.entity.label = strdup("[]");
+    }
     val->val.entity.num_pairs = 0;
     val->val.entity.pairs = NULL;
-    
+
     return val;
 }
 
@@ -192,16 +201,31 @@ agtype_value* agtype_value_create_vertex_with_properties(sqlite3 *db, int64_t id
 {
     agtype_value *val = agtype_value_create_vertex(id, label);
     if (!val || !db) return val;
-    
+
+    /* Query all labels from DB, replacing the single-label default */
+    sqlite3_stmt *label_stmt;
+    const char *labels_sql = "SELECT COALESCE(json_group_array(label), '[]') FROM node_labels WHERE node_id = ?";
+    if (sqlite3_prepare_v2(db, labels_sql, -1, &label_stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(label_stmt, 1, id);
+        if (sqlite3_step(label_stmt) == SQLITE_ROW) {
+            const char *labels_json = (const char*)sqlite3_column_text(label_stmt, 0);
+            if (labels_json) {
+                free(val->val.entity.label);
+                val->val.entity.label = strdup(labels_json);
+            }
+        }
+        sqlite3_finalize(label_stmt);
+    }
+
     /* Load properties from EAV schema */
     agtype_pair *pairs = NULL;
     int num_pairs = 0;
-    
+
     if (load_node_properties(db, id, &pairs, &num_pairs) == 0 && num_pairs > 0) {
         val->val.entity.pairs = pairs;
         val->val.entity.num_pairs = num_pairs;
     }
-    
+
     return val;
 }
 
@@ -245,8 +269,8 @@ agtype_value* agtype_value_from_vertex_json(sqlite3 *db, const char *json)
         sqlite3_finalize(stmt);
     }
 
-    /* Extract first label from labels array */
-    const char *label_sql = "SELECT json_extract(?, '$.labels[0]')";
+    /* Extract labels array as JSON string (e.g., '["A","B","C"]') */
+    const char *label_sql = "SELECT json_extract(?, '$.labels')";
     if (sqlite3_prepare_v2(db, label_sql, -1, &stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, json, -1, SQLITE_STATIC);
         if (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -294,21 +318,31 @@ agtype_value* agtype_value_from_vertex_json(sqlite3 *db, const char *json)
         sqlite3_finalize(stmt);
     }
 
-    /* Create the vertex value */
-    agtype_value *val = agtype_value_create_vertex(id, label);
-    if (val && num_pairs > 0) {
-        val->val.entity.pairs = pairs;
-        val->val.entity.num_pairs = num_pairs;
-    } else if (pairs) {
-        /* Clean up if vertex creation failed */
+    /* Create the vertex value — label is already a JSON array string */
+    agtype_value *val = malloc(sizeof(agtype_value));
+    if (!val) {
         for (int i = 0; i < num_pairs; i++) {
             agtype_value_free(pairs[i].key);
             agtype_value_free(pairs[i].value);
         }
         free(pairs);
+        free(label);
+        return NULL;
+    }
+    val->type = AGTV_VERTEX;
+    val->val.entity.id = id;
+    val->val.entity.label = label ? label : strdup("[]");
+    val->val.entity.num_pairs = 0;
+    val->val.entity.pairs = NULL;
+
+    if (num_pairs > 0) {
+        val->val.entity.pairs = pairs;
+        val->val.entity.num_pairs = num_pairs;
+    } else if (pairs) {
+        free(pairs);
     }
 
-    free(label);
+    /* label ownership transferred to val, don't free */
     return val;
 }
 
@@ -904,15 +938,10 @@ char* agtype_value_to_string(agtype_value *val)
             strbuf sb;
             strbuf_init(&sb, 256);
 
-            /* Use "labels" as array per OpenCypher spec */
-            if (val->val.entity.label && strlen(val->val.entity.label) > 0) {
-                strbuf_appendf(&sb, "{\"id\": %lld, \"labels\": [\"%s\"], \"properties\": {",
-                    (long long)val->val.entity.id,
-                    val->val.entity.label);
-            } else {
-                strbuf_appendf(&sb, "{\"id\": %lld, \"labels\": [], \"properties\": {",
-                    (long long)val->val.entity.id);
-            }
+            /* Use "labels" as array per OpenCypher spec — entity.label stores JSON array string */
+            strbuf_appendf(&sb, "{\"id\": %lld, \"labels\": %s, \"properties\": {",
+                (long long)val->val.entity.id,
+                (val->val.entity.label && strlen(val->val.entity.label) > 0) ? val->val.entity.label : "[]");
 
             /* Add properties with safe dynamic appending */
             for (int i = 0; i < val->val.entity.num_pairs; i++) {

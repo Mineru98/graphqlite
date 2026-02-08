@@ -1191,6 +1191,21 @@ def test_labels_function(db):
     assert "Manager" in labels
 
 
+def test_return_node_all_labels(db):
+    """Test that RETURN n includes all labels, not just the first (issue #21)."""
+    db.cypher("CREATE (n:Alpha:Beta:Gamma {name: 'multilabel'})")
+    results = db.cypher("MATCH (n:Alpha {name: 'multilabel'}) RETURN n")
+    assert len(results) == 1
+    node = results[0]["n"]
+    import json
+    if isinstance(node, str):
+        node = json.loads(node)
+    labels = node["labels"]
+    assert "Alpha" in labels
+    assert "Beta" in labels
+    assert "Gamma" in labels
+
+
 # =============================================================================
 # OPTIONAL MATCH
 # =============================================================================

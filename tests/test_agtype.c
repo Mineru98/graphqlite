@@ -123,7 +123,7 @@ static void test_agtype_vertex(void)
     if (val) {
         CU_ASSERT_EQUAL(val->type, AGTV_VERTEX);
         CU_ASSERT_EQUAL(val->val.entity.id, 1);
-        CU_ASSERT_STRING_EQUAL(val->val.entity.label, "Person");
+        CU_ASSERT_STRING_EQUAL(val->val.entity.label, "[\"Person\"]");
         agtype_value_free(val);
     }
 }
