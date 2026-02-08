@@ -2449,3 +2449,198 @@ fn test_graph_query_without_params_unchanged() {
     assert_eq!(results.len(), 1);
 }
 
+// =========================================================================
+// JSON / Map / List Property Tests
+// =========================================================================
+
+#[test]
+fn test_create_with_map_property() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:JsonTest {name: 'Alice', meta: {role: 'admin', level: 5}})")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:JsonTest {name: 'Alice'}) RETURN n.meta")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    let meta = results[0].get::<String>("n.meta").unwrap();
+    assert!(meta.contains("admin"));
+}
+
+#[test]
+fn test_create_with_list_property() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:JsonTest {name: 'Bob', tags: ['python', 'rust', 'sql']})")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:JsonTest {name: 'Bob'}) RETURN n.tags")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    let tags = results[0].get::<String>("n.tags").unwrap();
+    assert!(tags.contains("python"));
+}
+
+#[test]
+fn test_nested_dot_access() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:JsonTest {name: 'Carol', meta: {role: 'editor'}})")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:JsonTest {name: 'Carol'}) RETURN n.meta.role AS role")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("role").unwrap(), "editor");
+}
+
+#[test]
+fn test_nested_dot_access_deep() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:JsonTest {name: 'Deep', config: {db: {host: 'localhost'}}})")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:JsonTest {name: 'Deep'}) RETURN n.config.db.host AS host")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("host").unwrap(), "localhost");
+}
+
+#[test]
+fn test_set_json_map_property() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:JsonTest {name: 'Frank'})").unwrap();
+    conn.cypher("MATCH (n:JsonTest {name: 'Frank'}) SET n.settings = {theme: 'dark', lang: 'en'}")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:JsonTest {name: 'Frank'}) RETURN n.settings")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    let settings = results[0].get::<String>("n.settings").unwrap();
+    assert!(settings.contains("dark"));
+}
+
+#[test]
+fn test_set_json_list_property() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:JsonTest {name: 'Grace'})").unwrap();
+    conn.cypher("MATCH (n:JsonTest {name: 'Grace'}) SET n.scores = [95, 87, 92]")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:JsonTest {name: 'Grace'}) RETURN n.scores")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    let scores = results[0].get::<String>("n.scores").unwrap();
+    assert!(scores.contains("95"));
+}
+
+#[test]
+fn test_bulk_set_replace() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:SetTest {name: 'Alice', age: 30, city: 'NYC'})")
+        .unwrap();
+    conn.cypher("MATCH (n:SetTest {name: 'Alice'}) SET n = {name: 'Alice', updated: true}")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:SetTest {name: 'Alice'}) RETURN n.updated, n.age")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    // updated should exist
+    assert!(results[0].get::<bool>("n.updated").unwrap());
+    // age should be gone (replaced)
+    assert!(results[0].get::<i64>("n.age").is_err());
+}
+
+#[test]
+fn test_bulk_set_merge() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:SetTest {name: 'Bob', age: 25})")
+        .unwrap();
+    conn.cypher("MATCH (n:SetTest {name: 'Bob'}) SET n += {city: 'LA', active: true}")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:SetTest {name: 'Bob'}) RETURN n.age, n.city, n.active")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    // Original age preserved
+    assert_eq!(results[0].get::<i64>("n.age").unwrap(), 25);
+    // New props added
+    assert_eq!(results[0].get::<String>("n.city").unwrap(), "LA");
+}
+
+#[test]
+fn test_bulk_set_merge_updates_existing() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:SetTest {name: 'Carol', age: 30})")
+        .unwrap();
+    conn.cypher("MATCH (n:SetTest {name: 'Carol'}) SET n += {age: 31}")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:SetTest {name: 'Carol'}) RETURN n.age")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<i64>("n.age").unwrap(), 31);
+}
+
+#[test]
+fn test_bulk_set_edge() {
+    let conn = test_connection();
+    conn.cypher("CREATE (a:Node {name: 'A'}), (b:Node {name: 'B'})")
+        .unwrap();
+    conn.cypher("MATCH (a:Node {name: 'A'}), (b:Node {name: 'B'}) CREATE (a)-[:KNOWS {since: 2020}]->(b)")
+        .unwrap();
+    conn.cypher("MATCH (a)-[r:KNOWS]->(b) SET r = {since: 2021, strong: true}")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (a)-[r:KNOWS]->(b) RETURN r.since, r.strong")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<i64>("r.since").unwrap(), 2021);
+}
+
+#[test]
+fn test_bulk_set_empty_map_clears() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:SetTest {name: 'Eve', age: 28})")
+        .unwrap();
+    conn.cypher("MATCH (n:SetTest {name: 'Eve'}) SET n = {}")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:SetTest) RETURN n.name, n.age")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    // Properties should be cleared - values come back as null
+    let name = results[0].get::<Option<String>>("n.name").unwrap();
+    let age = results[0].get::<Option<i64>>("n.age").unwrap();
+    assert!(name.is_none());
+    assert!(age.is_none());
+}
+
+#[test]
+fn test_mixed_property_and_bulk_set() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:MixTest {name: 'Test'})").unwrap();
+    conn.cypher("MATCH (n:MixTest {name: 'Test'}) SET n.score = 100, n += {rank: 1}")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:MixTest {name: 'Test'}) RETURN n.score, n.rank")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<i64>("n.score").unwrap(), 100);
+    assert_eq!(results[0].get::<i64>("n.rank").unwrap(), 1);
+}
+
+#[test]
+fn test_bulk_set_with_builder_params() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:ParamSet {name: 'Alice', age: 30})")
+        .unwrap();
+    // SET and RETURN must be separate queries (engine limitation)
+    conn.cypher_builder("MATCH (n:ParamSet) WHERE n.name = $name SET n += {score: 100}")
+        .param("name", "Alice")
+        .run()
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:ParamSet {name: 'Alice'}) RETURN n.score")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<i64>("n.score").unwrap(), 100);
+}
+

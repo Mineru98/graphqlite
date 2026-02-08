@@ -1048,3 +1048,146 @@ def test_graph_query_params_injection_safe(g):
     # Verify graph is intact
     verify = g.query("MATCH (n:Person) RETURN n.name")
     assert len(verify) == 1
+
+
+# =============================================================================
+# JSON / Map / List Property Tests
+# =============================================================================
+
+
+def test_create_with_map_property(g):
+    """Test CREATE with a nested map literal stored as JSON."""
+    g.query('CREATE (n:JsonTest {name: "Alice", meta: {role: "admin", level: 5}})')
+    result = g.query('MATCH (n:JsonTest {name: "Alice"}) RETURN n.meta')
+    assert len(result) == 1
+    # meta should come back as a JSON string
+    meta = result[0]["n.meta"]
+    assert meta is not None
+    assert "admin" in str(meta)
+
+
+def test_create_with_list_property(g):
+    """Test CREATE with a list literal stored as JSON."""
+    g.query('CREATE (n:JsonTest {name: "Bob", tags: ["python", "rust", "sql"]})')
+    result = g.query('MATCH (n:JsonTest {name: "Bob"}) RETURN n.tags')
+    assert len(result) == 1
+    tags = result[0]["n.tags"]
+    assert tags is not None
+    assert "python" in str(tags)
+
+
+def test_nested_dot_access(g):
+    """Test nested dot access returns correct nested value."""
+    g.query('CREATE (n:JsonTest {name: "Carol", meta: {role: "editor"}})')
+    result = g.query('MATCH (n:JsonTest {name: "Carol"}) RETURN n.meta.role AS role')
+    assert len(result) == 1
+    assert result[0]["role"] == "editor"
+
+
+def test_nested_dot_access_deep(g):
+    """Test deeply nested dot access."""
+    g.query('CREATE (n:JsonTest {name: "Deep", config: {db: {host: "localhost"}}})')
+    result = g.query('MATCH (n:JsonTest {name: "Deep"}) RETURN n.config.db.host AS host')
+    assert len(result) == 1
+    assert result[0]["host"] == "localhost"
+
+
+def test_bracket_subscript_access(g):
+    """Test bracket subscript notation for property access."""
+    g.query('CREATE (n:JsonTest {name: "Eve", meta: {team: "core"}})')
+    result = g.query("MATCH (n:JsonTest {name: \"Eve\"}) RETURN n[\"meta\"][\"team\"]")
+    assert len(result) == 1
+
+
+def test_set_json_map_property(g):
+    """Test SET with a map value on a property."""
+    g.query('CREATE (n:JsonTest {name: "Frank"})')
+    g.query('MATCH (n:JsonTest {name: "Frank"}) SET n.settings = {theme: "dark", lang: "en"}')
+    result = g.query('MATCH (n:JsonTest {name: "Frank"}) RETURN n.settings')
+    assert len(result) == 1
+    settings = result[0]["n.settings"]
+    assert settings is not None
+    assert "dark" in str(settings)
+
+
+def test_set_json_list_property(g):
+    """Test SET with a list value on a property."""
+    g.query('CREATE (n:JsonTest {name: "Grace"})')
+    g.query('MATCH (n:JsonTest {name: "Grace"}) SET n.scores = [95, 87, 92]')
+    result = g.query('MATCH (n:JsonTest {name: "Grace"}) RETURN n.scores')
+    assert len(result) == 1
+    scores = result[0]["n.scores"]
+    assert scores is not None
+    assert "95" in str(scores)
+
+
+def test_bulk_set_replace(g):
+    """Test SET n = {map} replaces all properties."""
+    g.query('CREATE (n:SetTest {name: "Alice", age: 30, city: "NYC"})')
+    g.query('MATCH (n:SetTest {name: "Alice"}) SET n = {name: "Alice", updated: true}')
+    result = g.query('MATCH (n:SetTest {name: "Alice"}) RETURN n.updated, n.age, n.city')
+    assert len(result) == 1
+    row = result[0]
+    # updated should exist, age and city should be gone (replaced)
+    assert row.get("n.updated") is not None
+
+
+def test_bulk_set_merge(g):
+    """Test SET n += {map} merges properties."""
+    g.query('CREATE (n:SetTest {name: "Bob", age: 25})')
+    g.query('MATCH (n:SetTest {name: "Bob"}) SET n += {city: "LA", active: true}')
+    result = g.query('MATCH (n:SetTest {name: "Bob"}) RETURN n.age, n.city, n.active')
+    assert len(result) == 1
+    row = result[0]
+    # Original age should be preserved, new props added
+    assert row["n.age"] == 25
+    assert row.get("n.city") is not None
+
+
+def test_bulk_set_merge_updates_existing(g):
+    """Test SET n += {map} updates existing properties."""
+    g.query('CREATE (n:SetTest {name: "Carol", age: 30})')
+    g.query('MATCH (n:SetTest {name: "Carol"}) SET n += {age: 31}')
+    result = g.query('MATCH (n:SetTest {name: "Carol"}) RETURN n.age')
+    assert len(result) == 1
+    assert result[0]["n.age"] == 31
+
+
+def test_bulk_set_preserves_labels(g):
+    """Test that bulk SET does not remove labels."""
+    g.query('CREATE (n:SetTest:Important {name: "Dave"})')
+    g.query('MATCH (n:SetTest {name: "Dave"}) SET n = {name: "Dave", v: 1}')
+    result = g.query('MATCH (n:SetTest {name: "Dave"}) RETURN n.v')
+    assert len(result) == 1
+    assert result[0]["n.v"] == 1
+
+
+def test_bulk_set_empty_map_clears(g):
+    """Test SET n = {} clears all properties."""
+    g.query('CREATE (n:SetTest {name: "Eve", age: 28})')
+    g.query('MATCH (n:SetTest {name: "Eve"}) SET n = {}')
+    result = g.query('MATCH (n:SetTest) RETURN n.name, n.age')
+    # Node still exists but properties should be cleared
+    assert len(result) == 1
+    assert result[0]["n.name"] is None
+    assert result[0]["n.age"] is None
+
+
+def test_bulk_set_edge(g):
+    """Test SET r = {map} on relationships."""
+    g.query('CREATE (a:Node {name: "A"}), (b:Node {name: "B"})')
+    g.query('MATCH (a:Node {name: "A"}), (b:Node {name: "B"}) CREATE (a)-[:KNOWS {since: 2020}]->(b)')
+    g.query('MATCH (a)-[r:KNOWS]->(b) SET r = {since: 2021, strong: true}')
+    result = g.query('MATCH (a)-[r:KNOWS]->(b) RETURN r.since, r.strong')
+    assert len(result) == 1
+    assert result[0]["r.since"] == 2021
+
+
+def test_mixed_property_and_bulk_set(g):
+    """Test combining individual property SET with bulk SET."""
+    g.query('CREATE (n:MixTest {name: "Test"})')
+    g.query('MATCH (n:MixTest {name: "Test"}) SET n.score = 100, n += {rank: 1}')
+    result = g.query('MATCH (n:MixTest {name: "Test"}) RETURN n.score, n.rank')
+    assert len(result) == 1
+    assert result[0]["n.score"] == 100
+    assert result[0]["n.rank"] == 1
