@@ -2632,15 +2632,59 @@ fn test_bulk_set_with_builder_params() {
     let conn = test_connection();
     conn.cypher("CREATE (n:ParamSet {name: 'Alice', age: 30})")
         .unwrap();
-    // SET and RETURN must be separate queries (engine limitation)
-    conn.cypher_builder("MATCH (n:ParamSet) WHERE n.name = $name SET n += {score: 100}")
+    let results = conn
+        .cypher_builder("MATCH (n:ParamSet) WHERE n.name = $name SET n += {score: 100} RETURN n.score")
         .param("name", "Alice")
         .run()
         .unwrap();
-    let results = conn
-        .cypher("MATCH (n:ParamSet {name: 'Alice'}) RETURN n.score")
-        .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].get::<i64>("n.score").unwrap(), 100);
+}
+
+#[test]
+fn test_set_single_property_return() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:SetRetTest {name: 'Bob', age: 25})")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:SetRetTest {name: 'Bob'}) SET n.verified = true RETURN n.verified")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<bool>("n.verified").unwrap(), true);
+}
+
+#[test]
+fn test_set_bulk_replace_return() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:SetRetTest2 {name: 'Carol', age: 28, city: 'LA'})")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:SetRetTest2 {name: 'Carol'}) SET n = {name: 'Carol', updated: true} RETURN n.name, n.updated, n.age")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].get::<String>("n.name").unwrap(),
+        "Carol"
+    );
+    // age should be NULL after replace
+    let age = results[0].get::<Option<i64>>("n.age").unwrap();
+    assert!(age.is_none());
+}
+
+#[test]
+fn test_remove_property_return() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:RemRetTest {name: 'Dave', temp: 'delete_me'})")
+        .unwrap();
+    let results = conn
+        .cypher("MATCH (n:RemRetTest {name: 'Dave'}) REMOVE n.temp RETURN n.name, n.temp")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].get::<String>("n.name").unwrap(),
+        "Dave"
+    );
+    let temp = results[0].get::<Option<String>>("n.temp").unwrap();
+    assert!(temp.is_none());
 }
 

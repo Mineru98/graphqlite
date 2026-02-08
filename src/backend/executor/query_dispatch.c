@@ -625,7 +625,6 @@ static int handle_generic_transform(cypher_executor *executor, cypher_query *que
 static int handle_match_set(cypher_executor *executor, cypher_query *query,
                             cypher_result *result, clause_flags flags)
 {
-    (void)flags;
     cypher_match *match = find_match_clause(query);
     cypher_set *set = find_set_clause(query);
 
@@ -633,6 +632,12 @@ static int handle_match_set(cypher_executor *executor, cypher_query *query,
     int rc = execute_match_set_query(executor, match, set, result);
     if (rc >= 0) {
         result->success = true;
+        if (flags & CLAUSE_RETURN) {
+            cypher_return *ret = find_return_clause(query);
+            if (ret) {
+                rc = execute_match_return_query(executor, match, ret, result);
+            }
+        }
     }
     return rc;
 }
@@ -640,7 +645,6 @@ static int handle_match_set(cypher_executor *executor, cypher_query *query,
 static int handle_match_delete(cypher_executor *executor, cypher_query *query,
                                cypher_result *result, clause_flags flags)
 {
-    (void)flags;
     cypher_match *match = find_match_clause(query);
     cypher_delete *del = find_delete_clause(query);
 
@@ -648,6 +652,12 @@ static int handle_match_delete(cypher_executor *executor, cypher_query *query,
     int rc = execute_match_delete_query(executor, match, del, result);
     if (rc >= 0) {
         result->success = true;
+        if (flags & CLAUSE_RETURN) {
+            cypher_return *ret = find_return_clause(query);
+            if (ret) {
+                rc = execute_match_return_query(executor, match, ret, result);
+            }
+        }
     }
     return rc;
 }
@@ -655,7 +665,6 @@ static int handle_match_delete(cypher_executor *executor, cypher_query *query,
 static int handle_match_remove(cypher_executor *executor, cypher_query *query,
                                cypher_result *result, clause_flags flags)
 {
-    (void)flags;
     cypher_match *match = find_match_clause(query);
     cypher_remove *remove = find_remove_clause(query);
 
@@ -663,6 +672,12 @@ static int handle_match_remove(cypher_executor *executor, cypher_query *query,
     int rc = execute_match_remove_query(executor, match, remove, result);
     if (rc >= 0) {
         result->success = true;
+        if (flags & CLAUSE_RETURN) {
+            cypher_return *ret = find_return_clause(query);
+            if (ret) {
+                rc = execute_match_return_query(executor, match, ret, result);
+            }
+        }
     }
     return rc;
 }
@@ -670,7 +685,6 @@ static int handle_match_remove(cypher_executor *executor, cypher_query *query,
 static int handle_match_merge(cypher_executor *executor, cypher_query *query,
                               cypher_result *result, clause_flags flags)
 {
-    (void)flags;
     cypher_match *match = find_match_clause(query);
     cypher_merge *merge = find_merge_clause(query);
 
@@ -678,6 +692,12 @@ static int handle_match_merge(cypher_executor *executor, cypher_query *query,
     int rc = execute_match_merge_query(executor, match, merge, result);
     if (rc >= 0) {
         result->success = true;
+        if (flags & CLAUSE_RETURN) {
+            cypher_return *ret = find_return_clause(query);
+            if (ret) {
+                rc = execute_match_return_query(executor, match, ret, result);
+            }
+        }
     }
     return rc;
 }

@@ -1191,3 +1191,45 @@ def test_mixed_property_and_bulk_set(g):
     assert len(result) == 1
     assert result[0]["n.score"] == 100
     assert result[0]["n.rank"] == 1
+
+
+# --- Mutation + RETURN tests (SET/REMOVE combined with RETURN) ---
+
+
+def test_set_return_single_property(g):
+    """Test SET + RETURN in a single query."""
+    g.query('CREATE (n:SetRetPy {name: "Alice", age: 30})')
+    result = g.query('MATCH (n:SetRetPy {name: "Alice"}) SET n.score = 100 RETURN n.score')
+    assert len(result) == 1
+    assert result[0]["n.score"] == 100
+
+
+def test_set_return_bulk_merge(g):
+    """Test SET n += {map} + RETURN in a single query."""
+    g.query('CREATE (n:SetRetPy2 {name: "Bob", age: 25})')
+    result = g.query('MATCH (n:SetRetPy2 {name: "Bob"}) SET n += {role: "admin"} RETURN n.name, n.role, n.age')
+    assert len(result) == 1
+    assert result[0]["n.name"] == "Bob"
+    assert result[0]["n.role"] == "admin"
+    assert result[0]["n.age"] == 25  # preserved by merge
+
+
+def test_set_return_with_params(g):
+    """Test parameterized SET + RETURN."""
+    g.query('CREATE (n:SetRetPy3 {name: "Carol"})')
+    result = g.query(
+        'MATCH (n:SetRetPy3) WHERE n.name = $name SET n.verified = true RETURN n.verified',
+        params={"name": "Carol"},
+    )
+    assert len(result) == 1
+    # bool comes back as "true" string or True depending on type
+    assert result[0]["n.verified"] in (True, "true")
+
+
+def test_remove_return(g):
+    """Test REMOVE + RETURN in a single query."""
+    g.query('CREATE (n:RemRetPy {name: "Dave", temp: "delete_me"})')
+    result = g.query('MATCH (n:RemRetPy {name: "Dave"}) REMOVE n.temp RETURN n.name, n.temp')
+    assert len(result) == 1
+    assert result[0]["n.name"] == "Dave"
+    assert result[0]["n.temp"] is None
