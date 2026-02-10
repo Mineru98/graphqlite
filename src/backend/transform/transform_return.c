@@ -545,7 +545,7 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                         "(SELECT epi.value FROM edge_props_int epi WHERE epi.edge_id = %s AND epi.key_id = pk.id), "
                                         "(SELECT epr.value FROM edge_props_real epr WHERE epr.edge_id = %s AND epr.key_id = pk.id), "
                                         "(SELECT epb.value FROM edge_props_bool epb WHERE epb.edge_id = %s AND epb.key_id = pk.id), "
-                                        "(SELECT epj.value FROM edge_props_json epj WHERE epj.edge_id = %s AND epj.key_id = pk.id))) "
+                                        "(SELECT json(epj.value) FROM edge_props_json epj WHERE epj.edge_id = %s AND epj.key_id = pk.id))) "
                                     "FROM property_keys pk WHERE "
                                         "EXISTS (SELECT 1 FROM edge_props_text WHERE edge_id = %s AND key_id = pk.id) OR "
                                         "EXISTS (SELECT 1 FROM edge_props_int WHERE edge_id = %s AND key_id = pk.id) OR "
@@ -567,7 +567,7 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                         "(SELECT npi.value FROM node_props_int npi WHERE npi.node_id = %s AND npi.key_id = pk.id), "
                                         "(SELECT npr.value FROM node_props_real npr WHERE npr.node_id = %s AND npr.key_id = pk.id), "
                                         "(SELECT npb.value FROM node_props_bool npb WHERE npb.node_id = %s AND npb.key_id = pk.id), "
-                                        "(SELECT npj.value FROM node_props_json npj WHERE npj.node_id = %s AND npj.key_id = pk.id))) "
+                                        "(SELECT json(npj.value) FROM node_props_json npj WHERE npj.node_id = %s AND npj.key_id = pk.id))) "
                                     "FROM property_keys pk WHERE "
                                         "EXISTS (SELECT 1 FROM node_props_text WHERE node_id = %s AND key_id = pk.id) OR "
                                         "EXISTS (SELECT 1 FROM node_props_int WHERE node_id = %s AND key_id = pk.id) OR "
@@ -592,7 +592,7 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                     "(SELECT epi.value FROM edge_props_int epi WHERE epi.edge_id = %s.id AND epi.key_id = pk.id), "
                                     "(SELECT epr.value FROM edge_props_real epr WHERE epr.edge_id = %s.id AND epr.key_id = pk.id), "
                                     "(SELECT epb.value FROM edge_props_bool epb WHERE epb.edge_id = %s.id AND epb.key_id = pk.id), "
-                                    "(SELECT epj.value FROM edge_props_json epj WHERE epj.edge_id = %s.id AND epj.key_id = pk.id))) "
+                                    "(SELECT json(epj.value) FROM edge_props_json epj WHERE epj.edge_id = %s.id AND epj.key_id = pk.id))) "
                                 "FROM property_keys pk WHERE "
                                     "EXISTS (SELECT 1 FROM edge_props_text WHERE edge_id = %s.id AND key_id = pk.id) OR "
                                     "EXISTS (SELECT 1 FROM edge_props_int WHERE edge_id = %s.id AND key_id = pk.id) OR "
@@ -614,7 +614,7 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                     "(SELECT npi.value FROM node_props_int npi WHERE npi.node_id = %s.id AND npi.key_id = pk.id), "
                                     "(SELECT npr.value FROM node_props_real npr WHERE npr.node_id = %s.id AND npr.key_id = pk.id), "
                                     "(SELECT npb.value FROM node_props_bool npb WHERE npb.node_id = %s.id AND npb.key_id = pk.id), "
-                                    "(SELECT npj.value FROM node_props_json npj WHERE npj.node_id = %s.id AND npj.key_id = pk.id))) "
+                                    "(SELECT json(npj.value) FROM node_props_json npj WHERE npj.node_id = %s.id AND npj.key_id = pk.id))) "
                                 "FROM property_keys pk WHERE "
                                     "EXISTS (SELECT 1 FROM node_props_text WHERE node_id = %s.id AND key_id = pk.id) OR "
                                     "EXISTS (SELECT 1 FROM node_props_int WHERE node_id = %s.id AND key_id = pk.id) OR "
@@ -894,8 +894,8 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                "npt.value, "
                                "CAST(npi.value AS TEXT), "
                                "CAST(npr.value AS TEXT), "
-                               "CASE WHEN npb.value THEN 'true' ELSE 'false' END, "
-                               "npj.value"
+                               "CASE npb.value WHEN 1 THEN 'true' WHEN 0 THEN 'false' END, "
+                               "json(npj.value)"
                                ")) FROM property_keys pk "
                                "LEFT JOIN node_props_text npt ON npt.key_id = pk.id AND npt.node_id = %s%s "
                                "LEFT JOIN node_props_int npi ON npi.key_id = pk.id AND npi.node_id = %s%s "
@@ -941,7 +941,7 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                        base_alias, is_projected ? "" : ".id");
                             append_string_literal(ctx, item->property);
                             append_sql(ctx, "), ");
-                            append_sql(ctx, "(SELECT npj.value FROM node_props_json npj JOIN property_keys pk ON npj.key_id = pk.id WHERE npj.node_id = %s%s AND pk.key = ",
+                            append_sql(ctx, "(SELECT json(npj.value) FROM node_props_json npj JOIN property_keys pk ON npj.key_id = pk.id WHERE npj.node_id = %s%s AND pk.key = ",
                                        base_alias, is_projected ? "" : ".id");
                             append_string_literal(ctx, item->property);
                             append_sql(ctx, ")))");

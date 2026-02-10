@@ -7,7 +7,7 @@ created_at: 2026-02-07T02:09:57.039169+00:00
 updated_at: 2026-02-07T02:09:57.039169+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -40,6 +40,8 @@ Support map and list literals as property values in SET and CREATE, store them a
 - **User Value**: Users can store structured data (maps, lists) as properties without manual JSON serialization/flattening
 - **Business Value**: Closes a major gap vs Memgraph; enables richer data modeling use cases
 - **Effort Estimate**: XL - Touches parser, storage layer, query execution, and JSON1 integration
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

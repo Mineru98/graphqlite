@@ -15,6 +15,7 @@ typedef enum agtype_value_type
     AGTV_INTEGER,
     AGTV_FLOAT,
     AGTV_BOOL,
+    AGTV_JSON,      /* Raw JSON string — serialized without quoting */
     AGTV_VERTEX,
     AGTV_EDGE,
     AGTV_PATH,
@@ -100,6 +101,7 @@ agtype_value* agtype_value_create_string(const char* str);
 agtype_value* agtype_value_create_integer(int64_t val);
 agtype_value* agtype_value_create_float(double val);
 agtype_value* agtype_value_create_bool(bool val);
+agtype_value* agtype_value_create_json(const char* json_str);
 agtype_value* agtype_value_create_vertex(int64_t id, const char* label);
 agtype_value* agtype_value_create_edge(int64_t id, const char* label, int64_t start_id, int64_t end_id);
 agtype_value* agtype_value_create_vertex_with_properties(sqlite3 *db, int64_t id, const char* label);

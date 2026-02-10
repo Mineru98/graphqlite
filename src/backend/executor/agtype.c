@@ -155,6 +155,24 @@ agtype_value* agtype_value_create_bool(bool bool_val)
     return val;
 }
 
+/* Create a raw JSON agtype value — serialized without quoting */
+agtype_value* agtype_value_create_json(const char* json_str)
+{
+    if (!json_str) return agtype_value_create_null();
+
+    agtype_value *val = malloc(sizeof(agtype_value));
+    if (!val) return NULL;
+
+    val->type = AGTV_JSON;
+    val->val.string.len = strlen(json_str);
+    val->val.string.val = strdup(json_str);
+    if (!val->val.string.val) {
+        free(val);
+        return NULL;
+    }
+    return val;
+}
+
 /* Create a vertex agtype value */
 agtype_value* agtype_value_create_vertex(int64_t id, const char* label)
 {
@@ -282,8 +300,8 @@ agtype_value* agtype_value_from_vertex_json(sqlite3 *db, const char *json)
         sqlite3_finalize(stmt);
     }
 
-    /* Extract properties as key/value pairs */
-    const char *props_sql = "SELECT key, value FROM json_each(json_extract(?, '$.properties'))";
+    /* Extract properties as key/value pairs — use json_each type column to detect arrays/objects */
+    const char *props_sql = "SELECT key, value, type FROM json_each(json_extract(?, '$.properties'))";
     if (sqlite3_prepare_v2(db, props_sql, -1, &stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, json, -1, SQLITE_STATIC);
 
@@ -299,18 +317,24 @@ agtype_value* agtype_value_from_vertex_json(sqlite3 *db, const char *json)
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 const char *key = (const char*)sqlite3_column_text(stmt, 0);
                 const char *val_text = (const char*)sqlite3_column_text(stmt, 1);
-                int val_type = sqlite3_column_type(stmt, 1);
+                const char *json_type = (const char*)sqlite3_column_text(stmt, 2);
 
                 pairs[num_pairs].key = agtype_value_create_string(key);
 
-                if (val_type == SQLITE_INTEGER) {
+                if (json_type && (strcmp(json_type, "array") == 0 || strcmp(json_type, "object") == 0)) {
+                    pairs[num_pairs].value = agtype_value_create_json(val_text);
+                } else if (json_type && strcmp(json_type, "true") == 0) {
+                    pairs[num_pairs].value = agtype_value_create_bool(true);
+                } else if (json_type && strcmp(json_type, "false") == 0) {
+                    pairs[num_pairs].value = agtype_value_create_bool(false);
+                } else if (json_type && strcmp(json_type, "integer") == 0) {
                     pairs[num_pairs].value = agtype_value_create_integer(sqlite3_column_int64(stmt, 1));
-                } else if (val_type == SQLITE_FLOAT) {
+                } else if (json_type && strcmp(json_type, "real") == 0) {
                     pairs[num_pairs].value = agtype_value_create_float(sqlite3_column_double(stmt, 1));
-                } else if (val_type == SQLITE_NULL) {
+                } else if (json_type && strcmp(json_type, "null") == 0) {
                     pairs[num_pairs].value = agtype_value_create_null();
                 } else {
-                    pairs[num_pairs].value = agtype_value_create_string(val_text);
+                    pairs[num_pairs].value = agtype_value_create_string(val_text ? val_text : "");
                 }
                 num_pairs++;
             }
@@ -375,8 +399,8 @@ agtype_value* agtype_value_from_edge_json(sqlite3 *db, const char *json)
         sqlite3_finalize(stmt);
     }
 
-    /* Extract properties */
-    const char *props_sql = "SELECT key, value FROM json_each(json_extract(?, '$.properties'))";
+    /* Extract properties — use json_each type column to detect arrays/objects */
+    const char *props_sql = "SELECT key, value, type FROM json_each(json_extract(?, '$.properties'))";
     if (sqlite3_prepare_v2(db, props_sql, -1, &stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, json, -1, SQLITE_STATIC);
 
@@ -390,18 +414,25 @@ agtype_value* agtype_value_from_edge_json(sqlite3 *db, const char *json)
 
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 const char *key = (const char*)sqlite3_column_text(stmt, 0);
-                int val_type = sqlite3_column_type(stmt, 1);
+                const char *val_text = (const char*)sqlite3_column_text(stmt, 1);
+                const char *json_type = (const char*)sqlite3_column_text(stmt, 2);
 
                 pairs[num_pairs].key = agtype_value_create_string(key);
 
-                if (val_type == SQLITE_INTEGER) {
+                if (json_type && (strcmp(json_type, "array") == 0 || strcmp(json_type, "object") == 0)) {
+                    pairs[num_pairs].value = agtype_value_create_json(val_text);
+                } else if (json_type && strcmp(json_type, "true") == 0) {
+                    pairs[num_pairs].value = agtype_value_create_bool(true);
+                } else if (json_type && strcmp(json_type, "false") == 0) {
+                    pairs[num_pairs].value = agtype_value_create_bool(false);
+                } else if (json_type && strcmp(json_type, "integer") == 0) {
                     pairs[num_pairs].value = agtype_value_create_integer(sqlite3_column_int64(stmt, 1));
-                } else if (val_type == SQLITE_FLOAT) {
+                } else if (json_type && strcmp(json_type, "real") == 0) {
                     pairs[num_pairs].value = agtype_value_create_float(sqlite3_column_double(stmt, 1));
-                } else if (val_type == SQLITE_NULL) {
+                } else if (json_type && strcmp(json_type, "null") == 0) {
                     pairs[num_pairs].value = agtype_value_create_null();
                 } else {
-                    pairs[num_pairs].value = agtype_value_create_string((const char*)sqlite3_column_text(stmt, 1));
+                    pairs[num_pairs].value = agtype_value_create_string(val_text ? val_text : "");
                 }
                 num_pairs++;
             }
@@ -583,6 +614,7 @@ void agtype_value_free(agtype_value *val)
     
     switch (val->type) {
         case AGTV_STRING:
+        case AGTV_JSON:
             free(val->val.string.val);
             break;
         case AGTV_VERTEX:
@@ -663,7 +695,7 @@ static int load_node_properties(sqlite3 *db, int64_t node_id, agtype_pair **pair
     *num_pairs = 0;
     
     /* Count total properties across all type tables */
-    const char *count_sql = 
+    const char *count_sql =
         "SELECT COUNT(*) FROM ("
         "  SELECT pk.key FROM node_props_text npt "
         "  JOIN property_keys pk ON npt.key_id = pk.id WHERE npt.node_id = ? "
@@ -676,33 +708,37 @@ static int load_node_properties(sqlite3 *db, int64_t node_id, agtype_pair **pair
         "  UNION ALL "
         "  SELECT pk.key FROM node_props_bool npb "
         "  JOIN property_keys pk ON npb.key_id = pk.id WHERE npb.node_id = ?"
+        "  UNION ALL "
+        "  SELECT pk.key FROM node_props_json npj "
+        "  JOIN property_keys pk ON npj.key_id = pk.id WHERE npj.node_id = ?"
         ")";
-    
+
     sqlite3_stmt *count_stmt;
     int total_props = 0;
-    
+
     if (sqlite3_prepare_v2(db, count_sql, -1, &count_stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_int64(count_stmt, 1, node_id);
         sqlite3_bind_int64(count_stmt, 2, node_id);
         sqlite3_bind_int64(count_stmt, 3, node_id);
         sqlite3_bind_int64(count_stmt, 4, node_id);
-        
+        sqlite3_bind_int64(count_stmt, 5, node_id);
+
         if (sqlite3_step(count_stmt) == SQLITE_ROW) {
             total_props = sqlite3_column_int(count_stmt, 0);
         }
         sqlite3_finalize(count_stmt);
     }
-    
+
     if (total_props == 0) {
         return 0; /* No properties */
     }
-    
+
     /* Allocate property array */
     *pairs = malloc(total_props * sizeof(agtype_pair));
     if (!*pairs) return -1;
-    
+
     /* Load properties from all type tables */
-    const char *props_sql = 
+    const char *props_sql =
         "SELECT pk.key, npt.value, 'text' as type FROM node_props_text npt "
         "JOIN property_keys pk ON npt.key_id = pk.id WHERE npt.node_id = ? "
         "UNION ALL "
@@ -713,25 +749,29 @@ static int load_node_properties(sqlite3 *db, int64_t node_id, agtype_pair **pair
         "JOIN property_keys pk ON npr.key_id = pk.id WHERE npr.node_id = ? "
         "UNION ALL "
         "SELECT pk.key, CASE npb.value WHEN 1 THEN 'true' ELSE 'false' END, 'bool' as type FROM node_props_bool npb "
-        "JOIN property_keys pk ON npb.key_id = pk.id WHERE npb.node_id = ?";
-    
+        "JOIN property_keys pk ON npb.key_id = pk.id WHERE npb.node_id = ? "
+        "UNION ALL "
+        "SELECT pk.key, npj.value, 'json' as type FROM node_props_json npj "
+        "JOIN property_keys pk ON npj.key_id = pk.id WHERE npj.node_id = ?";
+
     sqlite3_stmt *props_stmt;
     int prop_index = 0;
-    
+
     if (sqlite3_prepare_v2(db, props_sql, -1, &props_stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_int64(props_stmt, 1, node_id);
         sqlite3_bind_int64(props_stmt, 2, node_id);
         sqlite3_bind_int64(props_stmt, 3, node_id);
         sqlite3_bind_int64(props_stmt, 4, node_id);
-        
+        sqlite3_bind_int64(props_stmt, 5, node_id);
+
         while (sqlite3_step(props_stmt) == SQLITE_ROW && prop_index < total_props) {
             const char *key = (const char*)sqlite3_column_text(props_stmt, 0);
             const char *value = (const char*)sqlite3_column_text(props_stmt, 1);
             const char *type = (const char*)sqlite3_column_text(props_stmt, 2);
-            
+
             if (key && value && type) {
                 (*pairs)[prop_index].key = agtype_value_create_string(key);
-                
+
                 /* Create appropriate agtype value based on type */
                 if (strcmp(type, "int") == 0) {
                     (*pairs)[prop_index].value = agtype_value_create_integer(atoll(value));
@@ -739,10 +779,12 @@ static int load_node_properties(sqlite3 *db, int64_t node_id, agtype_pair **pair
                     (*pairs)[prop_index].value = agtype_value_create_float(atof(value));
                 } else if (strcmp(type, "bool") == 0) {
                     (*pairs)[prop_index].value = agtype_value_create_bool(strcmp(value, "true") == 0);
+                } else if (strcmp(type, "json") == 0) {
+                    (*pairs)[prop_index].value = agtype_value_create_json(value);
                 } else {
                     (*pairs)[prop_index].value = agtype_value_create_string(value);
                 }
-                
+
                 prop_index++;
             }
         }
@@ -762,7 +804,7 @@ static int load_edge_properties(sqlite3 *db, int64_t edge_id, agtype_pair **pair
     *num_pairs = 0;
     
     /* Count total properties across all type tables */
-    const char *count_sql = 
+    const char *count_sql =
         "SELECT COUNT(*) FROM ("
         "  SELECT pk.key FROM edge_props_text ept "
         "  JOIN property_keys pk ON ept.key_id = pk.id WHERE ept.edge_id = ? "
@@ -775,33 +817,37 @@ static int load_edge_properties(sqlite3 *db, int64_t edge_id, agtype_pair **pair
         "  UNION ALL "
         "  SELECT pk.key FROM edge_props_bool epb "
         "  JOIN property_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = ?"
+        "  UNION ALL "
+        "  SELECT pk.key FROM edge_props_json epj "
+        "  JOIN property_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = ?"
         ")";
-    
+
     sqlite3_stmt *count_stmt;
     int total_props = 0;
-    
+
     if (sqlite3_prepare_v2(db, count_sql, -1, &count_stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_int64(count_stmt, 1, edge_id);
         sqlite3_bind_int64(count_stmt, 2, edge_id);
         sqlite3_bind_int64(count_stmt, 3, edge_id);
         sqlite3_bind_int64(count_stmt, 4, edge_id);
-        
+        sqlite3_bind_int64(count_stmt, 5, edge_id);
+
         if (sqlite3_step(count_stmt) == SQLITE_ROW) {
             total_props = sqlite3_column_int(count_stmt, 0);
         }
         sqlite3_finalize(count_stmt);
     }
-    
+
     if (total_props == 0) {
         return 0; /* No properties */
     }
-    
+
     /* Allocate property array */
     *pairs = malloc(total_props * sizeof(agtype_pair));
     if (!*pairs) return -1;
-    
+
     /* Load properties from all type tables */
-    const char *props_sql = 
+    const char *props_sql =
         "SELECT pk.key, ept.value, 'text' as type FROM edge_props_text ept "
         "JOIN property_keys pk ON ept.key_id = pk.id WHERE ept.edge_id = ? "
         "UNION ALL "
@@ -812,25 +858,29 @@ static int load_edge_properties(sqlite3 *db, int64_t edge_id, agtype_pair **pair
         "JOIN property_keys pk ON epr.key_id = pk.id WHERE epr.edge_id = ? "
         "UNION ALL "
         "SELECT pk.key, CASE epb.value WHEN 1 THEN 'true' ELSE 'false' END, 'bool' as type FROM edge_props_bool epb "
-        "JOIN property_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = ?";
-    
+        "JOIN property_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = ? "
+        "UNION ALL "
+        "SELECT pk.key, epj.value, 'json' as type FROM edge_props_json epj "
+        "JOIN property_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = ?";
+
     sqlite3_stmt *props_stmt;
     int prop_index = 0;
-    
+
     if (sqlite3_prepare_v2(db, props_sql, -1, &props_stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_int64(props_stmt, 1, edge_id);
         sqlite3_bind_int64(props_stmt, 2, edge_id);
         sqlite3_bind_int64(props_stmt, 3, edge_id);
         sqlite3_bind_int64(props_stmt, 4, edge_id);
-        
+        sqlite3_bind_int64(props_stmt, 5, edge_id);
+
         while (sqlite3_step(props_stmt) == SQLITE_ROW && prop_index < total_props) {
             const char *key = (const char*)sqlite3_column_text(props_stmt, 0);
             const char *value = (const char*)sqlite3_column_text(props_stmt, 1);
             const char *type = (const char*)sqlite3_column_text(props_stmt, 2);
-            
+
             if (key && value && type) {
                 (*pairs)[prop_index].key = agtype_value_create_string(key);
-                
+
                 /* Create appropriate agtype value based on type */
                 if (strcmp(type, "int") == 0) {
                     (*pairs)[prop_index].value = agtype_value_create_integer(atoll(value));
@@ -838,16 +888,18 @@ static int load_edge_properties(sqlite3 *db, int64_t edge_id, agtype_pair **pair
                     (*pairs)[prop_index].value = agtype_value_create_float(atof(value));
                 } else if (strcmp(type, "bool") == 0) {
                     (*pairs)[prop_index].value = agtype_value_create_bool(strcmp(value, "true") == 0);
+                } else if (strcmp(type, "json") == 0) {
+                    (*pairs)[prop_index].value = agtype_value_create_json(value);
                 } else {
                     (*pairs)[prop_index].value = agtype_value_create_string(value);
                 }
-                
+
                 prop_index++;
             }
         }
         sqlite3_finalize(props_stmt);
     }
-    
+
     *num_pairs = prop_index;
     return 0;
 }
@@ -932,7 +984,12 @@ char* agtype_value_to_string(agtype_value *val)
         case AGTV_BOOL:
             result = strdup(val->val.boolean ? "true" : "false");
             break;
-            
+
+        case AGTV_JSON:
+            /* Raw JSON — output without quoting */
+            result = strdup(val->val.string.val);
+            break;
+
         case AGTV_VERTEX: {
             /* OpenCypher format: {"id": 123, "labels": ["Person"], "properties": {"name": "Alice"}} */
             strbuf sb;

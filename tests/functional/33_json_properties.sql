@@ -220,4 +220,58 @@ SELECT cypher('MATCH (n:ComplexJson {name: "Config"}) RETURN n.entries') as resu
 SELECT 'Test 11.3 - Access first element of list:' as test_name;
 SELECT cypher('MATCH (n:ComplexJson {name: "Config"}) RETURN n.entries[0]') as result;
 
+-- ========================================================================
+-- SECTION 12: RETURN Whole Node/Edge with JSON Properties (GH Issue #22)
+-- ========================================================================
+-- BUG: json_group_object treats JSON values as TEXT strings, causing
+--      double-escaping. e.g. "pills":"[\"red\",\"blue\"]" instead of
+--      "pills":["red","blue"]. The fix wraps JSON values with json().
+-- NOTE: Tests use separate CREATE + MATCH to avoid CREATE+RETURN issue.
+-- ========================================================================
+SELECT '=== Section 12: RETURN Whole Node/Edge with JSON Properties ===' as section;
+
+-- Setup: create all test nodes first
+SELECT cypher('CREATE (n:ReturnJsonTest {name: "tc1", tags: [1, 2, 3]})') as setup;
+SELECT cypher('CREATE (n:ReturnJsonTest {name: "tc2", colors: ["red", "blue"]})') as setup;
+SELECT cypher('CREATE (n:ReturnJsonTest {name: "tc3", meta: {role: "admin", level: 5}})') as setup;
+SELECT cypher('CREATE (n:ReturnJsonTest {name: "tc4", age: 30, tags: ["a", "b"]})') as setup;
+SELECT cypher('CREATE (a:ReturnJsonTest {name: "tc5a"})-[r:TAGGED {labels: ["x", "y"]}]->(b:ReturnJsonTest {name: "tc5b"})') as setup;
+SELECT cypher('CREATE (n:ReturnJsonTest {name: "tc9", entries: [{k: "a", v: 1}, {k: "b", v: 2}]})') as setup;
+
+SELECT 'Test 12.1 - RETURN node with integer list property:' as test_name;
+SELECT cypher('MATCH (n:ReturnJsonTest {name: "tc1"}) RETURN n') as result;
+-- Expected: "tags":[1,2,3]  NOT "tags":"[1,2,3]"
+
+SELECT 'Test 12.2 - RETURN node with string list property:' as test_name;
+SELECT cypher('MATCH (n:ReturnJsonTest {name: "tc2"}) RETURN n') as result;
+-- Expected: "colors":["red","blue"]  NOT "colors":"[\"red\",\"blue\"]"
+
+SELECT 'Test 12.3 - RETURN node with map property:' as test_name;
+SELECT cypher('MATCH (n:ReturnJsonTest {name: "tc3"}) RETURN n') as result;
+-- Expected: "meta":{"role":"admin","level":5}  NOT escaped string
+
+SELECT 'Test 12.4 - RETURN node with mixed scalar + JSON:' as test_name;
+SELECT cypher('MATCH (n:ReturnJsonTest {name: "tc4"}) RETURN n') as result;
+-- Expected: "tags":["a","b"] with scalar "name","age" unaffected
+
+SELECT 'Test 12.5 - RETURN edge with list property:' as test_name;
+SELECT cypher('MATCH (a:ReturnJsonTest {name: "tc5a"})-[r:TAGGED]->(b) RETURN r') as result;
+-- Expected: "labels":["x","y"]  NOT escaped string
+
+SELECT 'Test 12.6 - properties() with JSON values:' as test_name;
+SELECT cypher('MATCH (n:ReturnJsonTest {name: "tc1"}) RETURN properties(n)') as result;
+-- Expected: "tags":[1,2,3]  NOT escaped
+
+SELECT 'Test 12.7 - Map projection {.*} with JSON values:' as test_name;
+SELECT cypher('MATCH (n:ReturnJsonTest {name: "tc2"}) RETURN n{.*}') as result;
+-- Expected: "colors":["red","blue"]  NOT escaped
+
+SELECT 'Test 12.8 - RETURN node with nested list of maps:' as test_name;
+SELECT cypher('MATCH (n:ReturnJsonTest {name: "tc9"}) RETURN n') as result;
+-- Expected: "entries":[{"k":"a","v":1},{"k":"b","v":2}]
+
+SELECT 'Test 12.9 - properties() on edge with JSON:' as test_name;
+SELECT cypher('MATCH (a:ReturnJsonTest {name: "tc5a"})-[r:TAGGED]->(b) RETURN properties(r)') as result;
+-- Expected: "labels":["x","y"]  NOT escaped
+
 SELECT '=== JSON Properties Test Complete ===' as test_section;
