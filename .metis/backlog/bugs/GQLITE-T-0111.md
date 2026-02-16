@@ -208,3 +208,22 @@ SELECT cypher('CREATE (n:ReturnTest {name: "tc9", entries: [{k: "a", v: 1}, {k: 
 - `tests/functional/33_json_properties.sql` — 9 new tests in Section 12
 
 **Test results**: 849 unit tests pass, all functional tests pass, GH issue #22 example verified.
+
+### Session 2 — Verification
+
+Verified task is fully complete. Commit `ff7e68a` ("fix: return JSON properties as proper arrays/objects in RETURN n (#22)") is on main. Working tree clean.
+
+Re-ran full test suite to confirm:
+- **Unit tests**: 849/849 pass
+- **Functional tests**: All pass, no failures
+
+All acceptance criteria met:
+- [x] `RETURN n` with list properties → proper JSON arrays
+- [x] `RETURN n` with map properties → proper JSON objects
+- [x] `RETURN r` with list/map edge properties → correct
+- [x] `properties()` function → proper JSON
+- [x] Map projection `n{.*}` → proper JSON
+- [x] `load_node_properties()` includes `node_props_json`
+- [x] `load_edge_properties()` includes `edge_props_json`
+- [x] Functional tests cover all cases (Section 12, TC-12.1 through 12.9)
+- [x] All existing tests continue to pass
