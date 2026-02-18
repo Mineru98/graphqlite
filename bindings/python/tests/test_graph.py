@@ -209,6 +209,95 @@ def test_get_all_edges(g):
     assert len(g.get_all_edges()) == 2
 
 
+def test_upsert_edge_multiple_types(g):
+    g.upsert_node("a", {"name": "A"})
+    g.upsert_node("b", {"name": "B"})
+
+    # Create two different relation types between same nodes
+    g.upsert_edge("a", "b", {"since": 2020}, rel_type="KNOWS")
+    g.upsert_edge("a", "b", {"project": "X"}, rel_type="WORKS_WITH")
+
+    # Both should exist — verify via get_all_edges count
+    assert len(g.get_all_edges()) == 2
+
+
+def test_upsert_edge_updates_properties(g):
+    g.upsert_node("a", {"name": "A"})
+    g.upsert_node("b", {"name": "B"})
+
+    # Create edge with initial properties
+    g.upsert_edge("a", "b", {"weight": 1}, rel_type="KNOWS")
+
+    # Upsert again with updated properties — should SET, not create a second edge
+    g.upsert_edge("a", "b", {"weight": 2}, rel_type="KNOWS")
+
+    # Still only one edge
+    assert len(g.get_all_edges()) == 1
+
+    # Verify updated property
+    edge = g.get_edge("a", "b")
+    assert edge["properties"]["weight"] == 2
+
+
+def test_upsert_edge_update_empty_props(g):
+    g.upsert_node("a", {"name": "A"})
+    g.upsert_node("b", {"name": "B"})
+
+    # Create edge with properties
+    g.upsert_edge("a", "b", {"weight": 1}, rel_type="KNOWS")
+
+    # Upsert with empty props should preserve existing properties
+    g.upsert_edge("a", "b", {}, rel_type="KNOWS")
+    edge = g.get_edge("a", "b")
+    assert edge["properties"]["weight"] == 1
+
+
+def test_get_edge_by_type(g):
+    """get_edge should be able to retrieve a specific edge type."""
+    g.upsert_node("a", {"name": "A"})
+    g.upsert_node("b", {"name": "B"})
+
+    g.upsert_edge("a", "b", {"since": 2020}, rel_type="KNOWS")
+    g.upsert_edge("a", "b", {"project": "X"}, rel_type="WORKS_WITH")
+
+    # Should be able to fetch the KNOWS edge specifically
+    edge = g.get_edge("a", "b", rel_type="KNOWS")
+    assert edge["type"] == "KNOWS"
+    assert edge["properties"]["since"] == 2020
+
+    # Should be able to fetch the WORKS_WITH edge specifically
+    edge = g.get_edge("a", "b", rel_type="WORKS_WITH")
+    assert edge["type"] == "WORKS_WITH"
+    assert edge["properties"]["project"] == "X"
+
+
+def test_delete_edge_by_type(g):
+    """delete_edge should only remove the specified edge type."""
+    g.upsert_node("a", {"name": "A"})
+    g.upsert_node("b", {"name": "B"})
+
+    g.upsert_edge("a", "b", {"since": 2020}, rel_type="KNOWS")
+    g.upsert_edge("a", "b", {"project": "X"}, rel_type="WORKS_WITH")
+    assert len(g.get_all_edges()) == 2
+
+    # Deleting KNOWS should leave WORKS_WITH intact
+    g.delete_edge("a", "b", rel_type="KNOWS")
+    edges = g.get_all_edges()
+    assert len(edges) == 1
+    assert edges[0]["r"]["type"] == "WORKS_WITH"
+
+
+def test_has_edge_by_type(g):
+    """has_edge should be able to check for a specific edge type."""
+    g.upsert_node("a", {"name": "A"})
+    g.upsert_node("b", {"name": "B"})
+
+    g.upsert_edge("a", "b", {"since": 2020}, rel_type="KNOWS")
+
+    assert g.has_edge("a", "b", rel_type="KNOWS") is True
+    assert g.has_edge("a", "b", rel_type="WORKS_WITH") is False
+
+
 # =============================================================================
 # Graph Queries
 # =============================================================================

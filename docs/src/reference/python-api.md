@@ -222,17 +222,23 @@ people = g.get_all_nodes(label="Person")
 
 #### upsert_edge()
 
-Create or update an edge.
+Create or update an edge. If an edge of the same type already exists, its properties are updated (merge semantics).
 
 ```python
 g.upsert_edge("alice", "bob", {"since": 2020}, rel_type="KNOWS")
+
+# Update properties on existing edge
+g.upsert_edge("alice", "bob", {"since": 2021}, rel_type="KNOWS")
+
+# Multiple relationship types between the same nodes
+g.upsert_edge("alice", "bob", {"project": "X"}, rel_type="WORKS_WITH")
 ```
 
 **Parameters**:
 - `source_id` (str) - Source node ID
 - `target_id` (str) - Target node ID
 - `properties` (dict) - Edge properties
-- `rel_type` (str, optional) - Relationship type
+- `rel_type` (str, optional) - Relationship type (default: "RELATED")
 
 #### get_edge()
 
@@ -240,9 +246,17 @@ Get an edge between two nodes.
 
 ```python
 edge = g.get_edge("alice", "bob")
+
+# Get a specific relationship type
+edge = g.get_edge("alice", "bob", rel_type="KNOWS")
 ```
 
-Returns the first edge found between the source and target nodes, or `None` if no edge exists.
+**Parameters**:
+- `source_id` (str) - Source node ID
+- `target_id` (str) - Target node ID
+- `rel_type` (str, optional) - Relationship type to retrieve. If omitted, matches any type.
+
+**Returns**: dict or None
 
 #### has_edge()
 
@@ -250,7 +264,15 @@ Check if an edge exists.
 
 ```python
 exists = g.has_edge("alice", "bob")
+
+# Check for a specific relationship type
+exists = g.has_edge("alice", "bob", rel_type="KNOWS")
 ```
+
+**Parameters**:
+- `source_id` (str) - Source node ID
+- `target_id` (str) - Target node ID
+- `rel_type` (str, optional) - Relationship type to check for. If omitted, matches any type.
 
 **Returns**: bool
 
@@ -260,7 +282,15 @@ Delete an edge between two nodes.
 
 ```python
 g.delete_edge("alice", "bob")
+
+# Delete only a specific relationship type
+g.delete_edge("alice", "bob", rel_type="KNOWS")
 ```
+
+**Parameters**:
+- `source_id` (str) - Source node ID
+- `target_id` (str) - Target node ID
+- `rel_type` (str, optional) - Relationship type to delete. If omitted, deletes all edges between the nodes.
 
 #### get_all_edges()
 
