@@ -276,7 +276,7 @@ static char* resolve_string_arg(ast_node *node, const char *params_json)
 }
 
 /*
- * Resolve a function argument to a int value.
+ * Resolve a function argument to an int value.
  * Handles AST_NODE_LITERAL (integer) and AST_NODE_PARAMETER (via params_json).
  * Returns int on success, default_value on failure.
  */
@@ -300,13 +300,13 @@ static int resolve_int_arg(ast_node *node, const char *params_json, int default_
         char str_buf[256];
         int rc = get_param_value(params_json, param->name, &ptype, str_buf, sizeof(str_buf));
         if (rc == 0 && ptype == PROP_TYPE_INTEGER) {
-			int64_t int_buf = *(int64_t*)str_buf;
-			if (int_buf-INT_MIN <= (int64_t)INT_MAX-INT_MIN) {
-				return (int)int_buf;
-			}
+            int64_t int_buf = *(int64_t*)str_buf;
+            if (int_buf >= INT_MIN && int_buf <= INT_MAX) {
+                return (int)int_buf;
+            }
         }
 
-		return default_value;
+        return default_value;
     }
 
     return default_value;
@@ -319,10 +319,10 @@ static int resolve_int_arg(ast_node *node, const char *params_json, int default_
  */
 static double resolve_double_arg(ast_node *node, const char *params_json, double default_value)
 {
-	if (!node) return default_value;
+    if (!node) return default_value;
 
     if (node->type == AST_NODE_LITERAL) {
-		cypher_literal *lit = (cypher_literal *)node;
+        cypher_literal *lit = (cypher_literal *)node;
         if (lit && lit->base.type == AST_NODE_LITERAL) {
             if (lit->literal_type == LITERAL_DECIMAL) {
                 return lit->value.decimal;
@@ -331,8 +331,8 @@ static double resolve_double_arg(ast_node *node, const char *params_json, double
             }
         }
 
-		return default_value;
-	}
+        return default_value;
+    }
 
     if (node->type == AST_NODE_PARAMETER) {
         cypher_parameter *param = (cypher_parameter *)node;
@@ -342,18 +342,16 @@ static double resolve_double_arg(ast_node *node, const char *params_json, double
         char str_buf[256];
         int rc = get_param_value(params_json, param->name, &ptype, str_buf, sizeof(str_buf));
 
-		if (rc == 0 && ptype == PROP_TYPE_REAL) {
-			return *(double*)str_buf;
+        if (rc == 0 && ptype == PROP_TYPE_REAL) {
+            return *(double*)str_buf;
         }
 
         if (rc == 0 && ptype == PROP_TYPE_INTEGER) {
-			int64_t int_buf = *(int64_t*)str_buf;
-			if (int_buf-INT_MIN <= (int64_t)INT_MAX-INT_MIN) {
-				return (double)int_buf;
-			}
+            int64_t int_buf = *(int64_t*)str_buf;
+            return (double)int_buf;
         }
 
-		return default_value;
+        return default_value;
     }
 
     return default_value;
@@ -391,10 +389,10 @@ graph_algo_params detect_graph_algorithm(cypher_return *return_clause, const cha
         params.type = GRAPH_ALGO_PAGERANK;
 
         if (func->args && func->args->count >= 1) {
-			params.damping = resolve_double_arg((ast_node *)func->args->items[0], params_json, params.damping);
+            params.damping = resolve_double_arg((ast_node *)func->args->items[0], params_json, params.damping);
         }
         if (func->args && func->args->count >= 2) {
-			params.iterations = resolve_int_arg((ast_node *)func->args->items[1], params_json, params.iterations);
+            params.iterations = resolve_int_arg((ast_node *)func->args->items[1], params_json, params.iterations);
             if (params.iterations < 1) params.iterations = 1;
             if (params.iterations > 100) params.iterations = 100;
         }
@@ -407,15 +405,15 @@ graph_algo_params detect_graph_algorithm(cypher_return *return_clause, const cha
         params.top_k = 10;
 
         if (func->args && func->args->count >= 1) {
-			params.top_k = resolve_int_arg((ast_node *)func->args->items[0], params_json, params.top_k);
+            params.top_k = resolve_int_arg((ast_node *)func->args->items[0], params_json, params.top_k);
             if (params.top_k < 1) params.top_k = 1;
             if (params.top_k > 1000) params.top_k = 1000;
         }
         if (func->args && func->args->count >= 2) {
-			params.damping = resolve_double_arg((ast_node *)func->args->items[1], params_json, params.damping);
+            params.damping = resolve_double_arg((ast_node *)func->args->items[1], params_json, params.damping);
         }
         if (func->args && func->args->count >= 3) {
-			params.iterations = resolve_int_arg((ast_node *)func->args->items[2], params_json, params.iterations);
+            params.iterations = resolve_int_arg((ast_node *)func->args->items[2], params_json, params.iterations);
             if (params.iterations < 1) params.iterations = 1;
             if (params.iterations > 100) params.iterations = 100;
         }
@@ -428,7 +426,7 @@ graph_algo_params detect_graph_algorithm(cypher_return *return_clause, const cha
         params.iterations = 10;
 
         if (func->args && func->args->count >= 1) {
-			params.iterations = resolve_int_arg((ast_node *)func->args->items[0], params_json, params.iterations);
+            params.iterations = resolve_int_arg((ast_node *)func->args->items[0], params_json, params.iterations);
             if (params.iterations < 1) params.iterations = 1;
             if (params.iterations > 100) params.iterations = 100;
         }

@@ -131,7 +131,7 @@ SELECT cypher('RETURN knn("A", 3)') as result;
 SELECT 'Test 6.2 - KNN with node parameter:' as test_name;
 SELECT cypher('RETURN knn($node, 3)', '{"node": "A"}') as result;
 
-SELECT 'Test 6.2 - KNN with both parameters:' as test_name;
+SELECT 'Test 6.3 - KNN with both parameters:' as test_name;
 SELECT cypher('RETURN knn($node, $k)', '{"node": "A", "k": 3}') as result;
 
 -- =======================================================================
