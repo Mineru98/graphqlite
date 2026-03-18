@@ -109,6 +109,7 @@ int transform_with_clause(cypher_transform_context *ctx, cypher_with *with)
     /* Track GROUP BY columns for aggregate handling */
     dynamic_buffer group_buf;
     dbuf_init(&group_buf);
+    dynamic_buffer cte_body;
     bool has_aggregate = false;
     int group_count = 0;
 
@@ -298,7 +299,6 @@ int transform_with_clause(cypher_transform_context *ctx, cypher_with *with)
 
 with_star_columns_done:
     /* Build CTE body: SELECT <cols> FROM <from><joins> WHERE <where> GROUP BY <group> */
-    dynamic_buffer cte_body;
     dbuf_init(&cte_body);
 
     dbuf_append(&cte_body, "SELECT ");

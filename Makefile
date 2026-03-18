@@ -555,6 +555,27 @@ test-all: test-unit test-functional test-cli test-bindings
 # Main test target dispatches to appropriate sub-target
 test: test-$(TEST_TARGET)
 
+# Strict compilation check — catches C99/C11 compliance issues that CI will reject
+# Run before pushing to catch label-after-declaration, implicit declarations, etc.
+lint:
+	@echo "=== Strict C11 compilation check ==="
+	@echo "Catches: declarations after labels, implicit function declarations,"
+	@echo "         missing prototypes, and other C99/C11 violations that break CI."
+	@FAIL=0; \
+	for f in src/backend/parser/cypher_ast.c src/backend/parser/cypher_parser.c src/backend/parser/cypher_scanner_api.c src/backend/parser/cypher_keywords.c \
+		src/backend/transform/*.c src/backend/executor/*.c src/extension.c src/bundled_init.c; do \
+		/usr/bin/clang -std=c11 -Wall -Wextra -Werror -Wc23-extensions \
+			-Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable \
+			-Wno-unused-but-set-variable -Wno-unused-function \
+			-Wno-newline-eof -Wno-gnu-zero-variadic-macro-arguments \
+			-Wno-incompatible-pointer-types-discards-qualifiers -Wno-format \
+			-I$(VENDOR_SQLITE_DIR) -I./src/include -DGRAPHQLITE_DEBUG \
+			-DGRAPHQLITE_EXTENSION -fPIC -I$(BUILD_DIR)/parser \
+			-fsyntax-only $$f 2>&1 || { echo "  FAIL: $$f"; FAIL=1; }; \
+	done; \
+	if [ $$FAIL -eq 0 ]; then echo "=== All files pass strict C11 check ==="; \
+	else echo "=== STRICT CHECK FAILED — fix before pushing ==="; exit 1; fi
+
 # Clean
 clean:
 	rm -rf $(BUILD_DIR)
