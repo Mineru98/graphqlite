@@ -661,6 +661,7 @@ cypher_return* make_cypher_return(bool distinct, ast_list *items, ast_list *orde
     }
 
     ret->distinct = distinct;
+    ret->return_all = (items == NULL);
     ret->items = items;
     ret->order_by = order_by;
     ret->skip = skip;
@@ -676,6 +677,7 @@ cypher_with* make_cypher_with(bool distinct, ast_list *items, ast_list *order_by
     }
 
     with->distinct = distinct;
+    with->pass_all = (items == NULL);
     with->items = items;
     with->order_by = order_by;
     with->skip = skip;
@@ -1182,7 +1184,25 @@ cypher_subscript* make_subscript(ast_node *expr, ast_node *index, int location)
 
     subscript->expr = expr;
     subscript->index = index;
+    subscript->is_slice = false;
+    subscript->slice_start = NULL;
+    subscript->slice_end = NULL;
     return subscript;
+}
+
+cypher_subscript* make_slice(ast_node *expr, ast_node *start, ast_node *end, int location)
+{
+    cypher_subscript *slice = (cypher_subscript*)ast_node_create(AST_NODE_SUBSCRIPT, location, sizeof(cypher_subscript));
+    if (!slice) {
+        return NULL;
+    }
+
+    slice->expr = expr;
+    slice->index = NULL;
+    slice->is_slice = true;
+    slice->slice_start = start;
+    slice->slice_end = end;
+    return slice;
 }
 
 cypher_map* make_map(ast_list *pairs, int location)

@@ -21,6 +21,8 @@ static const transform_func_entry dispatch_table[] = {
     /* Entity introspection functions */
     {"type",            transform_type_function},
     {"id",              transform_id_function},
+    {"elementId",       transform_id_function},
+    {"elementid",       transform_id_function},
     {"labels",          transform_labels_function},
     {"properties",      transform_properties_function},
     {"keys",            transform_keys_function},
@@ -33,6 +35,14 @@ static const transform_func_entry dispatch_table[] = {
     {"avg",             transform_aggregate_function},
     {"sum",             transform_aggregate_function},
     {"collect",         transform_collect_function},
+    {"stDev",           transform_stdev_function},
+    {"stdev",           transform_stdev_function},
+    {"stDevP",          transform_stdev_function},
+    {"stdevp",          transform_stdev_function},
+    {"percentileCont",  transform_percentile_function},
+    {"percentilecont",  transform_percentile_function},
+    {"percentileDisc",  transform_percentile_function},
+    {"percentiledisc",  transform_percentile_function},
 
     /* String functions - simple transforms */
     {"toUpper",         transform_string_function},
@@ -40,7 +50,10 @@ static const transform_func_entry dispatch_table[] = {
     {"trim",            transform_string_function},
     {"ltrim",           transform_string_function},
     {"rtrim",           transform_string_function},
+    {"btrim",           transform_string_function},
     {"size",            transform_string_function},
+    {"isEmpty",         transform_isempty_function},
+    {"isempty",         transform_isempty_function},
     {"reverse",         transform_string_function},
     {"length",          transform_length_function},
 
@@ -72,6 +85,21 @@ static const transform_func_entry dispatch_table[] = {
     {"acos",            transform_math_function},
     {"atan",            transform_math_function},
 
+    /* Math functions - two argument */
+    {"atan2",           transform_atan2_function},
+
+    /* Math functions - computed from primitives */
+    {"cot",             transform_math_function},
+    {"degrees",         transform_math_function},
+    {"radians",         transform_math_function},
+    {"haversin",        transform_math_function},
+    {"isNaN",           transform_math_function},
+    {"isnan",           transform_math_function},
+    {"sinh",            transform_math_function},
+    {"cosh",            transform_math_function},
+    {"tanh",            transform_math_function},
+    {"coth",            transform_math_function},
+
     /* Math functions - special handling */
     {"round",           transform_round_function},
 
@@ -81,12 +109,30 @@ static const transform_func_entry dispatch_table[] = {
     {"pi",              transform_noarg_function},
     {"e",               transform_noarg_function},
 
+    /* Scalar utility functions */
+    {"nullIf",          transform_nullif_function},
+    {"nullif",          transform_nullif_function},
+    {"valueType",       transform_valuetype_function},
+    {"valuetype",       transform_valuetype_function},
+    {"char_length",     transform_string_function},
+    {"character_length", transform_string_function},
+
     /* Type conversion functions */
     {"coalesce",        transform_coalesce_function},
     {"toString",        transform_tostring_function},
     {"toInteger",       transform_type_conversion_function},
     {"toFloat",         transform_type_conversion_function},
     {"toBoolean",       transform_type_conversion_function},
+
+    /* Safe type conversion (OrNull variants) */
+    {"toIntegerOrNull",  transform_type_conversion_ornull_function},
+    {"tointegerornull",  transform_type_conversion_ornull_function},
+    {"toFloatOrNull",    transform_type_conversion_ornull_function},
+    {"tofloatornull",    transform_type_conversion_ornull_function},
+    {"toBooleanOrNull",  transform_type_conversion_ornull_function},
+    {"tobooleanornull",  transform_type_conversion_ornull_function},
+    {"toStringOrNull",   transform_type_conversion_ornull_function},
+    {"tostringornull",   transform_type_conversion_ornull_function},
 
     /* Path functions */
     {"nodes",           transform_path_nodes_function},
@@ -107,8 +153,49 @@ static const transform_func_entry dispatch_table[] = {
     {"time",            transform_time_function},
     {"datetime",        transform_datetime_function},
     {"localdatetime",   transform_datetime_function},
+    {"localtime",       transform_time_function},
+    {"duration",        transform_duration_function},
+
+    /* Temporal construction from epoch */
+    {"datetimeFromEpoch",       transform_datetime_from_epoch_function},
+    {"datetimefromepoch",       transform_datetime_from_epoch_function},
+    {"datetime.fromEpoch",      transform_datetime_from_epoch_function},
+    {"datetimeFromEpochMillis",  transform_datetime_from_epoch_function},
+    {"datetimefromepochmillis",  transform_datetime_from_epoch_function},
+    {"datetime.fromEpochMillis", transform_datetime_from_epoch_function},
+
+    /* Temporal truncation */
+    {"date.truncate",           transform_date_truncate_function},
+    {"dateTruncate",            transform_date_truncate_function},
+    {"datetime.truncate",       transform_date_truncate_function},
+    {"datetimeTruncate",        transform_date_truncate_function},
+
+    /* Duration utility functions */
+    {"duration.between",        transform_duration_between_function},
+    {"durationBetween",         transform_duration_between_function},
+    {"duration.inSeconds",      transform_duration_in_function},
+    {"durationInSeconds",       transform_duration_in_function},
+    {"duration.inDays",         transform_duration_in_function},
+    {"durationInDays",          transform_duration_in_function},
+    {"duration.inMonths",       transform_duration_in_function},
+    {"durationInMonths",        transform_duration_in_function},
+
+    /* Temporal arithmetic */
+    {"dateAdd",                 transform_date_add_function},
+    {"dateadd",                 transform_date_add_function},
+    {"dateSub",                 transform_date_add_function},
+    {"datesub",                 transform_date_add_function},
+
     {"randomUUID",      transform_randomuuid_function},
     {"randomuuid",      transform_randomuuid_function},
+
+    /* Spatial functions */
+    {"point",                   transform_point_function},
+    {"point.distance",          transform_point_distance_function},
+    {"pointDistance",            transform_point_distance_function},
+    {"distance",                transform_point_distance_function},
+    {"point.withinBBox",        transform_point_within_bbox_function},
+    {"pointWithinBBox",         transform_point_within_bbox_function},
 
     /* JSON functions */
     {"json_get",        transform_json_get_function},
