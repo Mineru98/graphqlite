@@ -1,276 +1,456 @@
 # Cypher Clauses
 
-## Reading Clauses
+---
 
-### MATCH
+## MATCH
 
-Find patterns in the graph:
+**Syntax**
 
-```cypher
-MATCH (n:Person) RETURN n
-MATCH (a)-[:KNOWS]->(b) RETURN a, b
-MATCH (n:Person {name: 'Alice'}) RETURN n
+```
+MATCH pattern [WHERE condition]
 ```
 
-### Shortest Path Patterns
+Reads nodes and relationships matching the given pattern. Binds variables to matched entities. Multiple comma-separated patterns in one `MATCH` form a cross-product constrained by shared variables. A `WHERE` clause immediately following `MATCH` filters before joining subsequent clauses.
 
-Find shortest paths between nodes:
+**Pattern forms**
 
-```cypher
-// Find a single shortest path
-MATCH p = shortestPath((a:Person {name: 'Alice'})-[*]-(b:Person {name: 'Bob'}))
-RETURN p, length(p)
+| Pattern | Example |
+|---------|---------|
+| Node | `(n:Label)` |
+| Relationship | `(a)-[r:TYPE]->(b)` |
+| Undirected relationship | `(a)-[r:TYPE]-(b)` |
+| Variable-length | `(a)-[*1..3]->(b)` |
+| Named path | `p = (a)-[*]->(b)` |
+| Multiple labels | `(n:Person:Employee)` |
+| Property filter | `(n:Person {name: 'Alice'})` |
 
-// Find all shortest paths (all paths with minimum length)
-MATCH p = allShortestPaths((a:Person)-[*]-(b:Person))
-WHERE a.name = 'Alice' AND b.name = 'Bob'
-RETURN p
-
-// With relationship type filter
-MATCH p = shortestPath((a)-[:KNOWS*]->(b))
-RETURN nodes(p), relationships(p)
-
-// With length constraints
-MATCH p = shortestPath((a)-[*..10]->(b))
-RETURN p
-```
-
-### OPTIONAL MATCH
-
-Like MATCH, but returns NULL for non-matches (left join semantics):
+**Examples**
 
 ```cypher
-MATCH (p:Person)
-OPTIONAL MATCH (p)-[:MANAGES]->(e)
-RETURN p.name, e.name
+MATCH (n:Person) RETURN n.name
 ```
 
-### WHERE
+```cypher
+MATCH (a:Person)-[:KNOWS]->(b:Person)
+WHERE a.name = 'Alice'
+RETURN b.name
+```
 
-Filter results:
+```cypher
+MATCH p = (a)-[*1..3]->(b)
+RETURN nodes(p)
+```
+
+---
+
+## OPTIONAL MATCH
+
+**Syntax**
+
+```
+OPTIONAL MATCH pattern [WHERE condition]
+```
+
+Left outer join. Rows from preceding clauses are preserved even when no match exists. Unmatched variables are bound to `null`.
+
+**Example**
 
 ```cypher
 MATCH (n:Person)
-WHERE n.age > 21 AND n.city = 'NYC'
-RETURN n
+OPTIONAL MATCH (n)-[:HAS_PET]->(p:Pet)
+RETURN n.name, p.name
 ```
 
-## Writing Clauses
+---
 
-### CREATE
+## CREATE
 
-Create nodes and relationships:
+**Syntax**
+
+```
+CREATE pattern
+```
+
+Creates nodes and/or relationships. Variables introduced in `CREATE` are available in subsequent clauses.
+
+**Examples**
 
 ```cypher
 CREATE (n:Person {name: 'Alice', age: 30})
+```
+
+```cypher
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
 CREATE (a)-[:KNOWS {since: 2020}]->(b)
 ```
 
-### MERGE
+---
 
-Create if not exists, match if exists:
+## MERGE
+
+**Syntax**
+
+```
+MERGE pattern
+[ON CREATE SET assignment [, assignment ...]]
+[ON MATCH SET assignment [, assignment ...]]
+```
+
+Matches the pattern or creates it if no match exists. `ON CREATE SET` executes only on creation; `ON MATCH SET` executes only when the pattern already exists. Both subclauses are optional and independent.
+
+**Examples**
 
 ```cypher
 MERGE (n:Person {name: 'Alice'})
-ON CREATE SET n.created = timestamp()
-ON MATCH SET n.updated = timestamp()
+ON CREATE SET n.created = datetime()
+ON MATCH SET n.updated = datetime()
 ```
-
-### SET
-
-Update properties:
 
 ```cypher
-MATCH (n:Person {name: 'Alice'})
-SET n.age = 31, n.city = 'LA'
+MERGE (a:Person {name: 'Bob'})-[:KNOWS]->(b:Person {name: 'Carol'})
 ```
 
-Add labels:
+---
+
+## SET
+
+**Syntax**
+
+```
+SET item [, item ...]
+```
+
+**Assignment forms**
+
+| Form | Behavior |
+|------|----------|
+| `n.prop = expr` | Set or overwrite one property |
+| `n = {map}` | Replace all properties with the map; unlisted properties are removed |
+| `n += {map}` | Merge map into existing properties; unlisted properties are kept |
+| `n:Label` | Add a label to a node |
+
+**Examples**
 
 ```cypher
-MATCH (n:Person {name: 'Alice'})
-SET n:Employee
+MATCH (n:Person {name: 'Alice'}) SET n.age = 31
 ```
-
-### REMOVE
-
-Remove properties:
 
 ```cypher
-MATCH (n:Person {name: 'Alice'})
-REMOVE n.temporary_field
+MATCH (n:Person {name: 'Alice'}) SET n = {name: 'Alice', age: 31}
 ```
-
-Remove labels:
 
 ```cypher
-MATCH (n:Person:Employee {name: 'Alice'})
-REMOVE n:Employee
+MATCH (n:Person {name: 'Alice'}) SET n += {age: 31, city: 'NYC'}
 ```
-
-### DELETE
-
-Delete nodes (must have no relationships):
 
 ```cypher
-MATCH (n:Person {name: 'Alice'})
-DELETE n
+MATCH (n:Person {name: 'Alice'}) SET n:Employee
 ```
 
-### DETACH DELETE
+---
 
-Delete nodes and all their relationships:
+## REMOVE
+
+**Syntax**
+
+```
+REMOVE item [, item ...]
+```
+
+**Item forms**
+
+| Form | Behavior |
+|------|----------|
+| `n.prop` | Delete a property from a node or relationship |
+| `n:Label` | Remove a label from a node |
+
+**Examples**
 
 ```cypher
-MATCH (n:Person {name: 'Alice'})
-DETACH DELETE n
+MATCH (n:Person {name: 'Alice'}) REMOVE n.age
 ```
-
-## Composing Clauses
-
-### WITH
-
-Chain query parts, aggregation, and filtering:
 
 ```cypher
-MATCH (p:Person)-[:WORKS_AT]->(c:Company)
-WITH c, count(p) as employee_count
-WHERE employee_count > 10
-RETURN c.name, employee_count
+MATCH (n:Employee) REMOVE n:Employee
 ```
 
-### UNWIND
+---
 
-Expand a list into rows:
+## DELETE
+
+**Syntax**
+
+```
+DELETE expr [, expr ...]
+```
+
+Deletes nodes or relationships. Attempting to delete a node that still has relationships raises an error. Use `DETACH DELETE` to cascade.
+
+**Examples**
 
 ```cypher
-UNWIND [1, 2, 3] AS x
-RETURN x
-
-UNWIND $names AS name
-CREATE (n:Person {name: name})
+MATCH (n:Temp) DELETE n
 ```
-
-### FOREACH
-
-Iterate and perform updates:
 
 ```cypher
-MATCH p = (start)-[*]->(end)
-FOREACH (n IN nodes(p) | SET n.visited = true)
+MATCH (a)-[r:OLD]->(b) DELETE r
 ```
 
-### LOAD CSV
+---
 
-Import data from CSV files:
+## DETACH DELETE
+
+**Syntax**
+
+```
+DETACH DELETE expr [, expr ...]
+```
+
+Deletes a node and all its incident relationships in one operation.
+
+**Example**
 
 ```cypher
-// With headers (access columns by name)
-LOAD CSV WITH HEADERS FROM 'file:///people.csv' AS row
-CREATE (n:Person {name: row.name, age: toInteger(row.age)})
-
-// Without headers (access columns by index)
-LOAD CSV FROM 'file:///data.csv' AS row
-CREATE (n:Item {id: row[0], value: row[1]})
-
-// Custom field terminator
-LOAD CSV WITH HEADERS FROM 'file:///data.tsv' AS row FIELDTERMINATOR '\t'
-CREATE (n:Record {field1: row.col1})
+MATCH (n:Person {name: 'Alice'}) DETACH DELETE n
 ```
 
-**Note**: File paths are relative to the current working directory. Use `file:///` prefix for local files.
+---
 
-## Multi-Graph Queries
+## RETURN
 
-### FROM Clause
+**Syntax**
 
-Query specific graphs when using GraphManager (multi-graph support):
+```
+RETURN [DISTINCT] expr [AS alias] [, ...]
+[ORDER BY expr [ASC|DESC] [, ...]]
+[SKIP expr]
+[LIMIT expr]
+```
+
+Projects query results into the result set. `*` expands to all in-scope variables.
+
+**Modifiers**
+
+| Modifier | Description |
+|----------|-------------|
+| `DISTINCT` | Remove duplicate rows from output |
+| `AS alias` | Assign a column name |
+| `ORDER BY expr [ASC\|DESC]` | Sort; default direction is `ASC` |
+| `SKIP n` | Skip the first `n` rows |
+| `LIMIT n` | Return at most `n` rows |
+| `*` | Return all variables in scope |
+
+**Examples**
 
 ```cypher
-// Query a specific graph
-MATCH (n:Person) FROM social
-RETURN n.name
-
-// Combined with other clauses
-MATCH (p:Person) FROM social
-WHERE p.age > 21
-RETURN p.name, graph(p) AS source_graph
+MATCH (n:Person)
+RETURN n.name AS name, n.age
+ORDER BY n.age DESC
+LIMIT 10
 ```
-
-The `graph()` function returns which graph a node came from.
-
-## Combining Results
-
-### UNION
-
-Combine results from multiple queries, removing duplicates:
 
 ```cypher
-MATCH (n:Person) WHERE n.city = 'NYC' RETURN n.name
-UNION
-MATCH (n:Person) WHERE n.age > 50 RETURN n.name
+MATCH (n:Person) RETURN DISTINCT n.city
 ```
-
-### UNION ALL
-
-Combine results keeping all rows (including duplicates):
 
 ```cypher
-MATCH (a:Person)-[:KNOWS]->(b) RETURN b.name AS connection
-UNION ALL
-MATCH (a:Person)-[:WORKS_WITH]->(b) RETURN b.name AS connection
+MATCH (n) RETURN *
 ```
 
-## Return Clause
+---
 
-### RETURN
+## WITH
 
-Specify what to return:
+**Syntax**
 
-```cypher
-MATCH (n:Person) RETURN n
-MATCH (n:Person) RETURN n.name, n.age
-MATCH (n:Person) RETURN n.name AS name
+```
+WITH [DISTINCT] expr [AS alias] [, ...]
+[ORDER BY expr [ASC|DESC] [, ...]]
+[SKIP expr]
+[LIMIT expr]
+[WHERE condition]
 ```
 
-### DISTINCT
+Pipelines intermediate results between query parts. Variables not listed in `WITH` go out of scope. Aggregation in `WITH` collapses rows; `WHERE` after `WITH` filters the aggregated result.
 
-Remove duplicates:
+**Examples**
 
 ```cypher
 MATCH (n:Person)-[:KNOWS]->(m)
-RETURN DISTINCT m.city
+WITH n, count(m) AS friends
+WHERE friends > 3
+RETURN n.name, friends
 ```
-
-### ORDER BY
-
-Sort results:
 
 ```cypher
 MATCH (n:Person)
-RETURN n.name, n.age
-ORDER BY n.age DESC, n.name ASC
+WITH n ORDER BY n.age LIMIT 5
+MATCH (n)-[:KNOWS]->(m)
+RETURN n.name, m.name
 ```
 
-### SKIP and LIMIT
+---
 
-Pagination:
+## WHERE
+
+**Syntax**
+
+```
+WHERE condition
+```
+
+Filters rows. Appears after `MATCH`, `OPTIONAL MATCH`, or `WITH`. Supports all comparison operators, boolean operators, string predicates, `IS NULL`, `IS NOT NULL`, `IN`, and pattern predicates.
+
+**Predicate forms**
+
+| Predicate | Example |
+|-----------|---------|
+| Comparison | `n.age > 25` |
+| String | `n.name STARTS WITH 'Al'` |
+| Regex | `n.name =~ 'Al.*'` |
+| Null check | `n.email IS NOT NULL` |
+| List membership | `n.role IN ['admin', 'mod']` |
+| Pattern existence | `(n)-[:KNOWS]->(m)` |
+| Negated pattern | `NOT (n)-[:BLOCKED]->(m)` |
+| exists{} | `exists{(n)-[:KNOWS]->(m)}` |
+
+**Examples**
 
 ```cypher
 MATCH (n:Person)
-RETURN n
-ORDER BY n.name
-SKIP 10
-LIMIT 5
+WHERE n.age > 25 AND n.city = 'NYC'
+RETURN n.name
 ```
-
-## Aggregation
-
-Use aggregate functions in RETURN or WITH:
 
 ```cypher
-MATCH (p:Person)-[:WORKS_AT]->(c:Company)
-RETURN c.name, count(p), avg(p.salary), collect(p.name)
+MATCH (n:Person)
+WHERE (n)-[:KNOWS]->(:Person {name: 'Bob'})
+RETURN n.name
 ```
 
-See [Functions Reference](./cypher-functions.md) for all aggregate functions.
+---
+
+## UNWIND
+
+**Syntax**
+
+```
+UNWIND expr AS variable
+```
+
+Expands a list into one row per element. A `null` list produces zero rows. An empty list produces zero rows.
+
+**Examples**
+
+```cypher
+UNWIND [1, 2, 3] AS x RETURN x
+```
+
+```cypher
+MATCH (n:Person)
+UNWIND labels(n) AS lbl
+RETURN n.name, lbl
+```
+
+---
+
+## FOREACH
+
+**Syntax**
+
+```
+FOREACH (variable IN list | update_clause [update_clause ...])
+```
+
+Executes mutation clauses (`CREATE`, `MERGE`, `SET`, `REMOVE`, `DELETE`) for each element of a list. Variables introduced inside `FOREACH` are scoped to the body and not available outside. Nested `FOREACH` is not supported.
+
+**Examples**
+
+```cypher
+FOREACH (name IN ['Alice', 'Bob', 'Carol'] |
+  CREATE (:Person {name: name})
+)
+```
+
+```cypher
+MATCH p = (a:Person)-[:KNOWS*]->(b:Person)
+FOREACH (n IN nodes(p) | SET n.visited = true)
+```
+
+---
+
+## UNION / UNION ALL
+
+**Syntax**
+
+```
+query
+UNION [ALL]
+query
+```
+
+Combines results from two queries. Column names and count must match. `UNION` deduplicates rows; `UNION ALL` preserves all rows including duplicates.
+
+**Example**
+
+```cypher
+MATCH (n:Person) RETURN n.name AS name
+UNION
+MATCH (n:Company) RETURN n.name AS name
+```
+
+---
+
+## LOAD CSV WITH HEADERS FROM
+
+**Syntax**
+
+```
+LOAD CSV WITH HEADERS FROM 'file:///path/to/file.csv' AS row
+[FIELDTERMINATOR char]
+```
+
+Reads a CSV file and binds each row as a map keyed by header names. All values are strings; use `toInteger()`, `toFloat()`, or `toBoolean()` as needed.
+
+**Example**
+
+```cypher
+LOAD CSV WITH HEADERS FROM 'file:///data/people.csv' AS row
+CREATE (:Person {name: row.name, age: toInteger(row.age)})
+```
+
+---
+
+## FROM (Multi-graph)
+
+**Syntax**
+
+```
+FROM 'db_path'
+MATCH ...
+```
+
+GraphQLite extension clause. Queries a different SQLite database file. The target database must have the GraphQLite schema initialized.
+
+**Example**
+
+```cypher
+FROM 'social.db'
+MATCH (n:Person)
+RETURN n.name
+```
+
+---
+
+## Pattern Predicates in WHERE
+
+A pattern used as a boolean expression inside `WHERE` evaluates to `true` if at least one match exists. Supports full pattern syntax including property filters, relationship type filters, and variable-length paths.
+
+```cypher
+WHERE (a)-[:KNOWS]->(b)
+WHERE NOT (a)-[:BLOCKED]->(b)
+WHERE (a)-[:KNOWS*1..3]->(b)
+WHERE exists{(a)-[:KNOWS]->(:Person {active: true})}
+```
+
+Pattern predicates can reference variables bound in preceding `MATCH` clauses.

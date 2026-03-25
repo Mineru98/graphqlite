@@ -21,6 +21,8 @@
 - [Handle Special Characters](./how-to/special-characters.md)
 - [Use with Other Extensions](./how-to/other-extensions.md)
 - [Parameterized Queries](./how-to/parameterized-queries.md)
+- [Bulk Importing Data](./how-to/bulk-import.md)
+- [Building from Source](./how-to/building-from-source.md)
 
 # Reference
 
@@ -32,6 +34,7 @@
 - [Python API](./reference/python-api.md)
 - [Rust API](./reference/rust-api.md)
 - [SQL Interface](./reference/sql-interface.md)
+- [Database Schema](./reference/database-schema.md)
 
 # Explanation
 

@@ -1,188 +1,250 @@
-# SQL Interface
+# SQL Interface Reference
 
-GraphQLite works as a standard SQLite extension, providing the `cypher()` function.
+GraphQLite is a standard SQLite extension. Once loaded, it registers SQL scalar functions and creates the graph schema in the current database.
+
+---
 
 ## Loading the Extension
 
-### SQLite CLI
-
-```bash
-sqlite3 graph.db
-.load /path/to/graphqlite
-```
-
-Or with automatic extension loading:
-
-```bash
-sqlite3 -cmd ".load /path/to/graphqlite" graph.db
-```
-
-### Programmatically
+**SQLite shell**
 
 ```sql
-SELECT load_extension('/path/to/graphqlite');
+.load ./libgraphqlite
+SELECT graphqlite_test();
 ```
 
-## The cypher() Function
+**Python (manual)**
 
-### Basic Usage
-
-```sql
-SELECT cypher('MATCH (n) RETURN n.name');
+```python
+import sqlite3
+conn = sqlite3.connect(":memory:")
+conn.enable_load_extension(True)
+conn.load_extension("./libgraphqlite")
 ```
 
-### With Parameters
+**Python (via graphqlite)**
 
-```sql
-SELECT cypher(
-    'MATCH (n:Person {name: $name}) RETURN n',
-    '{"name": "Alice"}'
-);
+```python
+import graphqlite
+conn = graphqlite.connect(":memory:")
 ```
 
-### Return Format
+**Rust**
 
-The `cypher()` function returns results as JSON:
+```rust
+let conn = graphqlite::Connection::open_in_memory()?;
+```
+
+**Entry point symbol**: `sqlite3_graphqlite_init`
+
+On initialization the extension:
+1. Creates all schema tables (if not already present).
+2. Creates all indexes.
+3. Registers the SQL functions listed below.
+
+---
+
+## Registered SQL Functions
+
+### `cypher(query [, params_json])`
 
 ```sql
 SELECT cypher('MATCH (n:Person) RETURN n.name, n.age');
--- Returns: [{"n.name": "Alice", "n.age": 30}, {"n.name": "Bob", "n.age": 25}]
+SELECT cypher('MATCH (n:Person) WHERE n.age > $min RETURN n.name', '{"min": 25}');
 ```
 
-## Working with Results
+**Arguments**
 
-### Extract Values with JSON Functions
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `query` | TEXT | Yes | Cypher query string |
+| `params_json` | TEXT (JSON) | No | JSON object; keys map to `$name` placeholders |
+
+**Returns**: TEXT — a JSON array of objects. Each object represents one result row. Keys are the column names from the `RETURN` clause. A query with no results returns `[]`.
+
+**Result format**
+
+```json
+[
+  {"n.name": "Alice", "n.age": 30},
+  {"n.name": "Bob",   "n.age": 25}
+]
+```
+
+For a single-column result the key is the expression text or alias from `RETURN`. For write queries with no `RETURN` clause, the result is a plain text status string such as `"Query executed successfully - nodes created: N, relationships created: M"`. The empty array `[]` is only returned when a `RETURN` clause produced zero matching rows.
+
+**Error handling**: Sets SQLite error text and returns an error result on parse failure or execution failure.
+
+---
+
+### `cypher_validate(query)`
 
 ```sql
-SELECT json_extract(value, '$.n.name') AS name
-FROM json_each(cypher('MATCH (n:Person) RETURN n'));
+SELECT cypher_validate('MATCH (n:Person) RETURN n.name');
 ```
 
-### Algorithm Results
+Validates a Cypher query without executing it.
+
+**Returns**: TEXT — a JSON object:
+
+```json
+{"valid": true}
+```
+
+or
+
+```json
+{"valid": false, "error": "...", "line": 1, "column": 15}
+```
+
+---
+
+### `regexp(pattern, string)`
 
 ```sql
-SELECT
-    json_extract(value, '$.node_id') AS id,
-    json_extract(value, '$.score') AS score
-FROM json_each(cypher('RETURN pageRank()'))
-ORDER BY score DESC
-LIMIT 10;
+SELECT regexp('^Al.*', 'Alice');   -- 1
+SELECT regexp('^Al.*', 'Bob');     -- 0
 ```
 
-### Join with Regular Tables
+POSIX extended regular expression (ERE) match. Used internally to implement the `=~` operator. Returns `1` if `string` matches `pattern`, `0` otherwise. The `(?i)` prefix enables case-insensitive matching.
+
+**Arguments**
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `pattern` | TEXT | POSIX extended regular expression (ERE) |
+| `string` | TEXT | String to test |
+
+**Returns**: INTEGER (`1` or `0`)
+
+---
+
+### `gql_load_graph()`
 
 ```sql
--- Assuming you have a regular 'users' table
-SELECT u.email, json_extract(g.value, '$.degree')
-FROM users u
-JOIN json_each(cypher('RETURN degreeCentrality()')) g
-    ON u.id = json_extract(g.value, '$.user_id');
+SELECT gql_load_graph();
 ```
 
-## Write Operations
+Load the graph adjacency structure into an in-memory cache for algorithm execution. Must be called before running graph algorithm functions.
+
+**Returns**: TEXT — JSON status object: `{"status": "loaded", "nodes": N, "edges": M}`. If the graph is already loaded, returns `{"status": "already_loaded", "nodes": N, "edges": M}` instead.
+
+---
+
+### `gql_unload_graph()`
 
 ```sql
--- Create nodes
-SELECT cypher('CREATE (n:Person {name: "Alice", age: 30})');
-
--- Create relationships
-SELECT cypher('
-    MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
-    CREATE (a)-[:KNOWS]->(b)
-');
-
--- Update properties
-SELECT cypher('
-    MATCH (n:Person {name: "Alice"})
-    SET n.age = 31
-');
-
--- Delete
-SELECT cypher('
-    MATCH (n:Person {name: "Alice"})
-    DETACH DELETE n
-');
+SELECT gql_unload_graph();
 ```
 
-## Schema Tables
+Release the in-memory adjacency cache.
 
-GraphQLite creates these tables automatically. See [Storage Model](../explanation/storage-model.md) for detailed documentation.
+**Returns**: TEXT — JSON status object: `{"status": "unloaded"}`
 
-### Core Tables
+---
+
+### `gql_reload_graph()`
 
 ```sql
-SELECT * FROM nodes;
--- id (auto-increment primary key)
-
-SELECT * FROM node_labels;
--- node_id, label
-
-SELECT * FROM edges;
--- id, source_id, target_id, type
-
-SELECT * FROM property_keys;
--- id, key (normalized property names)
+SELECT gql_reload_graph();
 ```
 
-### Property Tables
+Unload and reload the cache. Use after bulk data changes to refresh the algorithm cache.
 
-Properties use `key_id` as a foreign key to `property_keys` for normalization:
+**Returns**: TEXT — JSON status object: `{"status": "reloaded", "nodes": N, "edges": M}`
+
+---
+
+### `gql_graph_loaded()`
 
 ```sql
-SELECT * FROM node_props_text;   -- node_id, key_id, value
-SELECT * FROM node_props_int;    -- node_id, key_id, value
-SELECT * FROM node_props_real;   -- node_id, key_id, value
-SELECT * FROM node_props_bool;   -- node_id, key_id, value
-
-SELECT * FROM edge_props_text;   -- edge_id, key_id, value
-SELECT * FROM edge_props_int;    -- edge_id, key_id, value
-SELECT * FROM edge_props_real;   -- edge_id, key_id, value
-SELECT * FROM edge_props_bool;   -- edge_id, key_id, value
+SELECT gql_graph_loaded();
 ```
 
-## Direct SQL Access
+Check whether the adjacency cache is currently loaded.
 
-You can query the underlying tables directly for debugging or advanced use cases:
+**Returns**: TEXT — JSON object: `{"loaded": true, "nodes": N, "edges": M}` if loaded, `{"loaded": false, "nodes": 0, "edges": 0}` if not.
+
+---
+
+### `graphqlite_test()`
 
 ```sql
--- Count nodes by label
-SELECT label, COUNT(*) FROM node_labels GROUP BY label;
-
--- Find nodes with a specific property (join through property_keys)
-SELECT n.id, pk.key, p.value
-FROM nodes n
-JOIN node_props_text p ON n.id = p.node_id
-JOIN property_keys pk ON p.key_id = pk.id
-WHERE pk.key = 'name';
-
--- Find all properties for a specific node
-SELECT pk.key, p.value
-FROM node_props_text p
-JOIN property_keys pk ON p.key_id = pk.id
-WHERE p.node_id = 1;
-
--- Find edges with their endpoint info
-SELECT e.id, e.type, e.source_id, e.target_id
-FROM edges e
-WHERE e.type = 'KNOWS';
+SELECT graphqlite_test();
 ```
 
-## Transaction Support
+Smoke-test function. Returns a success string if the extension is loaded and functioning.
 
-GraphQLite respects SQLite transactions:
+**Returns**: TEXT — `"GraphQLite extension loaded successfully!"`
+
+---
+
+## Query Patterns
+
+**Read and iterate rows in Python**
+
+```python
+import json, sqlite3, graphqlite
+
+conn = graphqlite.connect("graph.db")
+raw = conn.execute("SELECT cypher('MATCH (n:Person) RETURN n.name, n.age')").fetchone()[0]
+rows = json.loads(raw)
+for row in rows:
+    print(row["n.name"], row["n.age"])
+```
+
+**Parameterized query via SQL**
+
+```sql
+SELECT cypher(
+  'MATCH (n:Person) WHERE n.age > $min RETURN n.name',
+  json_object('min', 25)
+);
+```
+
+**Write query**
+
+```sql
+SELECT cypher('CREATE (:Person {name: ''Alice'', age: 30})');
+```
+
+String literals inside Cypher must use single quotes. To embed a literal single quote in a SQL string, double it: `''`.
+
+---
+
+## Transaction Behavior
+
+- The `cypher()` function participates in the current SQLite transaction.
+- Write operations (`CREATE`, `MERGE`, `SET`, `DELETE`, etc.) are not auto-committed; wrap in `BEGIN`/`COMMIT` for explicit control.
+- `gql_load_graph()` reads a snapshot at call time; subsequent writes are not reflected until `gql_reload_graph()` is called.
+
+**Example**
 
 ```sql
 BEGIN;
-SELECT cypher('CREATE (a:Person {name: "Alice"})');
-SELECT cypher('CREATE (b:Person {name: "Bob"})');
-SELECT cypher('MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"}) CREATE (a)-[:KNOWS]->(b)');
+SELECT cypher('CREATE (:Person {name: ''Alice''})');
+SELECT cypher('CREATE (:Person {name: ''Bob''})');
 COMMIT;
 ```
 
-Or rollback on error:
+---
+
+## Direct Schema Access
+
+The graph schema tables are ordinary SQLite tables. You can query them directly for inspection or integration.
 
 ```sql
-BEGIN;
-SELECT cypher('CREATE (n:Person {name: "Test"})');
-ROLLBACK;  -- Node is not created
+-- Count nodes by label
+SELECT label, count(*) FROM node_labels GROUP BY label;
+
+-- List all property keys
+SELECT key FROM property_keys ORDER BY key;
+
+-- Find all text properties for node 1
+SELECT pk.key, np.value
+FROM node_props_text np
+JOIN property_keys pk ON pk.id = np.key_id
+WHERE np.node_id = 1;
 ```
+
+Direct writes to schema tables bypass Cypher validation and the property key cache. Prefer `cypher()` for mutations.

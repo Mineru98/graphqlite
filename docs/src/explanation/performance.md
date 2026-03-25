@@ -1,257 +1,142 @@
-# Performance
+# Performance Characteristics
 
-This document covers GraphQLite's performance characteristics and optimization strategies.
+GraphQLite's performance profile is shaped by three factors: the overhead of the Cypher-to-SQL translation pipeline, the cost of the EAV schema's join-heavy queries, and the behaviour of the in-memory CSR cache for graph algorithms. Understanding these factors lets you make informed decisions about data loading, query structure, and when to reach for the bulk APIs.
 
-## Benchmarks
+## Benchmark Reference Numbers
 
-Benchmarks on Apple M1 Max (10 cores, 64GB RAM).
+These figures come from a single-core MacBook workload with an in-memory SQLite database (`:memory:`). Disk-backed databases will be faster with WAL mode enabled and slower when the OS page cache is cold.
 
-### Insertion Performance
+| Operation | Typical latency |
+|---|---|
+| Extension loading (schema init) | ~5ms (once per connection) |
+| Simple `CREATE (:Person {name: 'Alice'})` | 0.5–1ms |
+| Simple `MATCH (n:Person) RETURN n.name` (10 nodes) | 0.5–2ms |
+| `MATCH (a)-[:KNOWS]->(b) RETURN b.name` (100 relationships) | 1–5ms |
+| Bulk insert via Python `insert_nodes_bulk()` | 100–500x faster than Cypher CREATE |
+| `gql_load_graph()` on 100K nodes/edges | ~50–100ms |
+| PageRank on 100K nodes | ~180ms |
+| PageRank on 1M nodes | ~38s |
+| Property key cache lookup (hit) | O(1), no SQL |
+| Property key cache lookup (miss) | 1 SQL roundtrip to `property_keys` |
 
-| Nodes | Edges | Time | Rate |
-|-------|-------|------|------|
-| 100K | 500K | 445ms | 1.3M/s |
-| 500K | 2.5M | 2.30s | 1.3M/s |
-| 1M | 5.0M | 5.16s | 1.1M/s |
+The 5ms extension loading cost is a one-time expense per connection. After the first `cypher()` call, the executor is cached and reused for all subsequent calls on the same connection.
 
-### Traversal by Topology
+## The CSR Graph Cache
 
-| Topology | Nodes | Edges | 1-hop | 2-hop |
-|----------|-------|-------|-------|-------|
-| Chain | 100K | 99K | <1ms | <1ms |
-| Sparse | 100K | 500K | <1ms | <1ms |
-| Moderate | 100K | 2.0M | <1ms | 2ms |
-| Dense | 100K | 5.0M | <1ms | 9ms |
-| Normal dist. | 100K | 957K | <1ms | 1ms |
-| Power-law | 100K | 242K | <1ms | <1ms |
-| Moderate | 500K | 10.0M | 1ms | 2ms |
-| Moderate | 1M | 20.0M | <1ms | 2ms |
+Graph algorithms (PageRank, Dijkstra, Betweenness Centrality, Louvain, etc.) cannot run efficiently against the EAV tables. Finding a node's neighbours requires a B-tree lookup on `edges.source_id`, and iterative algorithms like PageRank traverse the full graph hundreds of times. At 1M nodes that would be hundreds of millions of B-tree lookups.
 
-### Deep Hop Traversal
+The CSR (Compressed Sparse Row) representation solves this. After `SELECT gql_load_graph()`, GraphQLite:
 
-Traversal time is **independent of graph size** - it scales only with the number of paths found.
+1. Reads all rows from `nodes` to build the node ID array.
+2. Builds a hash table mapping node IDs to CSR array indices.
+3. Reads all rows from `edges` twice: first to count out-edges per node (to compute row pointer offsets), then to fill the column index arrays.
+4. Builds a parallel in-edges structure for algorithms that need reverse traversal.
 
-| Hops | Paths Found | Time |
-|------|-------------|------|
-| 1-3 | 5-125 | <1ms |
-| 4 | 625 | 2ms |
-| 5 | 3,125 | 12ms |
-| 6 | 15,625 | 58ms |
+The result is two arrays (`row_ptr` and `col_idx`) where `row_ptr[i]` is the offset in `col_idx` where node `i`'s neighbours begin, and `row_ptr[i+1] - row_ptr[i]` is its degree. Neighbour access is O(1): `col_idx[row_ptr[i] .. row_ptr[i+1]]`.
 
-Path count grows as `degree^hops`. With average degree 5, expect 5^n paths at n hops.
+### When to Load
 
-### Graph Algorithms
+The cache must be loaded before running any algorithm, and must be refreshed after structural changes (adding or deleting nodes or edges). The cache persists for the lifetime of the connection; a stale cache causes algorithms to operate on the graph state at the time of the last load, silently ignoring newer data.
 
-| Algorithm | Nodes | Edges | Time |
-|-----------|-------|-------|------|
-| PageRank | 100K | 500K | 148ms |
-| Label Propagation | 100K | 500K | 154ms |
-| PageRank | 500K | 2.5M | 953ms |
-| Label Propagation | 500K | 2.5M | 811ms |
-| PageRank | 1M | 5.0M | 37.81s |
-| Label Propagation | 1M | 5.0M | 40.21s |
+For cache management instructions — when and how to call `gql_load_graph()`, `gql_reload_graph()`, and `gql_unload_graph()` — see [Using Graph Algorithms](../how-to/graph-algorithms.md).
 
-### Cypher Query Performance
+### Memory Implications
 
-| Query Type | G(100K, 500K) | G(500K, 2.5M) | G(1M, 5M) |
-|------------|---------------|---------------|-----------|
-| Node lookup | <1ms | 1ms | <1ms |
-| 1-hop | <1ms | <1ms | <1ms |
-| 2-hop | <1ms | <1ms | <1ms |
-| 3-hop | 1ms | 1ms | 1ms |
-| Filter scan | 341ms | 1.98s | 3.79s |
-| MATCH all | 360ms | 2.05s | 3.98s |
+The CSR graph holds two integer arrays of length `edge_count` (for `col_idx` and `in_col_idx`) and one array of length `node_count + 1` (for `row_ptr` and `in_row_ptr`). For a graph with N nodes and E edges:
 
-## Optimization Strategies
+- `row_ptr` arrays: 2 × (N+1) × 4 bytes ≈ 8N bytes
+- `col_idx` arrays: 2 × E × 4 bytes ≈ 8E bytes
+- Node ID array: N × 4 bytes ≈ 4N bytes
+- Hash table: ~4 × N × 4 bytes ≈ 16N bytes (open addressing, load factor ~25%)
 
-### Use Indexes Effectively
+A graph with 1M nodes and 5M edges uses approximately 60MB of heap memory for the CSR structure. The user-defined ID strings (if present) add additional allocation per node.
 
-GraphQLite creates indexes on:
-- `nodes(user_id)` - Fast node lookup by ID
-- `nodes(label)` - Fast filtering by label
-- `edges(source_id)`, `edges(target_id)` - Fast traversal
-- Property tables on `(node_id, key)` - Fast property access
+If memory is constrained, `gql_unload_graph()` can be called after algorithm runs to free the CSR heap allocation. The trade-off is that the next algorithm call will require a full reload from the database tables. On a 1M-node graph, `gql_load_graph()` takes approximately 50–100ms, so unloading between algorithm calls is only worthwhile when memory pressure is severe.
 
-Queries that leverage these indexes are fast.
+## Property Key Cache
 
-### Limit Variable-Length Paths
+Every property read or write needs the integer `key_id` for the property name. The property key cache uses djb2 hashing over 1024 slots, held in the `cypher_schema_manager` (which is per-executor, so per-connection).
 
-Variable-length paths can be expensive:
+A typical graph with 20–50 distinct property keys will have a cache load factor well under 10%, meaning:
 
-```cypher
--- Expensive: unlimited depth
-MATCH (a)-[*]->(b) RETURN b
+- **Cache hit**: Hash the key string, index into the slot array, compare the stored string, return the `key_id`. Zero SQL.
+- **Cache miss**: Hash lookup fails; issue `SELECT id FROM property_keys WHERE key = ?` (covered by `idx_property_keys_key`); store the result in the cache for future lookups.
 
--- Better: limit depth
-MATCH (a)-[*1..3]->(b) RETURN b
-```
+Cache misses only occur for property keys not yet seen in this connection's session. After the first query that touches a given key, all subsequent accesses to that key on the same connection are cache hits.
 
-### Use Specific Labels
+The cache has no eviction policy — it grows monotonically, but with at most 1024 slots before collisions occur. For graphs with more than a few hundred distinct property key names, you may start seeing hash collisions. Collisions do not cause correctness problems (misses fall through to SQL), but they do degrade performance toward one SQL lookup per property access.
 
-Labels help filter early:
+## Bulk Insert
 
-```cypher
--- Slower: scan all nodes
-MATCH (n) WHERE n.type = 'Person' RETURN n
+The most important performance optimisation available to users is bypassing the Cypher pipeline entirely for bulk data loading.
 
--- Faster: use label
-MATCH (n:Person) RETURN n
-```
+Issuing `SELECT cypher('CREATE (:Person {name: "Alice", age: 30})')` for each node in a large graph is slow because each call:
 
-### Batch Operations
+1. Parses the Cypher string (Bison GLR parse).
+2. Transforms the AST to SQL insert statements.
+3. Executes three or more SQL statements (insert nodes, insert label, insert properties).
+4. Formats the result.
 
-For bulk inserts, use batch methods:
+The Python `insert_nodes_bulk()` and `insert_edges_bulk()` methods skip steps 1 and 2 entirely and batch all of step 3 inside a single `BEGIN IMMEDIATE` transaction:
 
 ```python
-# Slow: individual inserts
-for person in people:
-    g.upsert_node(person["id"], person, label="Person")
-
-# Fast: batch insert
-nodes = [(p["id"], p, "Person") for p in people]
-g.upsert_nodes_batch(nodes)
+id_map = g.insert_nodes_bulk([
+    ("alice", {"name": "Alice", "age": 30}, "Person"),
+    ("bob",   {"name": "Bob",   "age": 25}, "Person"),
+])
+g.insert_edges_bulk([
+    ("alice", "bob", {"since": 2020}, "KNOWS"),
+], id_map)
 ```
 
-### Graph Caching
+The transaction amortises the cost of page writes across thousands of rows. The `id_map` dictionary eliminates the need for a `SELECT node_id FROM node_props_text WHERE value = ?` lookup per edge source and target.
 
-GraphQLite can cache the graph structure in memory using a Compressed Sparse Row (CSR) format, providing **1.5-2x speedup** for graph algorithms by eliminating repeated SQLite I/O.
+Benchmarks show 100–500x throughput improvement for bulk loads compared to equivalent Cypher CREATE queries. For a graph with 100K nodes and 500K edges, bulk insert completes in seconds; Cypher CREATE would take minutes.
 
-#### SQL Interface
+The Rust binding offers the equivalent `Graph::insert_nodes_bulk()` method with the same semantics.
 
-```sql
--- Load graph into memory cache
-SELECT gql_load_graph();
--- Returns: {"status":"loaded","nodes":1000,"edges":5000}
+## Index Utilisation
 
--- Check if cache is loaded
-SELECT gql_graph_loaded();
--- Returns: {"loaded":true,"nodes":1000,"edges":5000}
+SQLite's query planner makes decisions based on index statistics. For GraphQLite's EAV schema, the most important index patterns are:
 
--- Reload cache after graph modifications
-SELECT gql_reload_graph();
+**Label filtering** (`MATCH (n:Person)`): Uses `idx_node_labels_label` which is `(label, node_id)`. The query `WHERE label = 'Person'` is a single B-tree range scan that returns all node IDs with that label. This is the primary entry point for most read queries.
 
--- Free cache memory
-SELECT gql_unload_graph();
-```
+**Property equality** (`WHERE n.age = 30`): The generated SQL contains a correlated subquery that filters `node_props_int` with `key_id = ? AND value = 30`. The covering index `idx_node_props_int_key_value` on `(key_id, value, node_id)` allows this to be satisfied entirely from the index, returning the `node_id` without a table heap read.
 
-#### Python Interface
+**Edge traversal** (`MATCH (a)-[:KNOWS]->(b)`): Uses `idx_edges_source` on `(source_id, type)` for outgoing traversal. The type filter is folded into the index scan. Incoming traversal uses `idx_edges_target` on `(target_id, type)`.
 
-```python
-from graphqlite import graph
+**When indexes are not used**: Range predicates on JSON properties (e.g., `WHERE n.metadata.city = 'London'`) require evaluating `json_extract()` for every row that passes the outer filter. SQLite cannot use a B-tree index to accelerate `json_extract()` comparisons without a generated column or expression index.
 
-g = graph(":memory:")
-# ... build graph ...
+## SQLite-Specific Optimisations
 
-# Load cache for fast algorithm execution
-g.load_graph()  # {"status": "loaded", "nodes": 1000, "edges": 5000}
+**WAL mode.** For disk-backed databases with any level of concurrent access (even one writer, one reader), WAL mode allows readers to proceed while a writer is active. This is the most impactful single setting for mixed read/write workloads of Cypher queries.
 
-# Run algorithms (all use cached graph)
-g.pagerank()
-g.community_detection()
-g.degree_centrality()
+**Prepared statements.** The `cypher_executor` caches the executor per connection. Within each query execution, the generated SQL is prepared and executed, but the prepared statement is finalised after each use because the generated SQL changes with each Cypher query. For repeated identical queries, this means the SQL planning cost is paid each time. If you are calling the same parameterised Cypher query many times (e.g., a lookup by ID), issuing the same query string with different parameter values — rather than constructing slightly different Cypher strings — allows SQLite's prepared statement cache to reuse the plan.
 
-# After modifying graph, reload cache
-g.upsert_node("new_node", {}, "Person")
-g.reload_graph()
+**Page cache.** SQLite's default page cache is 2MB (512 pages × 4KB). For graphs with many nodes, the EAV tables span many pages. A larger cache reduces I/O on repeated queries, with the trade-off of higher baseline memory use per connection.
 
-# Free memory when done
-g.unload_graph()
-```
+**Synchronous mode.** Reducing the synchronous setting eliminates fsync calls and can roughly double write throughput for bulk loads. The trade-off is reduced durability: a crash during a write can leave the database in an inconsistent state. This setting is appropriate for analytics workloads on expendable data, but should never be used for production data without explicit acceptance of that risk.
 
-#### Rust Interface
+For the specific PRAGMA values to use and when to apply each setting, see the [how-to guides](../how-to/graph-algorithms.md).
 
-```rust
-use graphqlite::Graph;
+## Scaling Characteristics
 
-let g = Graph::open_in_memory()?;
-// ... build graph ...
+**Under 10K nodes**: Performance is dominated by connection overhead and query parsing. The EAV join pattern is fast because the tables fit in the SQLite page cache. Simple MATCH+RETURN queries complete in under 1ms.
 
-// Load cache
-let status = g.load_graph()?;
-println!("Loaded {} nodes", status.nodes.unwrap_or(0));
+**10K–100K nodes**: Property lookup correlated subqueries become noticeable. Queries that return many rows with many properties per row can take 5–50ms. The covering indexes keep most lookups out of the table heap, but the sheer number of subquery evaluations adds up. Bulk insert becomes worthwhile at this scale.
 
-// Run algorithms with cache
-// ... algorithms use cache automatically ...
+**100K–1M nodes**: The EAV fan-out is the dominant cost. A full-graph scan (no label filter, no index pushdown) requires visiting every row in the relevant label and property tables. Graph algorithms should always operate via the CSR cache at this scale, not via Cypher queries that generate SQL. PageRank on 100K nodes via CSR takes ~180ms; the equivalent SQL-based traversal would be orders of magnitude slower.
 
-// Check status
-if g.graph_loaded()? {
-    g.unload_graph()?;
-}
-```
+**Above 1M nodes**: Memory usage for the CSR cache becomes significant (60MB+ for 1M nodes, 5M edges). Disk-backed databases benefit strongly from WAL mode and a large page cache. PageRank on 1M nodes takes ~38s on a single core. For workloads at this scale, consider whether batching algorithm results, pre-computing centrality scores and storing them as properties, or partitioning the graph into sub-graphs makes sense for your use case.
 
-#### Cache Performance
+## Memory Usage Guidelines
 
-Benchmarks on Apple M1 Max with graph caching enabled:
+| Component | Approximate size |
+|---|---|
+| `cypher_executor` struct | ~1KB (plus schema manager) |
+| Property key cache (1024 slots) | ~50KB empty, grows with distinct keys |
+| CSR graph (N nodes, E edges) | ~(20N + 8E) bytes |
+| SQL buffer per query | 1–50KB depending on query complexity |
+| Result data | Proportional to row count × column count |
 
-| Nodes | Edges | Algorithm | Uncached | Cached | Speedup |
-|-------|-------|-----------|----------|--------|---------|
-| 10K | 50K | PageRank | 13ms | 7ms | **1.8x** |
-| 10K | 50K | Label Prop | 13ms | 7ms | **1.8x** |
-| 100K | 500K | PageRank | 151ms | 91ms | **1.6x** |
-| 100K | 500K | Label Prop | 151ms | 87ms | **1.7x** |
-| 500K | 2.5M | PageRank | 858ms | 420ms | **2.0x** |
-| 500K | 2.5M | Label Prop | 863ms | 412ms | **2.0x** |
-
-**When to use caching:**
-- Running multiple algorithms on the same graph
-- Repeated analysis workflows
-- Interactive exploration where graph doesn't change
-
-**When NOT to use caching:**
-- Single algorithm call (cache load overhead may exceed benefit)
-- Frequently modified graphs (requires reload after each change)
-- Memory-constrained environments
-
-### Result Caching
-
-For application-level caching of algorithm results:
-
-```python
-import functools
-
-@functools.lru_cache(maxsize=1)
-def get_pagerank():
-    return g.pagerank()
-```
-
-## Memory Usage
-
-GraphQLite uses SQLite's memory management. Key factors:
-
-- **Page cache**: SQLite caches database pages in memory
-- **Algorithm scratch space**: Algorithms allocate temporary structures
-- **Result buffers**: Query results are buffered before returning
-
-For large graphs, consider:
-
-```python
-# Increase SQLite page cache (default: 2MB)
-conn.execute("PRAGMA cache_size = -64000")  # 64MB
-```
-
-## Running Benchmarks
-
-Run benchmarks on your hardware:
-
-```bash
-# Full performance suite
-./tests/performance/run_all_perf.sh full
-
-# Cache comparison benchmark
-./tests/performance/perf_cache_comparison.sh full
-
-# Quick cache test
-sqlite3 :memory: < tests/performance/perf_cache.sql
-```
-
-Available benchmark modes:
-- `quick` - Fast smoke test (~30s)
-- `standard` - Default benchmarks (~3min)
-- `full` - Comprehensive benchmarks (~10min)
-
-Benchmarks cover:
-- Insertion performance
-- Traversal across topologies (chain, tree, sparse, dense, power-law)
-- Algorithm performance (PageRank, Label Propagation, etc.)
-- Query performance (lookup, hop traversals, filters)
-- Cache performance (uncached vs cached algorithms)
+For a graph with 100K nodes and 500K edges, the CSR cache uses approximately 6MB. The property key cache for a graph with 100 distinct property names uses approximately 100KB. The executor and schema manager overhead is negligible.

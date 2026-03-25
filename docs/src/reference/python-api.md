@@ -1,836 +1,603 @@
 # Python API Reference
 
-## Installation
+Version: **0.3.10**
 
-```bash
-pip install graphqlite
-```
+---
 
-## Module Functions
+## Module-level Functions
 
-### graphqlite.connect()
-
-Create a connection to a SQLite database with GraphQLite loaded.
+### `graphqlite.connect`
 
 ```python
-from graphqlite import connect
-
-conn = connect(":memory:")
-conn = connect("graph.db")
-conn = connect("graph.db", extension_path="/path/to/graphqlite.dylib")
+graphqlite.connect(database=":memory:", extension_path=None) -> Connection
 ```
 
-**Parameters**:
-- `database` (str) - Database path or `:memory:`
-- `extension_path` (str, optional) - Path to extension file
+Open a new SQLite connection with GraphQLite loaded.
 
-**Returns**: `Connection`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `database` | str | `":memory:"` | SQLite database path or `":memory:"` |
+| `extension_path` | str \| None | `None` | Path to the `.dylib`/`.so`/`.dll`; auto-detected if `None` |
 
-### graphqlite.load()
+Returns: `Connection`
 
-Load GraphQLite into an existing sqlite3 connection.
+---
+
+### `graphqlite.wrap`
 
 ```python
-import sqlite3
-import graphqlite
-
-conn = sqlite3.connect(":memory:")
-graphqlite.load(conn)
+graphqlite.wrap(conn: sqlite3.Connection, extension_path=None) -> Connection
 ```
 
-**Parameters**:
-- `conn` - sqlite3.Connection or apsw.Connection
-- `entry_point` (str, optional) - Extension entry point
+Wrap an existing `sqlite3.Connection` with GraphQLite loaded into it.
 
-### graphqlite.loadable_path()
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `conn` | `sqlite3.Connection` | required | An open SQLite connection |
+| `extension_path` | str \| None | `None` | Path to extension; auto-detected if `None` |
 
-Get the path to the loadable extension.
+Returns: `Connection`
+
+---
+
+### `graphqlite.load`
 
 ```python
-path = graphqlite.loadable_path()
+graphqlite.load(conn, entry_point=None) -> None
 ```
 
-**Returns**: str
+Load the GraphQLite extension into `conn` without wrapping. Useful when you want to keep a plain `sqlite3.Connection`.
 
-### graphqlite.wrap()
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `conn` | `sqlite3.Connection` | required | Connection to load into |
+| `entry_point` | str \| None | `None` | Extension entry point symbol; auto-detected if `None` |
 
-Wrap an existing sqlite3 connection with GraphQLite support.
+---
+
+### `graphqlite.loadable_path`
 
 ```python
-import sqlite3
-import graphqlite
-
-conn = sqlite3.connect(":memory:")
-wrapped = graphqlite.wrap(conn)
-results = wrapped.cypher("RETURN 1 AS x")
+graphqlite.loadable_path() -> str
 ```
 
-**Parameters**:
-- `conn` - sqlite3.Connection object
-- `extension_path` (str, optional) - Path to extension file
+Return the filesystem path of the bundled extension library. Use to pass to `conn.load_extension()` manually.
 
-**Returns**: `Connection`
+---
 
-### graphqlite.graph()
+## `Connection`
 
-Factory function to create a Graph instance.
+A thin wrapper around `sqlite3.Connection` that adds Cypher query support.
+
+### `Connection.cypher`
 
 ```python
-from graphqlite import graph
-
-g = graph(":memory:")
-g = graph("graph.db", namespace="myapp")
+conn.cypher(query: str, params=None) -> CypherResult
 ```
 
-**Parameters**:
-- `db_path` (str) - Database path or `:memory:`
-- `namespace` (str, optional) - Graph namespace (default: "default")
-- `extension_path` (str, optional) - Path to extension file
+Execute a Cypher query.
 
-**Returns**: `Graph`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | str | required | Cypher query string |
+| `params` | dict \| None | `None` | Parameter map; values substituted for `$name` placeholders |
 
-## CypherResult Class
+Returns: `CypherResult`
 
-Result container returned by `cypher()` queries.
+Raises: `sqlite3.Error` on parse or execution failure.
+
+**Example**
 
 ```python
-results = conn.cypher("MATCH (n:Person) RETURN n.name, n.age")
-
-# Length
-print(len(results))  # Number of rows
-
-# Indexing
-first_row = results[0]  # Get first row as dict
-
-# Iteration
-for row in results:
+result = conn.cypher("MATCH (n:Person) WHERE n.age > $min RETURN n.name", {"min": 25})
+for row in result:
     print(row["n.name"])
-
-# Column names
-print(results.columns)  # ["n.name", "n.age"]
-
-# Convert to list
-all_rows = results.to_list()  # List of dicts
 ```
 
-**Properties**:
-- `columns` - List of column names
+---
 
-**Methods**:
-- `to_list()` - Return all rows as a list of dictionaries
-
-## Connection Class
-
-### Connection.cypher()
-
-Execute a Cypher query with optional parameters.
+### `Connection.execute`
 
 ```python
-conn.cypher("CREATE (n:Person {name: 'Alice'})")
-results = conn.cypher("MATCH (n) RETURN n.name")
-for row in results:
+conn.execute(sql: str, parameters=()) -> sqlite3.Cursor
+```
+
+Execute raw SQL. Passes through to the underlying `sqlite3.Connection`.
+
+---
+
+### `Connection.commit`
+
+```python
+conn.commit() -> None
+```
+
+Commit the current transaction.
+
+---
+
+### `Connection.rollback`
+
+```python
+conn.rollback() -> None
+```
+
+Roll back the current transaction.
+
+---
+
+### `Connection.close`
+
+```python
+conn.close() -> None
+```
+
+Close the connection and release all resources.
+
+---
+
+### `Connection.sqlite_connection`
+
+```python
+conn.sqlite_connection -> sqlite3.Connection
+```
+
+The underlying `sqlite3.Connection` object.
+
+---
+
+## `CypherResult`
+
+Returned by `Connection.cypher()`. Represents the result set of a Cypher query.
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `.columns` | `list[str]` | Ordered list of column names |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `len` | `len(result) -> int` | Number of rows |
+| `iter` | `for row in result` | Iterate rows as `dict` |
+| `index` | `result[i]` | Access row by 0-based index; returns `dict` |
+| `to_list` | `result.to_list() -> list[dict]` | Return all rows as a list of dicts |
+
+**Example**
+
+```python
+result = conn.cypher("MATCH (n:Person) RETURN n.name, n.age")
+print(result.columns)      # ['n.name', 'n.age']
+print(len(result))         # row count
+for row in result:
     print(row["n.name"])
-
-# With parameters
-results = conn.cypher(
-    "MATCH (n:Person {name: $name}) RETURN n",
-    {"name": "Alice"}
-)
+rows = result.to_list()    # list of dicts
 ```
 
-The `query` parameter is the Cypher query string. The optional `params` parameter accepts a dictionary that will be converted to JSON for parameter binding.
+---
 
-**Returns**: `CypherResult` object (iterable, supports indexing and `len()`)
+## `Graph`
 
-### Connection.execute()
-
-Execute raw SQL.
-
-```python
-conn.execute("SELECT * FROM nodes")
-```
-
-## Graph Class
-
-High-level API for graph operations.
+High-level graph API built on top of `Connection`. Manages a single named graph in a SQLite database.
 
 ### Constructor
 
 ```python
-from graphqlite import Graph
-
-g = Graph(":memory:")
-g = Graph("graph.db")
+graphqlite.Graph(db_path=":memory:", namespace="default", extension_path=None)
+graphqlite.graph(db_path=":memory:", namespace="default", extension_path=None) -> Graph
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `db_path` | str | `":memory:"` | SQLite database path |
+| `namespace` | str | `"default"` | Graph namespace identifier |
+| `extension_path` | str \| None | `None` | Path to extension; auto-detected if `None` |
+
+---
 
 ### Node Operations
 
-#### upsert_node()
-
-Create or update a node.
+#### `Graph.upsert_node`
 
 ```python
-g.upsert_node("alice", {"name": "Alice", "age": 30}, label="Person")
+graph.upsert_node(node_id: str, props: dict, label: str = "Entity") -> int
 ```
 
-**Parameters**:
-- `node_id` (str) - Unique node identifier
-- `properties` (dict) - Node properties
-- `label` (str, optional) - Node label
+Insert or update a node. `node_id` is a user-defined string identifier. Returns the internal integer ID.
 
-#### get_node()
-
-Get a node by ID.
+#### `Graph.get_node`
 
 ```python
-node = g.get_node("alice")
-# {"id": "alice", "label": "Person", "properties": {"name": "Alice", "age": 30}}
+graph.get_node(id: str) -> dict | None
 ```
 
-**Returns**: dict or None
+Return all properties of the node with user ID `id`, or `None` if not found. The returned dict includes `"_id"` (internal) and `"_label"`.
 
-#### has_node()
-
-Check if a node exists.
+#### `Graph.has_node`
 
 ```python
-exists = g.has_node("alice")  # True
+graph.has_node(id: str) -> bool
 ```
 
-**Returns**: bool
+Return `True` if a node with user ID `id` exists.
 
-#### delete_node()
-
-Delete a node.
+#### `Graph.delete_node`
 
 ```python
-g.delete_node("alice")
+graph.delete_node(id: str) -> None
 ```
 
-#### get_all_nodes()
+Delete the node and all its incident edges.
 
-Get all nodes, optionally filtered by label.
+#### `Graph.get_all_nodes`
 
 ```python
-all_nodes = g.get_all_nodes()
-people = g.get_all_nodes(label="Person")
+graph.get_all_nodes(label: str = None) -> list[dict]
 ```
 
-**Returns**: List of dicts
+Return all nodes. If `label` is given, filter to that label only.
+
+---
 
 ### Edge Operations
 
-#### upsert_edge()
-
-Create or update an edge. If an edge of the same type already exists, its properties are updated (merge semantics).
+#### `Graph.upsert_edge`
 
 ```python
-g.upsert_edge("alice", "bob", {"since": 2020}, rel_type="KNOWS")
-
-# Update properties on existing edge
-g.upsert_edge("alice", "bob", {"since": 2021}, rel_type="KNOWS")
-
-# Multiple relationship types between the same nodes
-g.upsert_edge("alice", "bob", {"project": "X"}, rel_type="WORKS_WITH")
+graph.upsert_edge(source: str, target: str, props: dict, rel_type: str = "RELATED") -> int
 ```
 
-**Parameters**:
-- `source_id` (str) - Source node ID
-- `target_id` (str) - Target node ID
-- `properties` (dict) - Edge properties
-- `rel_type` (str, optional) - Relationship type (default: "RELATED")
+Insert or update an edge from `source` to `target` of type `rel_type`. Returns internal edge ID.
 
-#### get_edge()
+**Note**: Uses merge semantics — existing properties not included in `props` are preserved, not removed.
 
-Get an edge between two nodes.
+#### `Graph.get_edge`
 
 ```python
-edge = g.get_edge("alice", "bob")
-
-# Get a specific relationship type
-edge = g.get_edge("alice", "bob", rel_type="KNOWS")
+graph.get_edge(src: str, dst: str, rel_type: str = None) -> dict | None
 ```
 
-**Parameters**:
-- `source_id` (str) - Source node ID
-- `target_id` (str) - Target node ID
-- `rel_type` (str, optional) - Relationship type to retrieve. If omitted, matches any type.
+Return edge properties, or `None`. If `rel_type` is `None`, returns the first matching edge.
 
-**Returns**: dict or None
-
-#### has_edge()
-
-Check if an edge exists.
+#### `Graph.has_edge`
 
 ```python
-exists = g.has_edge("alice", "bob")
-
-# Check for a specific relationship type
-exists = g.has_edge("alice", "bob", rel_type="KNOWS")
+graph.has_edge(src: str, dst: str, rel_type: str = None) -> bool
 ```
 
-**Parameters**:
-- `source_id` (str) - Source node ID
-- `target_id` (str) - Target node ID
-- `rel_type` (str, optional) - Relationship type to check for. If omitted, matches any type.
+Return `True` if an edge from `src` to `dst` (optionally of `rel_type`) exists.
 
-**Returns**: bool
-
-#### delete_edge()
-
-Delete an edge between two nodes.
+#### `Graph.delete_edge`
 
 ```python
-g.delete_edge("alice", "bob")
-
-# Delete only a specific relationship type
-g.delete_edge("alice", "bob", rel_type="KNOWS")
+graph.delete_edge(src: str, dst: str, rel_type: str = None) -> None
 ```
 
-**Parameters**:
-- `source_id` (str) - Source node ID
-- `target_id` (str) - Target node ID
-- `rel_type` (str, optional) - Relationship type to delete. If omitted, deletes all edges between the nodes.
+Delete the matching edge(s).
 
-#### get_all_edges()
-
-Get all edges.
+#### `Graph.get_all_edges`
 
 ```python
-edges = g.get_all_edges()
+graph.get_all_edges() -> list[dict]
 ```
 
-**Returns**: List of dicts
+Return all edges with their properties.
 
-### Graph Operations
-
-#### get_neighbors()
-
-Get a node's neighbors (connected by edges in either direction).
-
-```python
-neighbors = g.get_neighbors("alice")
-```
-
-**Parameters**:
-- `node_id` (str) - Node ID
-
-**Returns**: List of neighbor node dicts
-
-#### node_degree()
-
-Get a node's degree, which is the total number of edges connected to the node (both incoming and outgoing).
-
-```python
-degree = g.node_degree("alice")  # 5
-```
-
-Returns an integer count of connected edges.
-
-#### stats()
-
-Get graph statistics.
-
-```python
-stats = g.stats()
-# {"nodes": 100, "edges": 250}
-```
-
-**Returns**: dict
+---
 
 ### Query Methods
 
-#### query()
-
-Execute a Cypher query and return results as a list of dictionaries.
+#### `Graph.node_degree`
 
 ```python
-results = g.query("MATCH (n:Person) RETURN n.name")
-for row in results:
-    print(row["n.name"])
+graph.node_degree(id: str) -> int
 ```
 
-This method is for queries that don't require parameters. For parameterized queries, access the underlying connection:
+Total degree (in + out) of the node.
+
+#### `Graph.get_neighbors`
 
 ```python
-results = g.connection.cypher(
-    "MATCH (n:Person {name: $name}) RETURN n",
-    {"name": "Alice"}
-)
+graph.get_neighbors(id: str) -> list[dict]
 ```
 
-### Algorithm Methods
+Return nodes connected to `id` in either direction (undirected — includes both incoming and outgoing edges).
 
-#### Centrality Algorithms
-
-##### pagerank()
-
-Compute PageRank scores for all nodes.
+#### `Graph.get_node_edges`
 
 ```python
-results = g.pagerank(damping=0.85, iterations=20)
-# [{"node_id": "alice", "score": 0.25}, ...]
+graph.get_node_edges(id: str) -> list[dict]
 ```
 
-**Parameters**:
-- `damping` (float, default: 0.85) - Damping factor
-- `iterations` (int, default: 20) - Number of iterations
+Return all edges incident to `id` (in and out).
 
-##### degree_centrality()
-
-Compute in-degree, out-degree, and total degree for all nodes.
+#### `Graph.get_edges_from`
 
 ```python
-results = g.degree_centrality()
-# [{"node_id": "alice", "in_degree": 2, "out_degree": 3, "degree": 5}, ...]
+graph.get_edges_from(id: str) -> list[dict]
 ```
 
-##### betweenness_centrality()
+Return outgoing edges from `id`.
 
-Compute betweenness centrality (how often a node lies on shortest paths).
+#### `Graph.get_edges_to`
 
 ```python
-results = g.betweenness_centrality()
-# Alias: g.betweenness()
+graph.get_edges_to(id: str) -> list[dict]
 ```
 
-**Returns**: List of `{"node_id": str, "score": float}`
+Return incoming edges to `id`.
 
-##### closeness_centrality()
-
-Compute closeness centrality (average distance to all other nodes).
+#### `Graph.get_edges_by_type`
 
 ```python
-results = g.closeness_centrality()
-# Alias: g.closeness()
+graph.get_edges_by_type(id: str, rel_type: str) -> list[dict]
 ```
 
-**Returns**: List of `{"node_id": str, "score": float}`
+Return edges of a specific type incident to `id`.
 
-##### eigenvector_centrality()
-
-Compute eigenvector centrality (influence based on connections to high-scoring nodes).
+#### `Graph.stats`
 
 ```python
-results = g.eigenvector_centrality(iterations=100)
+graph.stats() -> dict
 ```
 
-**Parameters**:
-- `iterations` (int, default: 100) - Maximum iterations
+Return graph statistics. Keys: `node_count`, `edge_count`.
 
-#### Community Detection
-
-##### community_detection()
-
-Detect communities using label propagation.
+#### `Graph.query`
 
 ```python
-results = g.community_detection(iterations=10)
-# [{"node_id": "alice", "community": 1}, ...]
+graph.query(cypher: str, params: dict = None) -> list[dict]
 ```
 
-**Parameters**:
-- `iterations` (int, default: 10) - Maximum iterations
+Execute a Cypher query and return all rows as a list of dicts.
 
-##### louvain()
+---
 
-Detect communities using the Louvain algorithm (modularity optimization).
+### Graph Cache
+
+#### `Graph.load_graph`
 
 ```python
-results = g.louvain(resolution=1.0)
+graph.load_graph() -> dict
 ```
 
-**Parameters**:
-- `resolution` (float, default: 1.0) - Higher values produce more communities
+Load the graph into the in-memory adjacency cache for algorithm use. Returns status dict.
 
-##### leiden_communities()
-
-Detect communities using the Leiden algorithm.
+#### `Graph.unload_graph`
 
 ```python
-results = g.leiden_communities(resolution=1.0, random_seed=42)
+graph.unload_graph() -> dict
 ```
 
-**Parameters**:
-- `resolution` (float, default: 1.0) - Resolution parameter
-- `random_seed` (int, optional) - Random seed for reproducibility
+Release the in-memory adjacency cache.
 
-**Requires**: `graspologic>=3.0` (`pip install graspologic`)
-
-#### Connected Components
-
-##### weakly_connected_components()
-
-Find weakly connected components (ignoring edge direction).
+#### `Graph.reload_graph`
 
 ```python
-results = g.weakly_connected_components()
-# Aliases: g.connected_components(), g.wcc()
+graph.reload_graph() -> dict
 ```
 
-**Returns**: List of `{"node_id": str, "component": int}`
+Unload and reload the cache.
 
-##### strongly_connected_components()
-
-Find strongly connected components (respecting edge direction).
+#### `Graph.graph_loaded`
 
 ```python
-results = g.strongly_connected_components()
-# Alias: g.scc()
+graph.graph_loaded() -> bool
 ```
 
-**Returns**: List of `{"node_id": str, "component": int}`
+Return `True` if the adjacency cache is currently loaded.
 
-#### Path Finding
+---
 
-##### shortest_path()
+### Graph Algorithms
 
-Find the shortest path between two nodes using Dijkstra's algorithm.
+All algorithm methods return lists of dicts. See [Graph Algorithms](./algorithms.md) for full parameter and return field documentation.
+
+| Method | Signature |
+|--------|-----------|
+| PageRank | `graph.pagerank(damping=0.85, iterations=20)` |
+| Degree centrality | `graph.degree_centrality()` |
+| Betweenness centrality | `graph.betweenness_centrality()` |
+| Closeness centrality | `graph.closeness_centrality()` |
+| Eigenvector centrality | `graph.eigenvector_centrality(iterations=100)` |
+| Label propagation | `graph.community_detection(iterations=10)` |
+| Louvain | `graph.louvain(resolution=1.0)` |
+| Leiden | `graph.leiden_communities(resolution=1.0, random_seed=None)` |
+| Weakly connected components | `graph.weakly_connected_components()` |
+| Strongly connected components | `graph.strongly_connected_components()` |
+| Shortest path | `graph.shortest_path(source, target, weight_property=None)` |
+| A* | `graph.astar(source, target, lat_prop=None, lon_prop=None)` |
+| All-pairs shortest path | `graph.all_pairs_shortest_path()` |
+| BFS | `graph.bfs(start, max_depth=-1)` |
+| DFS | `graph.dfs(start, max_depth=-1)` |
+| Node similarity | `graph.node_similarity(node1_id=None, node2_id=None, threshold=0.0, top_k=0)` |
+| KNN | `graph.knn(node_id, k=10)` |
+| Triangle count | `graph.triangle_count()` |
+
+### Method Aliases
+
+The following aliases are available on `Graph` for convenience:
+
+| Alias | Canonical Method |
+|-------|-----------------|
+| `dijkstra` | `shortest_path` |
+| `a_star` | `astar` |
+| `apsp` | `all_pairs_shortest_path` |
+| `breadth_first_search` | `bfs` |
+| `depth_first_search` | `dfs` |
+| `triangles` | `triangle_count` |
+
+---
+
+### Bulk Operations
+
+#### `Graph.insert_nodes_bulk`
 
 ```python
-path = g.shortest_path("alice", "bob", weight_property="distance")
-# {"distance": 2, "path": ["alice", "carol", "bob"], "found": True}
-# Alias: g.dijkstra()
+graph.insert_nodes_bulk(
+    nodes: list[tuple[str, dict[str, Any], str]]
+) -> dict[str, int]
 ```
 
-**Parameters**:
-- `source_id` (str) - Starting node ID
-- `target_id` (str) - Ending node ID
-- `weight_property` (str, optional) - Edge property to use as weight
-
-**Returns**: `{"path": list, "distance": float|None, "found": bool}`
-
-##### astar()
-
-Find the shortest path using A* algorithm with optional geographic heuristic.
+Insert multiple nodes in a single transaction, bypassing Cypher. Each tuple is `(external_id, properties, label)`. Returns a dict mapping each external ID to its internal SQLite rowid.
 
 ```python
-path = g.astar("alice", "bob", lat_prop="latitude", lon_prop="longitude")
-# Alias: g.a_star()
+id_map = g.insert_nodes_bulk([
+    ("alice", {"name": "Alice", "age": 30}, "Person"),
+    ("bob",   {"name": "Bob",   "age": 25}, "Person"),
+])
+# id_map = {"alice": 1, "bob": 2}
 ```
 
-**Parameters**:
-- `source_id` (str) - Starting node ID
-- `target_id` (str) - Ending node ID
-- `lat_prop` (str, optional) - Latitude property name for heuristic
-- `lon_prop` (str, optional) - Longitude property name for heuristic
-
-**Returns**: `{"path": list, "distance": float|None, "found": bool, "nodes_explored": int}`
-
-##### all_pairs_shortest_path()
-
-Compute shortest distances between all node pairs (Floyd-Warshall).
+#### `Graph.insert_edges_bulk`
 
 ```python
-results = g.all_pairs_shortest_path()
-# Alias: g.apsp()
+graph.insert_edges_bulk(
+    edges: list[tuple[str, str, dict[str, Any], str]],
+    id_map: dict[str, int] = None
+) -> int
 ```
 
-**Returns**: List of `{"source": str, "target": str, "distance": float}`
+Insert multiple edges in a single transaction. Each tuple is `(source_id, target_id, properties, rel_type)`. The optional `id_map` (from `insert_nodes_bulk`) maps external IDs to internal rowids for fast resolution. If `id_map` is `None`, IDs are looked up from the database. Returns the number of edges inserted. Raises `KeyError` if an external ID is not found in `id_map`.
 
-**Note**: O(n²) complexity. Use with caution on large graphs.
-
-#### Traversal
-
-##### bfs()
-
-Breadth-first search from a starting node.
+#### `Graph.insert_graph_bulk`
 
 ```python
-results = g.bfs("alice", max_depth=3)
-# Alias: g.breadth_first_search()
+graph.insert_graph_bulk(
+    nodes: list[tuple[str, dict[str, Any], str]],
+    edges: list[tuple[str, str, dict[str, Any], str]]
+) -> BulkInsertResult
 ```
 
-**Parameters**:
-- `start_id` (str) - Starting node ID
-- `max_depth` (int, default: -1) - Maximum depth (-1 for unlimited)
+Insert nodes and edges together. Internally calls `insert_nodes_bulk` then `insert_edges_bulk`. Returns a `BulkInsertResult` dataclass:
 
-**Returns**: List of `{"user_id": str, "depth": int, "order": int}`
+| Field | Type | Description |
+|-------|------|-------------|
+| `nodes_inserted` | `int` | Number of nodes inserted |
+| `edges_inserted` | `int` | Number of edges inserted |
+| `id_map` | `dict[str, int]` | Mapping from external IDs to internal rowids |
 
-##### dfs()
-
-Depth-first search from a starting node.
+#### `Graph.resolve_node_ids`
 
 ```python
-results = g.dfs("alice", max_depth=5)
-# Alias: g.depth_first_search()
+graph.resolve_node_ids(ids: list[str]) -> dict[str, int]
 ```
 
-**Parameters**:
-- `start_id` (str) - Starting node ID
-- `max_depth` (int, default: -1) - Maximum depth (-1 for unlimited)
+Look up internal rowids for existing nodes by their external IDs. Returns `{external_id: internal_rowid}`. Use this to build an `id_map` for `insert_edges_bulk` when connecting to nodes that were inserted in a previous operation.
 
-**Returns**: List of `{"user_id": str, "depth": int, "order": int}`
-
-#### Similarity
-
-##### node_similarity()
-
-Compute Jaccard similarity between node neighborhoods.
-
-```python
-# All pairs above threshold
-results = g.node_similarity(threshold=0.5)
-
-# Specific pair
-results = g.node_similarity(node1_id="alice", node2_id="bob")
-
-# Top-k most similar pairs
-results = g.node_similarity(top_k=10)
-```
-
-**Parameters**:
-- `node1_id` (str, optional) - First node ID
-- `node2_id` (str, optional) - Second node ID
-- `threshold` (float, default: 0.0) - Minimum similarity threshold
-- `top_k` (int, default: 0) - Return only top-k pairs (0 for all)
-
-**Returns**: List of `{"node1": str, "node2": str, "similarity": float}`
-
-##### knn()
-
-Find k-nearest neighbors for a node based on Jaccard similarity.
-
-```python
-results = g.knn("alice", k=10)
-```
-
-**Parameters**:
-- `node_id` (str) - Node to find neighbors for
-- `k` (int, default: 10) - Number of neighbors to return
-
-**Returns**: List of `{"neighbor": str, "similarity": float, "rank": int}`
-
-##### triangle_count()
-
-Count triangles and compute clustering coefficients.
-
-```python
-results = g.triangle_count()
-# Alias: g.triangles()
-```
-
-**Returns**: List of `{"node_id": str, "triangles": int, "clustering_coefficient": float}`
-
-#### Export
-
-##### to_rustworkx()
-
-Export the graph to a rustworkx PyDiGraph for use with rustworkx algorithms.
-
-```python
-graph, node_map = g.to_rustworkx()
-```
-
-**Returns**: Tuple of (rustworkx.PyDiGraph, dict mapping node IDs to indices)
-
-**Requires**: `rustworkx>=0.13` (`pip install rustworkx`)
+---
 
 ### Batch Operations
 
-#### upsert_nodes_batch()
+> **Non-atomicity warning:** Batch upsert methods call `upsert_node`/`upsert_edge` in a loop. If an operation fails partway through, earlier operations will have already completed. For atomic batch inserts, use the bulk insert methods instead, or wrap the call in an explicit transaction.
+
+#### `Graph.upsert_nodes_batch`
 
 ```python
-nodes = [
-    ("alice", {"name": "Alice"}, "Person"),
-    ("bob", {"name": "Bob"}, "Person"),
-]
-g.upsert_nodes_batch(nodes)
+graph.upsert_nodes_batch(
+    nodes: list[tuple[str, dict[str, Any], str]]
+) -> None
 ```
 
-#### upsert_edges_batch()
+Upsert multiple nodes. Each tuple is `(node_id, properties, label)`. Uses MERGE semantics (update if exists, create if not).
+
+#### `Graph.upsert_edges_batch`
 
 ```python
-edges = [
-    ("alice", "bob", {"since": 2020}, "KNOWS"),
-    ("bob", "carol", {"since": 2021}, "KNOWS"),
-]
-g.upsert_edges_batch(edges)
+graph.upsert_edges_batch(
+    edges: list[tuple[str, str, dict[str, Any], str]]
+) -> None
 ```
 
-## GraphManager Class
+Upsert multiple edges. Each tuple is `(source_id, target_id, properties, rel_type)`. Uses MERGE semantics.
 
-Manages multiple graph databases in a directory with cross-graph query support.
+---
+
+### Export
+
+#### `Graph.to_rustworkx`
+
+```python
+graph.to_rustworkx() -> PyDiGraph
+```
+
+Export the graph to a `rustworkx.PyDiGraph`. Requires `rustworkx` to be installed.
+
+---
+
+## `GraphManager`
+
+Manages multiple named graphs stored as separate SQLite files under a base directory.
 
 ### Constructor
 
 ```python
-from graphqlite import graphs, GraphManager
-
-# Using factory function (recommended)
-gm = graphs("./data")
-
-# Or direct instantiation
-gm = GraphManager("./data")
-gm = GraphManager("./data", extension_path="/path/to/graphqlite.dylib")
+graphqlite.GraphManager(base_path: str, extension_path: str = None)
+graphqlite.graphs(base_path: str, extension_path: str = None) -> GraphManager
 ```
 
-### Context Manager
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `base_path` | str | Directory containing graph database files |
+| `extension_path` | str \| None | Path to extension; auto-detected if `None` |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `list` | `manager.list() -> list[str]` | Names of all graphs in `base_path` |
+| `exists` | `manager.exists(name: str) -> bool` | True if a graph named `name` exists |
+| `create` | `manager.create(name: str) -> Graph` | Create and return a new graph |
+| `open` | `manager.open(name: str) -> Graph` | Open existing graph; raises if not found |
+| `open_or_create` | `manager.open_or_create(name: str) -> Graph` | Open or create |
+| `drop` | `manager.drop(name: str) -> None` | Delete the graph database file |
+| `query` | `manager.query(cypher: str, graphs: list[str] = None, params: dict = None) -> list` | Query across multiple graphs; `graphs=None` queries all |
+| `query_sql` | `manager.query_sql(sql: str, graphs: list[str], parameters: tuple = ()) -> list` | Raw SQL across multiple graphs |
+| `close` | `manager.close() -> None` | Close all open connections |
+
+### Dunder Methods
+
+| Method | Description |
+|--------|-------------|
+| `__iter__` | Iterate over all graph names in `base_path` (same as `list()`) |
+| `__contains__` | `name in manager` — True if a graph named `name` exists (same as `exists()`) |
+| `__len__` | `len(manager)` — Number of graphs in `base_path` |
+| `__enter__` / `__exit__` | Context manager support; calls `close()` on exit |
+
+---
+
+## Utilities
+
+### `graphqlite.escape_string`
 
 ```python
-with graphs("./data") as gm:
-    # Work with graphs...
-    pass  # All connections closed automatically
+graphqlite.escape_string(s: str) -> str
 ```
 
-### Graph Management
+Escape a string for safe embedding in a Cypher query literal (single-quote escaping).
 
-#### list()
-
-List all graphs in the directory.
+### `graphqlite.sanitize_rel_type`
 
 ```python
-names = gm.list()  # ["products", "social", "users"]
+graphqlite.sanitize_rel_type(type: str) -> str
 ```
 
-**Returns**: List of graph names (sorted)
+Normalize a relationship type string to a safe identifier (uppercase, underscores only).
 
-#### exists()
-
-Check if a graph exists.
+### `graphqlite.format_props`
 
 ```python
-if gm.exists("social"):
-    print("Graph exists")
+graphqlite.format_props(props: dict, escape_fn=escape_string) -> str
 ```
 
-**Returns**: bool
+Format a properties dict as a Cypher property string. For example, `{"name": "Alice", "age": 30}` becomes `{name: 'Alice', age: 30}`. The `escape_fn` is applied to string values; defaults to `escape_string`.
 
-#### create()
-
-Create a new graph.
+### `graphqlite.CYPHER_RESERVED`
 
 ```python
-g = gm.create("social")
+graphqlite.CYPHER_RESERVED -> set[str]
 ```
 
-**Parameters**:
-- `name` (str) - Graph name
-
-**Returns**: `Graph` instance
-
-**Raises**: `FileExistsError` if graph already exists
-
-#### open()
-
-Open an existing graph.
-
-```python
-g = gm.open("social")
-```
-
-**Parameters**:
-- `name` (str) - Graph name
-
-**Returns**: `Graph` instance
-
-**Raises**: `FileNotFoundError` if graph doesn't exist
-
-#### open_or_create()
-
-Open a graph, creating it if it doesn't exist.
-
-```python
-g = gm.open_or_create("cache")
-```
-
-**Returns**: `Graph` instance
-
-#### drop()
-
-Delete a graph and its database file.
-
-```python
-gm.drop("old_graph")
-```
-
-**Raises**: `FileNotFoundError` if graph doesn't exist
-
-### Cross-Graph Queries
-
-#### query()
-
-Execute a Cypher query across multiple graphs.
-
-```python
-result = gm.query(
-    "MATCH (n:Person) FROM social RETURN n.name, graph(n) AS source",
-    graphs=["social"]
-)
-for row in result:
-    print(f"{row['n.name']} from {row['source']}")
-```
-
-**Parameters**:
-- `cypher` (str) - Cypher query with FROM clauses
-- `graphs` (list) - Graph names to attach
-- `params` (dict, optional) - Query parameters
-
-**Returns**: `CypherResult`
-
-#### query_sql()
-
-Execute raw SQL across attached graphs.
-
-```python
-result = gm.query_sql(
-    "SELECT COUNT(*) FROM social.nodes",
-    graphs=["social"]
-)
-```
-
-**Parameters**:
-- `sql` (str) - SQL query with graph-prefixed table names
-- `graphs` (list) - Graph names to attach
-- `parameters` (tuple, optional) - Query parameters
-
-**Returns**: List of tuples
-
-### Collection Interface
-
-```python
-# Length
-len(gm)  # Number of graphs
-
-# Membership
-"social" in gm  # True/False
-
-# Iteration
-for name in gm:
-    print(name)
-```
-
-## Utility Functions
-
-### escape_string()
-
-Escape a string for use in Cypher.
-
-```python
-from graphqlite import escape_string
-
-safe = escape_string("It's a test")
-```
-
-### sanitize_rel_type()
-
-Sanitize a relationship type name.
-
-```python
-from graphqlite import sanitize_rel_type
-
-safe = sanitize_rel_type("has-friend")  # "HAS_FRIEND"
-```
-
-### CYPHER_RESERVED
-
-A set of reserved Cypher keywords that need special handling in queries.
-
-```python
-from graphqlite import CYPHER_RESERVED
-
-if my_label.upper() in CYPHER_RESERVED:
-    my_label = f"`{my_label}`"  # Quote reserved words
-```
-
-Contains keywords like: `MATCH`, `CREATE`, `RETURN`, `WHERE`, `AND`, `OR`, `NOT`, `IN`, `AS`, `WITH`, `ORDER`, `BY`, `LIMIT`, `SKIP`, `DELETE`, `SET`, `REMOVE`, `MERGE`, `ON`, `CASE`, `WHEN`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NULL`, etc.
+Set of all Cypher reserved keywords. Use to check whether an identifier needs quoting.

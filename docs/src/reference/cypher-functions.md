@@ -1,212 +1,347 @@
 # Cypher Functions
 
+Every function available in GraphQLite Cypher queries, organized by category.
+
+---
+
 ## String Functions
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `toLower(s)` | Convert to lowercase | `toLower('Hello')` → `'hello'` |
-| `toUpper(s)` | Convert to uppercase | `toUpper('Hello')` → `'HELLO'` |
-| `trim(s)` | Remove leading/trailing whitespace | `trim('  hi  ')` → `'hi'` |
-| `ltrim(s)` | Remove leading whitespace | `ltrim('  hi')` → `'hi'` |
-| `rtrim(s)` | Remove trailing whitespace | `rtrim('hi  ')` → `'hi'` |
-| `replace(s, from, to)` | Replace occurrences | `replace('hello', 'l', 'x')` → `'hexxo'` |
-| `substring(s, start, len)` | Extract substring | `substring('hello', 1, 3)` → `'ell'` |
-| `left(s, n)` | First n characters | `left('hello', 2)` → `'he'` |
-| `right(s, n)` | Last n characters | `right('hello', 2)` → `'lo'` |
-| `split(s, delim)` | Split into list | `split('a,b,c', ',')` → `['a','b','c']` |
-| `reverse(s)` | Reverse string | `reverse('hello')` → `'olleh'` |
-| `length(s)` | String length | `length('hello')` → `5` |
-| `size(s)` | String length (alias) | `size('hello')` → `5` |
-| `toString(x)` | Convert to string | `toString(123)` → `'123'` |
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `toUpper(s)` | String | Convert to uppercase |
+| `toLower(s)` | String | Convert to lowercase |
+| `trim(s)` | String | Remove leading and trailing whitespace |
+| `ltrim(s)` | String | Remove leading whitespace |
+| `rtrim(s)` | String | Remove trailing whitespace |
+| `btrim(s)` | String | Remove leading and trailing whitespace (alias of `trim`) |
+| `substring(s, start)` | String | Substring from `start` (0-based) to end |
+| `substring(s, start, len)` | String | Substring of length `len` from `start` |
+| `replace(s, search, replacement)` | String | Replace all occurrences of `search` with `replacement` |
+| `reverse(s)` | String | Reverse characters |
+| `left(s, n)` | String | First `n` characters |
+| `right(s, n)` | String | Last `n` characters |
+| `split(s, delimiter)` | List\<String\> | Split string into list of substrings |
+| `toString(val)` | String | Convert any value to its string representation |
+| `size(s)` | Integer | Number of characters in string |
+| `isEmpty(s)` | Boolean | `true` if string has length zero or is `null` |
+| `char_length(s)` | Integer | Number of characters (alias of `size`) |
+| `character_length(s)` | Integer | Number of characters (alias of `size`) |
 
-## String Predicates
+**Examples**
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `startsWith(s, prefix)` | Check prefix | `startsWith('hello', 'he')` → `true` |
-| `endsWith(s, suffix)` | Check suffix | `endsWith('hello', 'lo')` → `true` |
-| `contains(s, sub)` | Check substring | `contains('hello', 'ell')` → `true` |
+```cypher
+RETURN toUpper('hello')           -- 'HELLO'
+RETURN substring('abcdef', 2, 3)  -- 'cde'
+RETURN split('a,b,c', ',')        -- ['a', 'b', 'c']
+RETURN left('abcdef', 3)          -- 'abc'
+```
+
+---
 
 ## Math Functions
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `abs(n)` | Absolute value | `abs(-5)` → `5` |
-| `ceil(n)` | Round up | `ceil(2.3)` → `3` |
-| `floor(n)` | Round down | `floor(2.7)` → `2` |
-| `round(n)` | Round to nearest | `round(2.5)` → `3` |
-| `sign(n)` | Sign (-1, 0, 1) | `sign(-5)` → `-1` |
-| `sqrt(n)` | Square root | `sqrt(16)` → `4` |
-| `log(n)` | Natural logarithm | `log(e())` → `1` |
-| `log10(n)` | Base-10 logarithm | `log10(100)` → `2` |
-| `exp(n)` | e^n | `exp(1)` → `2.718...` |
-| `rand()` | Random 0-1 | `rand()` → `0.42...` |
-| `random()` | Random 0-1 (alias) | `random()` → `0.42...` |
-| `pi()` | π constant | `pi()` → `3.14159...` |
-| `e()` | e constant | `e()` → `2.71828...` |
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `abs(n)` | Number | Absolute value |
+| `ceil(n)` | Integer | Ceiling (smallest integer >= n) |
+| `floor(n)` | Integer | Floor (largest integer <= n) |
+| `round(n)` | Integer | Round to nearest integer |
+| `round(n, precision)` | Float | Round to `precision` decimal places |
+| `sqrt(n)` | Float | Square root |
+| `sign(n)` | Integer | -1, 0, or 1 |
+| `log(n)` | Float | Natural logarithm |
+| `log10(n)` | Float | Base-10 logarithm |
+| `exp(n)` | Float | e raised to the power n |
+| `e()` | Float | Euler's number (2.718…) |
+| `pi()` | Float | Pi (3.141…) |
+| `rand()` | Float | Random float in [0, 1) |
+| `toInteger(val)` | Integer | Convert to integer; `null` on failure |
+| `toFloat(val)` | Float | Convert to float; `null` on failure |
+
+**Examples**
+
+```cypher
+RETURN abs(-5)          -- 5
+RETURN round(3.567, 2)  -- 3.57
+RETURN sqrt(16)         -- 4.0
+RETURN rand()           -- e.g. 0.7341...
+```
+
+---
 
 ## Trigonometric Functions
 
-| Function | Description |
-|----------|-------------|
-| `sin(n)` | Sine |
-| `cos(n)` | Cosine |
-| `tan(n)` | Tangent |
-| `asin(n)` | Arc sine |
-| `acos(n)` | Arc cosine |
-| `atan(n)` | Arc tangent |
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `sin(n)` | Float | Sine (radians) |
+| `cos(n)` | Float | Cosine (radians) |
+| `tan(n)` | Float | Tangent (radians) |
+| `asin(n)` | Float | Arcsine; result in radians |
+| `acos(n)` | Float | Arccosine; result in radians |
+| `atan(n)` | Float | Arctangent; result in radians |
+| `atan2(y, x)` | Float | Two-argument arctangent |
+| `degrees(n)` | Float | Radians to degrees |
+| `radians(n)` | Float | Degrees to radians |
+| `cot(n)` | Float | Cotangent |
+| `haversin(n)` | Float | Half the versine of n |
+| `sinh(n)` | Float | Hyperbolic sine |
+| `cosh(n)` | Float | Hyperbolic cosine |
+| `tanh(n)` | Float | Hyperbolic tangent |
+| `coth(n)` | Float | Hyperbolic cotangent |
+| `isNaN(n)` | Boolean | `true` if n is NaN |
+
+**Examples**
+
+```cypher
+RETURN degrees(pi())   -- 180.0
+RETURN atan2(1.0, 1.0) -- 0.7853...
+```
+
+---
 
 ## List Functions
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `head(list)` | First element | `head([1,2,3])` → `1` |
-| `tail(list)` | All but first | `tail([1,2,3])` → `[2,3]` |
-| `last(list)` | Last element | `last([1,2,3])` → `3` |
-| `size(list)` | Length | `size([1,2,3])` → `3` |
-| `range(start, end)` | Create range | `range(1, 5)` → `[1,2,3,4,5]` |
-| `reverse(list)` | Reverse list | `reverse([1,2,3])` → `[3,2,1]` |
-| `keys(map)` | Get map keys | `keys({a:1, b:2})` → `['a','b']` |
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `size(list)` | Integer | Number of elements |
+| `head(list)` | Any | First element; `null` if empty |
+| `tail(list)` | List | All elements except the first; empty list if input has 0 or 1 elements |
+| `last(list)` | Any | Last element; `null` if empty |
+| `range(start, end)` | List\<Integer\> | Inclusive integer range with step 1 |
+| `range(start, end, step)` | List\<Integer\> | Inclusive integer range with given step |
+| `collect(expr)` | List | Aggregate: collect non-null values into a list |
+| `keys(node_or_map)` | List\<String\> | Property key names of a node, relationship, or map |
+| `reduce(acc = init, x IN list \| expr)` | Any | Fold list into single value |
+| `[expr FOR x IN list]` | List | List comprehension without filter |
+| `[expr FOR x IN list WHERE cond]` | List | List comprehension with filter |
 
-## Aggregate Functions
+**Examples**
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `count(x)` | Count items | `count(n)`, `count(*)` |
-| `sum(x)` | Sum values | `sum(n.amount)` |
-| `avg(x)` | Average | `avg(n.score)` |
-| `min(x)` | Minimum | `min(n.age)` |
-| `max(x)` | Maximum | `max(n.age)` |
-| `collect(x)` | Collect into list | `collect(n.name)` |
+```cypher
+RETURN range(1, 5)                          -- [1, 2, 3, 4, 5]
+RETURN range(0, 10, 2)                      -- [0, 2, 4, 6, 8, 10]
+RETURN head([1, 2, 3])                      -- 1
+RETURN tail([1, 2, 3])                      -- [2, 3]
+RETURN reduce(total = 0, x IN [1,2,3] | total + x) -- 6
+RETURN [x * 2 FOR x IN [1,2,3] WHERE x > 1]        -- [4, 6]
+```
+
+---
+
+## Aggregation Functions
+
+Aggregation functions collapse multiple rows into one. They are valid in `RETURN` and `WITH`.
+
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `count(expr)` | Integer | Count of non-null values |
+| `count(*)` | Integer | Count of rows |
+| `sum(expr)` | Number | Sum of numeric values |
+| `avg(expr)` | Float | Arithmetic mean of numeric values |
+| `min(expr)` | Any | Minimum value |
+| `max(expr)` | Any | Maximum value |
+| `collect(expr)` | List | List of non-null values |
+| `stdev(expr)` | Float | Sample standard deviation |
+| `stdevp(expr)` | Float | Population standard deviation |
+
+**Examples**
+
+```cypher
+MATCH (n:Person) RETURN count(n), avg(n.age), collect(n.name)
+MATCH (n:Person) RETURN count(*) AS total
+```
+
+---
 
 ## Entity Functions
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `id(node)` | Get node/edge ID | `id(n)` |
-| `labels(node)` | Get node labels | `labels(n)` → `['Person']` |
-| `type(rel)` | Get relationship type | `type(r)` → `'KNOWS'` |
-| `properties(x)` | Get all properties | `properties(n)` |
-| `startNode(rel)` | Start node of relationship | `startNode(r)` |
-| `endNode(rel)` | End node of relationship | `endNode(r)` |
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `id(entity)` | Integer | Internal numeric ID of a node or relationship |
+| `elementId(entity)` | String | String form of internal ID |
+| `labels(node)` | List\<String\> | All labels of a node |
+| `type(rel)` | String | Relationship type name |
+| `properties(entity)` | Map | All properties as a map |
+| `startNode(rel)` | Node | Source node of a relationship |
+| `endNode(rel)` | Node | Target node of a relationship |
+| `nodes(path)` | List\<Node\> | Ordered list of nodes in a path |
+| `relationships(path)` | List\<Relationship\> | Ordered list of relationships in a path |
+| `length(path)` | Integer | Number of relationships in a path |
 
-## Path Functions
+**Examples**
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `nodes(path)` | Get all nodes in path | `nodes(p)` |
-| `relationships(path)` | Get all relationships | `relationships(p)` |
-| `rels(path)` | Get all relationships (alias) | `rels(p)` |
-| `length(path)` | Path length (edges) | `length(p)` |
+```cypher
+MATCH (n:Person) RETURN id(n), labels(n)
+MATCH ()-[r]->() RETURN type(r)
+MATCH p = (a)-[*]->(b) RETURN length(p), nodes(p)
+```
 
-## Type Conversion
+---
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `toInteger(x)` | Convert to integer | `toInteger('42')` → `42` |
-| `toFloat(x)` | Convert to float | `toFloat('3.14')` → `3.14` |
-| `toBoolean(x)` | Convert to boolean | `toBoolean('true')` → `true` |
-| `coalesce(x, y, ...)` | First non-null value | `coalesce(n.name, 'Unknown')` |
+## Type Conversion Functions
+
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `toString(val)` | String | Convert to string; error on unconvertible types |
+| `toInteger(val)` | Integer | Convert to integer; error on unconvertible types |
+| `toFloat(val)` | Float | Convert to float; error on unconvertible types |
+| `toBoolean(val)` | Boolean | Convert to boolean; error on unconvertible types |
+| `toStringOrNull(val)` | String \| null | Convert to string; `null` on failure |
+| `toIntegerOrNull(val)` | Integer \| null | Convert to integer; `null` on failure |
+| `toFloatOrNull(val)` | Float \| null | Convert to float; `null` on failure |
+| `toBooleanOrNull(val)` | Boolean \| null | Convert to boolean; `null` on failure |
+| `valueType(val)` | String | Returns a string naming the Cypher type: `"INTEGER"`, `"FLOAT"`, `"STRING"`, `"BOOLEAN"`, `"NULL"`, `"LIST"`, `"MAP"`, `"NODE"`, `"RELATIONSHIP"`, `"PATH"` |
+
+**Examples**
+
+```cypher
+RETURN toInteger('42')         -- 42
+RETURN toFloatOrNull('abc')    -- null
+RETURN valueType(3.14)         -- 'FLOAT'
+RETURN toBoolean('true')       -- true
+```
+
+---
 
 ## Temporal Functions
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `date()` | Current date | `date()` → `'2025-01-15'` |
-| `datetime()` | Current datetime | `datetime()` |
-| `time()` | Current time | `time()` |
-| `timestamp()` | Unix timestamp (ms) | `timestamp()` |
-| `localdatetime()` | Local datetime | `localdatetime()` |
-| `randomUUID()` | Generate random UUID | `randomUUID()` → `'550e8400-e29b-...'` |
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `date({year, month, day})` | Date | Construct a date |
+| `time({hour, minute, second})` | Time | Construct a time |
+| `datetime({year, month, day, hour, minute, second})` | DateTime | Construct a datetime |
+| `localdatetime({year, month, day, hour, minute, second})` | LocalDateTime | Construct a local datetime (no timezone) |
+| `duration({days, hours, minutes, seconds})` | Duration | Construct a duration; all fields optional |
+| `datetime.fromepoch(seconds)` | DateTime | DateTime from Unix epoch seconds |
+| `datetime.fromepochmillis(ms)` | DateTime | DateTime from Unix epoch milliseconds |
+| `duration.inDays(d1, d2)` | Duration | Duration between two dates in days |
+| `duration.inSeconds(d1, d2)` | Duration | Duration between two datetimes in seconds |
+| `date.truncate(unit, date)` | Date | Truncate date to `unit`: `'year'`, `'month'`, `'week'`, `'day'` |
+
+**Examples**
+
+```cypher
+RETURN date({year: 2024, month: 3, day: 15})
+RETURN datetime.fromepoch(1700000000)
+RETURN duration({days: 7, hours: 12})
+RETURN date.truncate('month', date({year: 2024, month: 3, day: 15}))
+```
+
+---
+
+## Spatial Functions
+
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `point({x, y})` | Point | 2D Cartesian point |
+| `point({x, y, z})` | Point | 3D Cartesian point |
+| `point({latitude, longitude})` | Point | 2D geographic point (WGS-84) |
+| `point({latitude, longitude, height})` | Point | 3D geographic point (WGS-84) |
+| `distance(p1, p2)` | Float | Distance between two points (meters for geographic, units for Cartesian) |
+| `point.withinBBox(point, lowerLeft, upperRight)` | Boolean | `true` if point is inside bounding box |
+
+**Examples**
+
+```cypher
+RETURN point({x: 1.0, y: 2.0})
+RETURN distance(point({latitude: 48.8, longitude: 2.3}), point({latitude: 51.5, longitude: -0.1}))
+RETURN point.withinBBox(
+  point({x: 5, y: 5}),
+  point({x: 0, y: 0}),
+  point({x: 10, y: 10})
+)  -- true
+```
+
+---
 
 ## Predicate Functions
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `exists(pattern)` | Pattern exists | `EXISTS { (n)-[:KNOWS]->() }` |
-| `exists(prop)` | Property exists | `exists(n.email)` |
-| `all(x IN list WHERE pred)` | All match | `all(x IN [1,2,3] WHERE x > 0)` |
-| `any(x IN list WHERE pred)` | Any match | `any(x IN [1,2,3] WHERE x > 2)` |
-| `none(x IN list WHERE pred)` | None match | `none(x IN [1,2,3] WHERE x < 0)` |
-| `single(x IN list WHERE pred)` | Exactly one | `single(x IN [1,2,3] WHERE x = 2)` |
+| Signature | Returns | Description |
+|-----------|---------|-------------|
+| `exists(expr)` | Boolean | `true` if the property or pattern exists and is not `null` |
+| `exists{pattern}` | Boolean | `true` if the pattern matches at least one result (full pattern syntax) |
+| `coalesce(v1, v2, ...)` | Any | First non-null argument; `null` if all arguments are `null` |
+| `nullIf(v1, v2)` | Any \| null | Returns `null` if `v1 = v2`; otherwise returns `v1` |
 
-## Reduce
+**Examples**
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `reduce(acc = init, x IN list \| expr)` | Fold/reduce | `reduce(s = 0, x IN [1,2,3] \| s + x)` → `6` |
+```cypher
+MATCH (n:Person) WHERE exists(n.email) RETURN n.name
+MATCH (n:Person) WHERE exists{(n)-[:KNOWS]->(:Person)} RETURN n.name
+RETURN coalesce(null, null, 'default')   -- 'default'
+RETURN nullIf(5, 5)                      -- null
+RETURN nullIf(5, 6)                      -- 5
+```
+
+---
 
 ## CASE Expressions
 
-### Searched CASE
-
-Evaluates conditions in order and returns the first matching result:
+**Simple form**
 
 ```cypher
+CASE expr
+  WHEN value1 THEN result1
+  WHEN value2 THEN result2
+  ELSE default
+END
+```
+
+**Generic form**
+
+```cypher
+CASE
+  WHEN condition1 THEN result1
+  WHEN condition2 THEN result2
+  ELSE default
+END
+```
+
+`ELSE` is optional; omitting it returns `null` for unmatched rows.
+
+**Examples**
+
+```cypher
+MATCH (n:Person)
+RETURN CASE n.role
+  WHEN 'admin' THEN 'Administrator'
+  WHEN 'mod'   THEN 'Moderator'
+  ELSE 'User'
+END AS roleLabel
+```
+
+```cypher
+MATCH (n:Person)
 RETURN CASE
-    WHEN n.age < 18 THEN 'minor'
-    WHEN n.age < 65 THEN 'adult'
-    ELSE 'senior'
-END AS category
+  WHEN n.age < 18 THEN 'minor'
+  WHEN n.age < 65 THEN 'adult'
+  ELSE 'senior'
+END AS ageGroup
 ```
 
-### Simple CASE
+---
 
-Compares an expression against values:
+## Graph Algorithm Functions
 
-```cypher
-RETURN CASE n.status
-    WHEN 'A' THEN 'Active'
-    WHEN 'I' THEN 'Inactive'
-    WHEN 'P' THEN 'Pending'
-    ELSE 'Unknown'
-END AS status_name
-```
+Called inside Cypher queries using `CALL` syntax or inline. See [Graph Algorithms](./algorithms.md) for full parameter and return type documentation.
 
-## Comprehensions
-
-### List Comprehension
-
-Create lists by transforming or filtering:
-
-```cypher
-// Transform each element
-RETURN [x IN range(1, 5) | x * 2]
-// → [2, 4, 6, 8, 10]
-
-// Filter elements
-RETURN [x IN range(1, 10) WHERE x % 2 = 0]
-// → [2, 4, 6, 8, 10]
-
-// Filter and transform
-RETURN [x IN range(1, 10) WHERE x % 2 = 0 | x * x]
-// → [4, 16, 36, 64, 100]
-```
-
-### Pattern Comprehension
-
-Extract data from pattern matches within an expression:
-
-```cypher
-// Collect names of friends
-MATCH (p:Person)
-RETURN p.name, [(p)-[:KNOWS]->(friend) | friend.name] AS friends
-
-// With filtering
-RETURN [(p)-[:KNOWS]->(f:Person) WHERE f.age > 21 | f.name] AS adult_friends
-```
-
-### Map Projection
-
-Create maps by selecting properties from nodes:
-
-```cypher
-// Select specific properties
-MATCH (n:Person)
-RETURN n {.name, .age}
-// → {name: "Alice", age: 30}
-
-// Include computed values
-MATCH (n:Person)
-RETURN n {.name, status: 'active', upperName: toUpper(n.name)}
-```
+| Signature | Description |
+|-----------|-------------|
+| `pageRank([damping, iterations])` | PageRank centrality |
+| `labelPropagation([iterations])` | Label propagation community detection |
+| `louvain([resolution])` | Louvain modularity community detection |
+| `dijkstra(source, target[, weight_property])` | Weighted shortest path |
+| `astar(source, target[, lat_prop, lon_prop])` | A* heuristic shortest path |
+| `degreeCentrality()` | In/out/total degree per node |
+| `betweennessCentrality()` | Betweenness centrality per node |
+| `closenessCentrality()` | Closeness centrality per node |
+| `eigenvectorCentrality([iterations])` | Eigenvector centrality per node |
+| `weaklyConnectedComponents()` | WCC component assignment |
+| `stronglyConnectedComponents()` | SCC component assignment |
+| `bfs(start[, max_depth])` | Breadth-first traversal |
+| `dfs(start[, max_depth])` | Depth-first traversal |
+| `nodeSimilarity([node1, node2, threshold, top_k])` | Jaccard similarity |
+| `knn(node, k)` | k-nearest neighbors by similarity |
+| `triangleCount()` | Triangle count and clustering coefficient per node |
+| `apsp()` | All-pairs shortest paths |
+| `shortestPath(pattern)` | Shortest path as a path value |
