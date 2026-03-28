@@ -4,14 +4,14 @@ level: task
 title: "REC-05: Fix LIKE wildcard injection in STARTS WITH / ENDS WITH"
 short_code: "GQLITE-T-0160"
 created_at: 2026-03-28T13:59:16.614671+00:00
-updated_at: 2026-03-28T22:35:32.902182+00:00
+updated_at: 2026-03-28T22:37:16.803854+00:00
 parent: GQLITE-I-0031
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -33,6 +33,8 @@ Fix LIKE wildcard injection in STARTS WITH / ENDS WITH transforms by escaping `%
 1. Before interpolating the pattern value into the LIKE expression, escape any literal `%` and `_` characters with `\`
 2. Append `ESCAPE '\'` to the generated SQL LIKE clause
 3. Add functional tests with patterns containing `%` and `_` to verify correct behavior
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

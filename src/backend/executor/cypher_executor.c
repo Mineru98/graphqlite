@@ -298,10 +298,27 @@ cypher_result* cypher_executor_execute_ast(cypher_executor *executor, ast_node *
                     /* Collect results with type information */
                     while (sqlite3_step(transform_result->stmt) == SQLITE_ROW) {
                         /* Allocate/resize data and data_types arrays */
-                        result->data = realloc(result->data, (result->row_count + 1) * sizeof(char**));
-                        result->data[result->row_count] = calloc(result->column_count, sizeof(char*));
-                        result->data_types = realloc(result->data_types, (result->row_count + 1) * sizeof(int*));
-                        result->data_types[result->row_count] = calloc(result->column_count, sizeof(int));
+                        {
+                            char ***new_data = realloc(result->data, (result->row_count + 1) * sizeof(char**));
+                            if (!new_data) {
+                                set_result_error(result, "Memory allocation failed for result data");
+                                sqlite3_finalize(transform_result->stmt);
+                                cypher_transform_free_context(ctx);
+                                return result;
+                            }
+                            result->data = new_data;
+                            result->data[result->row_count] = calloc(result->column_count, sizeof(char*));
+
+                            int **new_types = realloc(result->data_types, (result->row_count + 1) * sizeof(int*));
+                            if (!new_types) {
+                                set_result_error(result, "Memory allocation failed for result data types");
+                                sqlite3_finalize(transform_result->stmt);
+                                cypher_transform_free_context(ctx);
+                                return result;
+                            }
+                            result->data_types = new_types;
+                            result->data_types[result->row_count] = calloc(result->column_count, sizeof(int));
+                        }
 
                         for (int c = 0; c < result->column_count; c++) {
                             /* Store the SQLite type */
