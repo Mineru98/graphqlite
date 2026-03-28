@@ -608,32 +608,41 @@ int sqlite3_graphqlite_init(
   cache->db = db;
   cache->executor = NULL;
 
-  /* Register the graphqlite_test function */
-  sqlite3_create_function(db, "graphqlite_test", 0, SQLITE_UTF8, 0,
-                         simple_test_func, 0, 0);
+  /* Register all functions — check each return value.
+   * On any failure, free the cache and return the error. */
 
-  /* Register the main cypher() function with destructor for cleanup on connection close */
+  rc = sqlite3_create_function(db, "graphqlite_test", 0, SQLITE_UTF8, 0,
+                         simple_test_func, 0, 0);
+  if (rc != SQLITE_OK) { free(cache); return rc; }
+
   rc = sqlite3_create_function_v2(db, "cypher", -1, SQLITE_UTF8, cache,
                              graphqlite_cypher_func, 0, 0,
                              connection_cache_destroy);
+  if (rc != SQLITE_OK) { free(cache); return rc; }
 
-  /* Register the regexp() function for =~ operator support */
-  sqlite3_create_function(db, "regexp", 2, SQLITE_UTF8, 0,
+  rc = sqlite3_create_function(db, "regexp", 2, SQLITE_UTF8, 0,
                          regexp_func, 0, 0);
+  if (rc != SQLITE_OK) { free(cache); return rc; }
 
-  /* Register the cypher_validate() function for query validation without execution */
-  sqlite3_create_function(db, "cypher_validate", 1, SQLITE_UTF8, 0,
+  rc = sqlite3_create_function(db, "cypher_validate", 1, SQLITE_UTF8, 0,
                          cypher_validate_func, 0, 0);
+  if (rc != SQLITE_OK) { free(cache); return rc; }
 
-  /* Register graph cache management functions */
-  sqlite3_create_function(db, "gql_load_graph", 0, SQLITE_UTF8, cache,
+  rc = sqlite3_create_function(db, "gql_load_graph", 0, SQLITE_UTF8, cache,
                          gql_load_graph_func, 0, 0);
-  sqlite3_create_function(db, "gql_unload_graph", 0, SQLITE_UTF8, cache,
+  if (rc != SQLITE_OK) { free(cache); return rc; }
+
+  rc = sqlite3_create_function(db, "gql_unload_graph", 0, SQLITE_UTF8, cache,
                          gql_unload_graph_func, 0, 0);
-  sqlite3_create_function(db, "gql_reload_graph", 0, SQLITE_UTF8, cache,
+  if (rc != SQLITE_OK) { free(cache); return rc; }
+
+  rc = sqlite3_create_function(db, "gql_reload_graph", 0, SQLITE_UTF8, cache,
                          gql_reload_graph_func, 0, 0);
-  sqlite3_create_function(db, "gql_graph_loaded", 0, SQLITE_UTF8, cache,
+  if (rc != SQLITE_OK) { free(cache); return rc; }
+
+  rc = sqlite3_create_function(db, "gql_graph_loaded", 0, SQLITE_UTF8, cache,
                          gql_graph_loaded_func, 0, 0);
+  if (rc != SQLITE_OK) { free(cache); return rc; }
 
   /* Create schema during initialization */
   create_schema(db);

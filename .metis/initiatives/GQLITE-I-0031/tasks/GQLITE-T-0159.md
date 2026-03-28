@@ -4,14 +4,14 @@ level: task
 title: "REC-04: Add hash table termination guard in CSR graph load"
 short_code: "GQLITE-T-0159"
 created_at: 2026-03-28T13:59:15.179129+00:00
-updated_at: 2026-03-28T13:59:15.179129+00:00
+updated_at: 2026-03-28T22:34:44.535861+00:00
 parent: GQLITE-I-0031
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -36,6 +36,8 @@ Prevent infinite loop in the open-addressing hash table used by `csr_graph_load(
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] Hash table size is computed dynamically based on node count
 - [ ] Probe loop has a maximum iteration guard
 - [ ] Existing graph algorithm tests pass
@@ -48,4 +50,3 @@ Prevent infinite loop in the open-addressing hash table used by `csr_graph_load(
 ## Status Updates
 
 *To be added during implementation*
-

@@ -89,8 +89,15 @@ csr_graph* csr_graph_load(sqlite3 *db)
 
     CYPHER_DEBUG("Loaded %d nodes", graph->node_count);
 
-    /* Build node ID -> index hash table */
-    graph->node_idx_size = HASH_TABLE_SIZE;
+    /* Build node ID -> index hash table.
+     * Size dynamically to maintain < 50% load factor. */
+    {
+        int target_size = graph->node_count * 2 + 1;
+        /* Find next odd number >= target_size (simple prime approximation) */
+        if (target_size < HASH_TABLE_SIZE) target_size = HASH_TABLE_SIZE;
+        if (target_size % 2 == 0) target_size++;
+        graph->node_idx_size = target_size;
+    }
     graph->node_idx = malloc(graph->node_idx_size * sizeof(int));
     if (!graph->node_idx) {
         csr_graph_free(graph);
@@ -104,8 +111,16 @@ csr_graph* csr_graph_load(sqlite3 *db)
     for (int i = 0; i < graph->node_count; i++) {
         int node_id = graph->node_ids[i];
         int h = hash_int(node_id, graph->node_idx_size);
+        int probe_count = 0;
         while (graph->node_idx[h] != -1) {
             h = (h + 1) % graph->node_idx_size;
+            if (++probe_count >= graph->node_idx_size) {
+                /* Table is full — should not happen with dynamic sizing */
+                CYPHER_DEBUG("Hash table full during CSR graph load (%d nodes, table size %d)",
+                             graph->node_count, graph->node_idx_size);
+                csr_graph_free(graph);
+                return NULL;
+            }
         }
         graph->node_idx[h] = i;
     }

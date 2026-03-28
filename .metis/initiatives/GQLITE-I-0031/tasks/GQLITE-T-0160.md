@@ -4,14 +4,14 @@ level: task
 title: "REC-05: Fix LIKE wildcard injection in STARTS WITH / ENDS WITH"
 short_code: "GQLITE-T-0160"
 created_at: 2026-03-28T13:59:16.614671+00:00
-updated_at: 2026-03-28T13:59:16.614671+00:00
+updated_at: 2026-03-28T22:35:32.902182+00:00
 parent: GQLITE-I-0031
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -36,6 +36,8 @@ Fix LIKE wildcard injection in STARTS WITH / ENDS WITH transforms by escaping `%
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] STARTS WITH / ENDS WITH patterns containing `%` or `_` are escaped
 - [ ] Generated SQL includes `ESCAPE '\'` clause
 - [ ] Functional tests verify `n.name STARTS WITH 'foo%bar'` matches literally, not as wildcard
@@ -48,4 +50,3 @@ Fix LIKE wildcard injection in STARTS WITH / ENDS WITH transforms by escaping `%
 ## Status Updates
 
 *To be added during implementation*
-

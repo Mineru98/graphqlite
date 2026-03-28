@@ -4,14 +4,14 @@ level: task
 title: "REC-03: Check function registration return values in extension init"
 short_code: "GQLITE-T-0158"
 created_at: 2026-03-28T13:59:13.846973+00:00
-updated_at: 2026-03-28T13:59:13.846973+00:00
+updated_at: 2026-03-28T22:33:16.659802+00:00
 parent: GQLITE-I-0031
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -37,6 +37,8 @@ Check return value of every `sqlite3_create_function()` call in `sqlite3_graphql
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] Every `sqlite3_create_function` call in both files has its return value checked
 - [ ] On failure, `connection_cache` is freed and error code is returned
 - [ ] All unit and functional tests pass
@@ -48,4 +50,3 @@ Check return value of every `sqlite3_create_function()` call in `sqlite3_graphql
 ## Status Updates
 
 *To be added during implementation*
-

@@ -148,17 +148,19 @@ int transform_binary_operation(cypher_transform_context *ctx, cypher_binary_op *
         return 0;
     }
 
-    /* Handle STARTS WITH operator - string starts with prefix */
+    /* Handle STARTS WITH operator - string starts with prefix.
+     * Escape LIKE metacharacters (%, _, \) in the pattern value so that
+     * STARTS WITH 'admin_' only matches literal underscore, not any char. */
     if (binary_op->op_type == BINARY_OP_STARTS_WITH) {
         append_sql(ctx, "(");
         if (transform_expression(ctx, binary_op->left) < 0) {
             return -1;
         }
-        append_sql(ctx, " LIKE ");
+        append_sql(ctx, " LIKE replace(replace(replace(");
         if (transform_expression(ctx, binary_op->right) < 0) {
             return -1;
         }
-        append_sql(ctx, " || '%%')");  /* %% escapes to literal % in printf */
+        append_sql(ctx, ", '\\', '\\\\'), '%%', '\\%%'), '_', '\\_') || '%%' ESCAPE '\\')");
         ctx->in_comparison = was_in_comparison;
         return 0;
     }
@@ -169,11 +171,11 @@ int transform_binary_operation(cypher_transform_context *ctx, cypher_binary_op *
         if (transform_expression(ctx, binary_op->left) < 0) {
             return -1;
         }
-        append_sql(ctx, " LIKE '%%' || ");  /* %% escapes to literal % in printf */
+        append_sql(ctx, " LIKE '%%' || replace(replace(replace(");
         if (transform_expression(ctx, binary_op->right) < 0) {
             return -1;
         }
-        append_sql(ctx, ")");
+        append_sql(ctx, ", '\\', '\\\\'), '%%', '\\%%'), '_', '\\_') ESCAPE '\\')");
         ctx->in_comparison = was_in_comparison;
         return 0;
     }
