@@ -1,92 +1,35 @@
 ---
-id: startnode-and-endnode-return
+id: duration-arithmetic-and-temporal
 level: task
-title: "startNode() and endNode() return integer ID instead of Node"
-short_code: "GQLITE-T-0146"
-created_at: 2026-03-28T00:47:02.423475+00:00
-updated_at: 2026-03-28T01:55:02.249449+00:00
+title: "Duration arithmetic and temporal operator support"
+short_code: "GQLITE-T-0137"
+created_at: 2026-03-17T13:41:59.655313+00:00
+updated_at: 2026-03-17T19:16:53.987715+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#bug"
-  - "#phase/active"
+  - "#feature"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# startNode() and endNode() return integer ID instead of Node
+# Duration arithmetic and temporal operator support
 
-**GitHub Issue**: #41
-**Priority**: P2 - Medium
-
-## Objective
-
-Make `startNode()` and `endNode()` return Node objects instead of raw integer IDs, enabling function composition (`elementId(startNode(r))`) and property access (`startNode(r).name`).
-
-## Bug Description
-
-`startNode(r)` and `endNode(r)` return an integer (the node's internal ID) instead of a Node object. This prevents:
-- Function composition: `elementId(startNode(r))` fails with "Failed to transform RETURN clause"
-- Property access: `startNode(r).name` fails similarly
-
-## Root Cause
-
-In `src/backend/transform/transform_func_path.c` (lines 211, 254):
-- `startNode()` generates: `SELECT source_id FROM edges WHERE id = ...`
-- `endNode()` generates: `SELECT target_id FROM edges WHERE id = ...`
-
-These return raw integer IDs from the `edges` table rather than resolving to full node references that downstream transforms can use for property access.
-
-## Reproduction
-
-```cypher
-CREATE (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
-MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'}) CREATE (a)-[:KNOWS]->(b)
-
-MATCH ()-[r:KNOWS]->() RETURN startNode(r)        -- Returns: 1 (int, not Node)
-MATCH ()-[r:KNOWS]->() RETURN startNode(r).name   -- Error: Failed to transform
-MATCH ()-[r:KNOWS]->() RETURN endNode(r).name     -- Error: Failed to transform
-```
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-- [ ] `startNode(r).name` returns the source node's property value
-- [ ] `endNode(r).name` returns the target node's property value
-- [ ] `elementId(startNode(r))` works (function composition)
-- [ ] Repro tests pass: `TestIssue41` in `test_issue_repro.py`, tests 41a/41b in `11_issue_repro.sql`
-
-## Affected Files
-
-- `src/backend/transform/transform_func_path.c` — change startNode/endNode to return node references
-
-## Status Updates
-
-### 2026-03-27: Implementation complete
-
-**Change:** `src/backend/transform/transform_expr_ops.c` — Added `AST_NODE_FUNCTION_CALL` handling in `transform_property_access()` for `startNode()` and `endNode()`. When property access is done on these functions (e.g., `startNode(r).name`), generates a COALESCE property lookup using the node ID subquery from the function as the `node_id`.
-
-**Test results:**
-- 921/921 C unit tests pass
-- `TestIssue41::test_startnode_property_access` — PASSES (`startNode(r).name` returns "Alice")
-- `TestIssue41::test_endnode_property_access` — PASSES (`endNode(r).name` returns "Bob")
-- All 43 functional test files pass
+*This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**
 
 [[Parent Initiative]]
 
-## Objective **[REQUIRED]**
+## Objective
 
-{Clear statement of what this task accomplishes}
+Implement temporal operators: `date + duration`, `datetime - duration`, `duration * number`, `duration / number`. Depends on GQLITE-T-0131 (temporal types). This is the operator-level support that makes temporal types usable in expressions and comparisons. Coverage matrix Section 5.9.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -121,6 +64,14 @@ MATCH ()-[r:KNOWS]->() RETURN endNode(r).name     -- Error: Failed to transform
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria **[REQUIRED]**
 
@@ -189,6 +140,23 @@ MATCH ()-[r:KNOWS]->() RETURN endNode(r).name     -- Error: Failed to transform
 ### Risk Considerations
 {Technical risks and mitigation strategies}
 
-## Status Updates **[REQUIRED]**
+## Status Updates
 
-*To be added during implementation*
+### Implementation Complete
+
+**Function-based temporal arithmetic:**
+- `dateAdd(temporal, duration_map)` — add duration to date/datetime
+  - `dateAdd("2024-01-15", {days: 30})` → `"2024-02-14"`
+  - `dateAdd("2024-01-15", {years: 1, months: 2, days: 10})` → `"2025-03-25"`
+- `dateSub(temporal, duration_map)` — subtract duration from date/datetime
+  - `dateSub("2024-06-15", {months: 3, days: 5})` → `"2024-03-10"`
+- Works with `duration()` function: `dateAdd("2024-01-01", duration({days: 100}))`
+
+**Design decision:** Implemented as functions (`dateAdd`/`dateSub`) rather than operator overloading (`date + duration`) because the `+` operator transform emits SQL before knowing operand types. Detecting temporal types at transform time would require type inference across the entire expression tree.
+
+**Not implemented:** Operator-level `date + duration` via `+`. Would need either:
+- Type annotations on variables from MATCH
+- A runtime function that detects input types
+- Pre-transform type inference pass
+
+**Tests**: 880 unit pass

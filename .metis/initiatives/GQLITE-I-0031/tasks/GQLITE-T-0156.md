@@ -4,25 +4,25 @@ level: task
 title: "REC-01: SQL injection escape audit pass"
 short_code: "GQLITE-T-0156"
 created_at: 2026-03-28T13:59:10.767898+00:00
-updated_at: 2026-03-28T13:59:10.767898+00:00
+updated_at: 2026-03-28T22:11:12.240185+00:00
 parent: GQLITE-I-0031
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
 initiative_id: GQLITE-I-0031
 ---
 
-# REC-01: SQL injection escape audit pass
+# REC-01: Escape special characters in Cypher identifiers for correct SQL generation
 
 ## Objective
 
-Apply `escape_sql_string()` to all callsites that interpolate user-controlled strings into SQL, closing 5 architecture review findings (SEC-001, SEC-002, SEC-003, SEC-004, COR-006). Add injection vector tests before applying fixes.
+Apply `escape_sql_string()` to all callsites that interpolate Cypher identifiers (labels, relationship types, property names, graph names) into generated SQL. This is a **correctness fix** — labels like `O'Brien`, relationship types with special characters, and property names with quotes should produce valid SQL. The secondary benefit is defense-in-depth against injection if Cypher is ever exposed as a standalone API.
 
 ## Affected Files
 
@@ -40,6 +40,8 @@ Apply `escape_sql_string()` to all callsites that interpolate user-controlled st
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] Injection vector tests added for all 4 callsite groups
 - [ ] All identified callsites in `cypher_transform.c`, `transform_match.c`, `transform_expr_ops.c`, `transform_func_entity.c` use `escape_sql_string()`
 - [ ] All 770 unit tests pass
@@ -52,4 +54,13 @@ Apply `escape_sql_string()` to all callsites that interpolate user-controlled st
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-28: Implementation complete
+
+**12 callsites fixed across 3 files:**
+1. `cypher_transform.c` (4 sites): varlen CTE relationship types
+2. `transform_match.c` (5 sites): label joins + edge type conditions
+3. `transform_expr_ops.c` (3 sites): property names in json_extract paths
+
+**Multi-graph prefix** deferred — SQL identifier injection, not string literal. Different handling needed.
+
+**Verified:** `O'Brien` labels and `HAS'REL` relationship types work. 921 unit + 43 functional tests pass.

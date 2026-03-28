@@ -1,95 +1,35 @@
 ---
-id: delete-return-count-always-returns
+id: temporal-types-and-functions-date
 level: task
-title: "DELETE + RETURN COUNT always returns 0"
-short_code: "GQLITE-T-0145"
-created_at: 2026-03-28T00:47:01.298353+00:00
-updated_at: 2026-03-28T01:12:53.919973+00:00
+title: "Temporal types and functions (date, time, datetime, duration construction and arithmetic)"
+short_code: "GQLITE-T-0131"
+created_at: 2026-03-17T13:40:21.332883+00:00
+updated_at: 2026-03-17T19:12:13.684239+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#bug"
-  - "#phase/active"
+  - "#feature"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# DELETE + RETURN COUNT always returns 0
+# Temporal types and functions (date, time, datetime, duration construction and arithmetic)
 
-**GitHub Issue**: #39
-**Priority**: P2 - Medium
-
-## Objective
-
-Fix DELETE + RETURN COUNT to report the actual number of deleted entities instead of always returning 0.
-
-## Bug Description
-
-`MATCH (n:Temp) DETACH DELETE n RETURN COUNT(n) AS deleted_count` returns 0 even though nodes are successfully deleted. The count goes from 3 to 0 in a subsequent query, but the inline RETURN reports 0.
-
-## Root Cause
-
-In `query_dispatch.c` (lines 645-663), `handle_match_delete` first executes the DELETE (which removes the nodes), then re-executes the MATCH+RETURN query against the now-empty graph. COUNT operates on zero rows because the nodes no longer exist.
-
-This is acknowledged in archived task `GQLITE-T-0110` line 107: "deleted entities won't be found by the re-query."
-
-The fix requires capturing the matched row count before deletion and injecting it into the RETURN result.
-
-## Reproduction
-
-```cypher
-CREATE (n:Temp {id: '1'})
-CREATE (n:Temp {id: '2'})
-CREATE (n:Temp {id: '3'})
-
-MATCH (n:Temp) RETURN count(n) AS cnt  -- Returns 3
-MATCH (n:Temp) DETACH DELETE n RETURN COUNT(n) AS deleted_count  -- Returns 0 (bug)
-MATCH (n:Temp) RETURN count(n) AS cnt  -- Returns 0 (nodes gone)
-```
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-- [ ] `DELETE n RETURN COUNT(n)` returns the number of deleted nodes
-- [ ] `DETACH DELETE n RETURN COUNT(n)` returns the number of deleted nodes
-- [ ] Simple `DELETE` without RETURN still works
-- [ ] Repro test passes: `TestIssue39` in `test_issue_repro.py`, test 39b in `11_issue_repro.sql`
-
-## Affected Files
-
-- `src/backend/executor/query_dispatch.c` — `handle_match_delete` needs to capture pre-delete count
-- `src/backend/executor/executor_delete.c` — may need to pass count info to result
-
-## Status Updates
-
-### 2026-03-27: Implementation complete
-
-**Change:** `src/backend/executor/query_dispatch.c` — added `synthesize_delete_return()` function that detects when a RETURN clause after DELETE contains only COUNT aggregates, and synthesizes the result directly from `nodes_deleted + relationships_deleted` instead of re-querying the now-empty graph. Sets `data_types` to `SQLITE_INTEGER` so the JSON output renders as a number, not a string.
-
-Falls back to the original re-query path for non-COUNT RETURN clauses.
-
-**Test results:**
-- 921/921 C unit tests pass
-- `TestIssue39::test_delete_return_count` — PASSES (was returning 0, now returns 3)
-- Cypher: `[{"deleted_count":3}]` (correct integer output)
-- All 3 existing Python DELETE tests pass
-- All 43 functional test files pass
+*This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**
 
 [[Parent Initiative]]
 
-## Objective **[REQUIRED]**
+## Objective
 
-{Clear statement of what this task accomplishes}
+Implement full temporal support: `date({year, month, day})`, `date(string)`, `time({...})`, `datetime({...})`, `localdatetime({...})`, `duration({...})`, `duration(string)`, `duration.between()`, `duration.inMonths/Days/Seconds()`, temporal truncation, and temporal arithmetic (`date + duration`, `datetime - duration`). Currently only `date()`, `time()`, `datetime()` return current values. This is the single largest spec gap. Coverage matrix Sections 7.10, 5.9, 8.1.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -124,6 +64,14 @@ Falls back to the original re-query path for non-COUNT RETURN clauses.
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria **[REQUIRED]**
 
@@ -192,6 +140,34 @@ Falls back to the original re-query path for non-COUNT RETURN clauses.
 ### Risk Considerations
 {Technical risks and mitigation strategies}
 
-## Status Updates **[REQUIRED]**
+## Status Updates
 
-*To be added during implementation*
+### Implementation Complete
+
+**Map-based construction (new):**
+- `date({year: 2024, month: 3, day: 15})` → `"2024-03-15"` via printf/json_extract
+- `time({hour: 14, minute: 30, second: 45})` → `"14:30:45"`
+- `datetime({year: 2024, month: 6, day: 15, hour: 10, minute: 30})` → `"2024-06-15T10:30:00"`
+
+**Duration type (new):**
+- `duration({days: 5, hours: 3})` → JSON object `{"years":0,"months":0,"days":5,"hours":3,...}`
+- `duration(string)` → passthrough for ISO 8601 strings
+
+**Epoch conversion (new):**
+- `datetimeFromEpoch(seconds)` → `datetime(seconds, 'unixepoch')`
+- `datetimeFromEpochMillis(ms)` → `datetime(ms/1000, 'unixepoch')`
+
+**Duration utility functions (new):**
+- `durationInDays(t1, t2)` → integer days via julianday difference
+- `durationInSeconds(t1, t2)` → integer seconds
+- `durationInMonths(t1, t2)` → approximate months (30.44 days/month)
+- `durationBetween(t1, t2)` → JSON duration object
+
+**Truncation (new):**
+- `dateTruncate(unit, temporal)` → `date(temporal, 'start of ' || unit)`
+
+**Also added:** `localtime()` as alias for `time()`
+
+**Not implemented:** ISO 8601 duration string parsing (P1Y2M3D), temporal property types in storage (stored as text). These would need custom C functions.
+
+**Tests**: 880 unit, 226 Python pass

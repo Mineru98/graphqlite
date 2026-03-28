@@ -7,7 +7,7 @@ created_at: 2026-03-17T13:37:47.299840+00:00
 updated_at: 2026-03-17T14:20:26.208943+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -36,6 +36,8 @@ Support `RETURN *` and `WITH *` to return all bound variables without listing th
 ### Business Justification
 - **User Value**: `RETURN *` is one of the most commonly used Cypher shortcuts. Every tutorial uses it. Its absence surprises users immediately.
 - **Effort Estimate**: M — requires tracking bound variables through parse/transform
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

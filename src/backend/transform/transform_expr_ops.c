@@ -321,7 +321,9 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
         append_sql(ctx, "json_extract(");
         if (transform_property_access(ctx, (cypher_property*)prop->expr) < 0) return -1;
         append_sql(ctx, ", '$.");
-        append_sql(ctx, prop->property_name);
+        { char *esc_prop = escape_sql_string(prop->property_name);
+          append_sql(ctx, "%s", esc_prop ? esc_prop : prop->property_name);
+          free(esc_prop); }
         append_sql(ctx, "')");
         return 0;
     }
@@ -331,7 +333,9 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
         append_sql(ctx, "json_extract(");
         if (transform_expression(ctx, prop->expr) < 0) return -1;
         append_sql(ctx, ", '$.");
-        append_sql(ctx, prop->property_name);
+        { char *esc_prop = escape_sql_string(prop->property_name);
+          append_sql(ctx, "%s", esc_prop ? esc_prop : prop->property_name);
+          free(esc_prop); }
         append_sql(ctx, "')");
         return 0;
     }
@@ -406,7 +410,9 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
      * instead of property table lookup. Detect by checking if the alias source
      * references an UNWIND CTE value column. */
     if (is_projected && alias && strstr(alias, "_unwind_") && strstr(alias, ".value")) {
-        append_sql(ctx, "json_extract(%s, '$.%s')", alias, prop->property_name);
+        { char *esc_prop = escape_sql_string(prop->property_name);
+          append_sql(ctx, "json_extract(%s, '$.%s')", alias, esc_prop ? esc_prop : prop->property_name);
+          free(esc_prop); }
         return 0;
     }
 

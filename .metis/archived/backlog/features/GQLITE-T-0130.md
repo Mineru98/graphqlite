@@ -1,13 +1,13 @@
 ---
-id: list-slicing-and-concatenation
+id: additional-scalar-functions
 level: task
-title: "List slicing and concatenation operators"
-short_code: "GQLITE-T-0124"
-created_at: 2026-03-17T13:38:37.208056+00:00
-updated_at: 2026-03-17T15:22:33.573209+00:00
+title: "Additional scalar functions (elementId, nullIf, valueType, char_length)"
+short_code: "GQLITE-T-0130"
+created_at: 2026-03-17T13:40:01.385263+00:00
+updated_at: 2026-03-17T14:37:05.704135+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -19,7 +19,7 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# List slicing and concatenation operators
+# Additional scalar functions (elementId, nullIf, valueType, char_length)
 
 *This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
@@ -29,7 +29,7 @@ initiative_id: NULL
 
 ## Objective
 
-Add list slicing (`list[1..3]`, `list[1..]`, `list[..3]`) and list concatenation (`list1 + list2`) operators.
+Add missing scalar functions: `elementId(node_or_rel)` (replaces deprecated `id()`), `nullIf(expr, expr)` (return null if equal), `valueType(expr)` (return type name as string), `char_length(string)` / `character_length(string)`. Coverage matrix Section 7.2.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -64,6 +64,8 @@ Add list slicing (`list[1..3]`, `list[1..]`, `list[..3]`) and list concatenation
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
@@ -141,6 +143,8 @@ Add list slicing (`list[1..3]`, `list[1..]`, `list[..3]`) and list concatenation
 ## Status Updates
 
 ### Implementation Complete
-- **List slicing**: `list[1..3]`, `list[2..]`, `list[..2]` — grammar rules with `DOT_DOT` token, AST `is_slice`/`slice_start`/`slice_end` fields, SQL via `json_each` with key range filtering
-- **List concatenation**: Deferred — requires architectural change to detect list operands before emitting left side of binary op. Current `+` operator emits left then operator then right, making it impossible to wrap both in a subquery mid-stream.
-- **Tests**: 865 unit tests pass, slicing verified manually
+- **`elementId()`**: Alias for `id()`, registered in dispatch table
+- **`nullIf(expr1, expr2)`**: Maps to SQLite `NULLIF()`, returns NULL when equal
+- **`valueType(expr)`**: Returns Cypher type name ('INTEGER','FLOAT','STRING','NULL') via `typeof()` mapping
+- **`char_length()`/`character_length()`**: Aliases for `LENGTH()` in string function handler
+- **Tests**: 849 unit, 226 Python pass

@@ -1,13 +1,13 @@
 ---
-id: additional-string-functions
+id: spatial-types-and-functions-point
 level: task
-title: "Additional string functions (isEmpty, btrim, normalize)"
-short_code: "GQLITE-T-0129"
-created_at: 2026-03-17T13:39:45.909421+00:00
-updated_at: 2026-03-17T14:31:58.312982+00:00
+title: "Spatial types and functions (point, distance)"
+short_code: "GQLITE-T-0132"
+created_at: 2026-03-17T13:40:43.622092+00:00
+updated_at: 2026-03-17T19:20:05.589139+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -19,7 +19,7 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# Additional string functions (isEmpty, btrim, normalize)
+# Spatial types and functions (point, distance)
 
 *This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
@@ -29,7 +29,7 @@ initiative_id: NULL
 
 ## Objective
 
-Add missing string/predicate functions: `isEmpty(expr)` (check if list/map/string is empty), `btrim(string)` (alias for trim), `normalize(string)` (Unicode normalization). Coverage matrix Sections 7.1, 7.9.
+Implement spatial types: `point({x, y})` (2D Cartesian), `point({latitude, longitude})` (WGS-84), `point({x, y, z})` (3D), `point.distance(p1, p2)`, `point.withinBBox(point, lowerLeft, upperRight)`. Store as JSON in property tables, compute distance via haversine for geographic or Euclidean for Cartesian. Coverage matrix Sections 7.11, 8.1.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -64,6 +64,8 @@ Add missing string/predicate functions: `isEmpty(expr)` (check if list/map/strin
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
@@ -141,7 +143,22 @@ Add missing string/predicate functions: `isEmpty(expr)` (check if list/map/strin
 ## Status Updates
 
 ### Implementation Complete
-- **`isEmpty(expr)`**: Returns true (1) when string/list/map has zero length. Added to dispatch table and `transform_func_list.c`.
-- **`btrim(string)`**: Alias for `trim()`. Added to `transform_func_string.c` dispatch.
-- **`normalize(string)`**: Skipped — requires ICU Unicode support not available in SQLite. Would need a custom C implementation or ICU extension.
-- **Tests**: 849 unit, 226 Python pass
+
+**point() construction:**
+- `point({x: 3, y: 4})` → `{"srid":7203,"x":3,"y":4,"z":null}` (Cartesian)
+- `point({latitude: 40.71, longitude: -74.00})` → `{"srid":4326,...}` (WGS-84)
+- Auto-detects coordinate system by key names (x/y vs latitude/longitude)
+- 3D variants via z/height supported
+
+**point.distance(p1, p2) / distance(p1, p2):**
+- Cartesian: Euclidean `sqrt(dx^2 + dy^2)` — verified `distance({x:0,y:0},{x:3,y:4}) = 5.0`
+- Geographic: Haversine formula in meters — verified NYC-London ≈ 5,570 km
+- Auto-selects formula based on SRID from point
+
+**point.withinBBox(point, lowerLeft, upperRight):**
+- Returns 1/0 for points inside/outside the bounding box
+- Works for both Cartesian and geographic coordinate systems
+
+**Storage:** Points stored as JSON in `node_props_json` table. No new property table types needed.
+
+**Tests**: 880 unit, 226 Python pass

@@ -4,15 +4,15 @@ level: task
 title: "Pattern predicates in WHERE clause (bare relationship patterns as boolean expressions)"
 short_code: "GQLITE-T-0138"
 created_at: 2026-03-20T15:40:21.527463+00:00
-updated_at: 2026-03-20T23:17:50.143661+00:00
+updated_at: 2026-03-28T22:00:44.169702+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
   - "#feature"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -41,6 +41,10 @@ WHERE NOT EXISTS((n)-[:BELONGS_TO]->()) AND NOT EXISTS((n)-[:RELATES_TO]->())
 ```
 
 **Spec basis:** openCypher 9 defines `PatternPredicate` — a `RelationshipsPattern` in a boolean site is semantically equivalent to `EXISTS { MATCH pattern RETURN 1 }`. Neo4j has supported this since at least v2.x. The pattern must contain at least one relationship to be valid.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

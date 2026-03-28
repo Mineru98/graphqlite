@@ -1,98 +1,35 @@
 ---
-id: unwind-does-not-accept-parameter
+id: ornull-type-conversion-variants
 level: task
-title: "UNWIND does not accept parameter references"
-short_code: "GQLITE-T-0144"
-created_at: 2026-03-28T00:47:00.323568+00:00
-updated_at: 2026-03-28T01:42:24.925424+00:00
+title: "OrNull type conversion variants (toIntegerOrNull, toFloatOrNull, etc.)"
+short_code: "GQLITE-T-0126"
+created_at: 2026-03-17T13:39:07.146984+00:00
+updated_at: 2026-03-17T14:34:39.054666+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#bug"
-  - "#phase/active"
+  - "#feature"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# UNWIND does not accept parameter references
+# OrNull type conversion variants (toIntegerOrNull, toFloatOrNull, etc.)
 
-**GitHub Issue**: #37
-**Priority**: P1 - High
-
-## Objective
-
-Add support for parameter references (`$param`) in UNWIND expressions, and support UNWIND over lists of maps with property access on bound map items.
-
-## Bug Description
-
-`UNWIND $param AS row` fails when `$param` is a query parameter containing a list. Only literal lists work. This blocks batch ingestion patterns where data is passed as a parameter array.
-
-Additionally, UNWIND over lists of maps silently skips map items — property access like `item.id` on unwound map items doesn't work.
-
-## Root Cause
-
-In `src/backend/transform/transform_unwind.c`, the expression type switch handles `AST_NODE_LIST`, `AST_NODE_PROPERTY`, `AST_NODE_IDENTIFIER`, and `AST_NODE_FUNCTION_CALL` but NOT `AST_NODE_PARAMETER` (falls through to error at lines 232-234).
-
-For map binding, `query_dispatch.c:859-882` only handles `AST_NODE_LITERAL` items; map items (`AST_NODE_MAP`) are silently skipped.
-
-## Reproduction
-
-```cypher
--- Parameter reference (fails)
-UNWIND $items AS item RETURN item
--- with params: {"items": [1, 2, 3]}
--- Error: "UNWIND requires list literal, property access, variable, or function call"
-
--- Literal list works (control)
-UNWIND [1, 2, 3] AS x RETURN x
--- Returns: [{x:1}, {x:2}, {x:3}]
-```
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-- [ ] `UNWIND $param AS item` works when parameter is a JSON array
-- [ ] `UNWIND $batch AS item RETURN item.id` works when parameter is a list of objects
-- [ ] Existing literal list UNWIND behavior unchanged
-- [ ] Repro tests pass: `TestIssue37` in `test_issue_repro.py`, test 37b in `11_issue_repro.sql`
-
-## Affected Files
-
-- `src/backend/transform/transform_unwind.c` — add `AST_NODE_PARAMETER` case
-- `src/backend/executor/query_dispatch.c` — map item binding in UNWIND loop
-
-## Status Updates
-
-### 2026-03-27: Implementation complete
-
-**Changes (3 files):**
-
-1. **`src/backend/transform/transform_unwind.c`** — Added `AST_NODE_PARAMETER` case that generates `json_each(:param_name)` for parameter-based UNWIND. Removed `sql_select()` call that added an extra column conflicting with RETURN clause column indexing.
-
-2. **`src/backend/transform/transform_expr_ops.c`** — Added UNWIND JSON property access: when accessing a property on an UNWIND variable (detected by `_unwind_` prefix in projected source), generate `json_extract(source, '$.property')` instead of property table lookups.
-
-**Test results:**
-- 921/921 C unit tests pass
-- `TestIssue37::test_unwind_parameter_list` — PASSES (scalar parameter list)
-- `TestIssue37::test_unwind_parameter_map_list` — PASSES (map list + property access)
-- Literal UNWIND still works: `UNWIND [1,2,3] AS x RETURN x` → `[{x:1},{x:2},{x:3}]`
-- All 43 functional test files pass
+*This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**
 
 [[Parent Initiative]]
 
-## Objective **[REQUIRED]**
+## Objective
 
-{Clear statement of what this task accomplishes}
+Add safe type conversion functions that return null instead of error on failure: `toIntegerOrNull()`, `toFloatOrNull()`, `toBooleanOrNull()`, `toStringOrNull()`. Also add list conversion variants: `toBooleanList()`, `toFloatList()`, `toIntegerList()`, `toStringList()`. Coverage matrix Section 7.3.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -127,6 +64,14 @@ UNWIND [1, 2, 3] AS x RETURN x
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria **[REQUIRED]**
 
@@ -195,6 +140,12 @@ UNWIND [1, 2, 3] AS x RETURN x
 ### Risk Considerations
 {Technical risks and mitigation strategies}
 
-## Status Updates **[REQUIRED]**
+## Status Updates
 
-*To be added during implementation*
+### Implementation Complete
+- **`toIntegerOrNull()`**: Returns NULL for non-numeric strings, CAST AS INTEGER otherwise
+- **`toFloatOrNull()`**: Returns NULL for non-numeric, CAST AS REAL otherwise
+- **`toBooleanOrNull()`**: Returns NULL if not in ('true','false','1','0'), boolean otherwise
+- **`toStringOrNull()`**: CAST AS TEXT (always succeeds for non-null, NULL for null)
+- **List conversion variants** (`toBooleanList` etc.): Deferred — requires list iteration via json_each, lower priority
+- **Tests**: 849 unit, 226 Python pass

@@ -7,7 +7,7 @@ created_at: 2026-02-07T02:09:58.717879+00:00
 updated_at: 2026-03-17T14:28:25.291440+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -39,6 +39,8 @@ Make GraphQLite errors actionable with precise parse errors (line/column, expect
 - **User Value**: Developers can pinpoint exactly where and why a query fails instead of guessing from generic messages
 - **Business Value**: Reduces debugging time; enables tooling (IDE integration, linters) built on the validate API
 - **Effort Estimate**: M - Parser error plumbing + new validation API surface
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

@@ -759,7 +759,9 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
 
     /* Add type constraint if specified */
     if (rel->type) {
-        dbuf_appendf(&cte_query, " WHERE e.type = '%s'", rel->type);
+        { char *esc = escape_sql_string(rel->type);
+          dbuf_appendf(&cte_query, " WHERE e.type = '%s'", esc ? esc : rel->type);
+          free(esc); }
     } else if (rel->types && rel->types->count > 0) {
         dbuf_append(&cte_query, " WHERE (");
         for (int t = 0; t < rel->types->count; t++) {
@@ -767,7 +769,9 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
                 dbuf_append(&cte_query, " OR ");
             }
             cypher_literal *type_lit = (cypher_literal*)rel->types->items[t];
-            dbuf_appendf(&cte_query, "e.type = '%s'", type_lit->value.string);
+            { char *esc = escape_sql_string(type_lit->value.string);
+              dbuf_appendf(&cte_query, "e.type = '%s'", esc ? esc : type_lit->value.string);
+              free(esc); }
         }
         dbuf_append(&cte_query, ")");
     }
@@ -793,7 +797,9 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
 
     /* Add type constraint to recursive case */
     if (rel->type) {
-        dbuf_appendf(&cte_query, " AND e.type = '%s'", rel->type);
+        { char *esc = escape_sql_string(rel->type);
+          dbuf_appendf(&cte_query, " AND e.type = '%s'", esc ? esc : rel->type);
+          free(esc); }
     } else if (rel->types && rel->types->count > 0) {
         dbuf_append(&cte_query, " AND (");
         for (int t = 0; t < rel->types->count; t++) {
@@ -801,7 +807,9 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
                 dbuf_append(&cte_query, " OR ");
             }
             cypher_literal *type_lit = (cypher_literal*)rel->types->items[t];
-            dbuf_appendf(&cte_query, "e.type = '%s'", type_lit->value.string);
+            { char *esc = escape_sql_string(type_lit->value.string);
+              dbuf_appendf(&cte_query, "e.type = '%s'", esc ? esc : type_lit->value.string);
+              free(esc); }
         }
         dbuf_append(&cte_query, ")");
     }

@@ -758,8 +758,10 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
                 char nl_alias[64];
                 snprintf(nl_alias, sizeof(nl_alias), "_nl_%s_%d", alias, i);
                 dbuf_init(&on_cond);
-                dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
-                             nl_alias, node_id, nl_alias, label);
+                { char *esc_label = escape_sql_string(label);
+                  dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
+                               nl_alias, node_id, nl_alias, esc_label ? esc_label : label);
+                  free(esc_label); }
                 sql_join(ctx->unified_builder, SQL_JOIN_INNER, get_graph_table(ctx, "node_labels"), nl_alias, dbuf_get(&on_cond));
                 dbuf_free(&on_cond);
             }
@@ -946,8 +948,10 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
                     char nl_alias[64];
                     snprintf(nl_alias, sizeof(nl_alias), "_nl_%s_%d", target_alias, i);
                     dbuf_init(&on_cond);
-                    dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
-                                 nl_alias, target_id, nl_alias, label);
+                    { char *esc_label = escape_sql_string(label);
+                      dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
+                                   nl_alias, target_id, nl_alias, esc_label ? esc_label : label);
+                      free(esc_label); }
                     sql_join(ctx->unified_builder, SQL_JOIN_INNER, get_graph_table(ctx, "node_labels"), nl_alias, dbuf_get(&on_cond));
                     dbuf_free(&on_cond);
                 }
@@ -1002,7 +1006,9 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
             /* Add relationship type constraint to edge JOIN */
             if (rel->type) {
                 /* Single type (legacy support) */
-                dbuf_appendf(&edge_cond, " AND %s.type = '%s'", edge_alias, rel->type);
+                { char *esc = escape_sql_string(rel->type);
+                  dbuf_appendf(&edge_cond, " AND %s.type = '%s'", edge_alias, esc ? esc : rel->type);
+                  free(esc); }
             } else if (rel->types && rel->types->count > 0) {
                 /* Multiple types - generate OR conditions */
                 dbuf_append(&edge_cond, " AND (");
@@ -1011,7 +1017,9 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
                         dbuf_append(&edge_cond, " OR ");
                     }
                     cypher_literal *type_lit = (cypher_literal*)rel->types->items[t];
-                    dbuf_appendf(&edge_cond, "%s.type = '%s'", edge_alias, type_lit->value.string);
+                    { char *esc = escape_sql_string(type_lit->value.string);
+                      dbuf_appendf(&edge_cond, "%s.type = '%s'", edge_alias, esc ? esc : type_lit->value.string);
+                      free(esc); }
                 }
                 dbuf_append(&edge_cond, ")");
             }
@@ -1043,10 +1051,12 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
                     for (int i = 0; i < target_node->labels->count; i++) {
                         const char *label = get_label_string(target_node->labels->items[i]);
                         if (label) {
-                            dbuf_appendf(&target_cond,
+                            { char *esc_label = escape_sql_string(label);
+                              dbuf_appendf(&target_cond,
                                 " AND EXISTS (SELECT 1 FROM %snode_labels WHERE node_id = %s.id AND label = '%s')",
                                 ctx->current_graph ? ctx->current_graph : "",
-                                target_alias, label);
+                                target_alias, esc_label ? esc_label : label);
+                              free(esc_label); }
                         }
                     }
 

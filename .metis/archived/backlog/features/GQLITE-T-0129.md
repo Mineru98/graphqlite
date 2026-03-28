@@ -1,13 +1,13 @@
 ---
-id: temporal-types-and-functions-date
+id: additional-string-functions
 level: task
-title: "Temporal types and functions (date, time, datetime, duration construction and arithmetic)"
-short_code: "GQLITE-T-0131"
-created_at: 2026-03-17T13:40:21.332883+00:00
-updated_at: 2026-03-17T19:12:13.684239+00:00
+title: "Additional string functions (isEmpty, btrim, normalize)"
+short_code: "GQLITE-T-0129"
+created_at: 2026-03-17T13:39:45.909421+00:00
+updated_at: 2026-03-17T14:31:58.312982+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -19,7 +19,7 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# Temporal types and functions (date, time, datetime, duration construction and arithmetic)
+# Additional string functions (isEmpty, btrim, normalize)
 
 *This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
@@ -29,7 +29,7 @@ initiative_id: NULL
 
 ## Objective
 
-Implement full temporal support: `date({year, month, day})`, `date(string)`, `time({...})`, `datetime({...})`, `localdatetime({...})`, `duration({...})`, `duration(string)`, `duration.between()`, `duration.inMonths/Days/Seconds()`, temporal truncation, and temporal arithmetic (`date + duration`, `datetime - duration`). Currently only `date()`, `time()`, `datetime()` return current values. This is the single largest spec gap. Coverage matrix Sections 7.10, 5.9, 8.1.
+Add missing string/predicate functions: `isEmpty(expr)` (check if list/map/string is empty), `btrim(string)` (alias for trim), `normalize(string)` (Unicode normalization). Coverage matrix Sections 7.1, 7.9.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -64,6 +64,8 @@ Implement full temporal support: `date({year, month, day})`, `date(string)`, `ti
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
@@ -141,31 +143,7 @@ Implement full temporal support: `date({year, month, day})`, `date(string)`, `ti
 ## Status Updates
 
 ### Implementation Complete
-
-**Map-based construction (new):**
-- `date({year: 2024, month: 3, day: 15})` → `"2024-03-15"` via printf/json_extract
-- `time({hour: 14, minute: 30, second: 45})` → `"14:30:45"`
-- `datetime({year: 2024, month: 6, day: 15, hour: 10, minute: 30})` → `"2024-06-15T10:30:00"`
-
-**Duration type (new):**
-- `duration({days: 5, hours: 3})` → JSON object `{"years":0,"months":0,"days":5,"hours":3,...}`
-- `duration(string)` → passthrough for ISO 8601 strings
-
-**Epoch conversion (new):**
-- `datetimeFromEpoch(seconds)` → `datetime(seconds, 'unixepoch')`
-- `datetimeFromEpochMillis(ms)` → `datetime(ms/1000, 'unixepoch')`
-
-**Duration utility functions (new):**
-- `durationInDays(t1, t2)` → integer days via julianday difference
-- `durationInSeconds(t1, t2)` → integer seconds
-- `durationInMonths(t1, t2)` → approximate months (30.44 days/month)
-- `durationBetween(t1, t2)` → JSON duration object
-
-**Truncation (new):**
-- `dateTruncate(unit, temporal)` → `date(temporal, 'start of ' || unit)`
-
-**Also added:** `localtime()` as alias for `time()`
-
-**Not implemented:** ISO 8601 duration string parsing (P1Y2M3D), temporal property types in storage (stored as text). These would need custom C functions.
-
-**Tests**: 880 unit, 226 Python pass
+- **`isEmpty(expr)`**: Returns true (1) when string/list/map has zero length. Added to dispatch table and `transform_func_list.c`.
+- **`btrim(string)`**: Alias for `trim()`. Added to `transform_func_string.c` dispatch.
+- **`normalize(string)`**: Skipped — requires ICU Unicode support not available in SQLite. Would need a custom C implementation or ICU extension.
+- **Tests**: 849 unit, 226 Python pass

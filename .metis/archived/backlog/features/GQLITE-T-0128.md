@@ -1,13 +1,13 @@
 ---
-id: additional-scalar-functions
+id: additional-trigonometric-and-math
 level: task
-title: "Additional scalar functions (elementId, nullIf, valueType, char_length)"
-short_code: "GQLITE-T-0130"
-created_at: 2026-03-17T13:40:01.385263+00:00
-updated_at: 2026-03-17T14:37:05.704135+00:00
+title: "Additional trigonometric and math functions (atan2, degrees, radians, hyperbolic)"
+short_code: "GQLITE-T-0128"
+created_at: 2026-03-17T13:39:33.974919+00:00
+updated_at: 2026-03-17T18:57:48.496440+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -19,7 +19,7 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# Additional scalar functions (elementId, nullIf, valueType, char_length)
+# Additional trigonometric and math functions (atan2, degrees, radians, hyperbolic)
 
 *This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
@@ -29,7 +29,7 @@ initiative_id: NULL
 
 ## Objective
 
-Add missing scalar functions: `elementId(node_or_rel)` (replaces deprecated `id()`), `nullIf(expr, expr)` (return null if equal), `valueType(expr)` (return type name as string), `char_length(string)` / `character_length(string)`. Coverage matrix Section 7.2.
+Add missing math/trig functions: `atan2(y, x)`, `cot(expr)`, `degrees(expr)`, `radians(expr)`, `haversin(expr)`, `isNaN(expr)`, `round(expr, precision, mode)`. Also hyperbolic: `sinh`, `cosh`, `tanh`, `coth`. Coverage matrix Sections 7.6-7.8.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -64,6 +64,8 @@ Add missing scalar functions: `elementId(node_or_rel)` (replaces deprecated `id(
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
@@ -140,9 +142,14 @@ Add missing scalar functions: `elementId(node_or_rel)` (replaces deprecated `id(
 
 ## Status Updates
 
-### Implementation Complete
-- **`elementId()`**: Alias for `id()`, registered in dispatch table
-- **`nullIf(expr1, expr2)`**: Maps to SQLite `NULLIF()`, returns NULL when equal
-- **`valueType(expr)`**: Returns Cypher type name ('INTEGER','FLOAT','STRING','NULL') via `typeof()` mapping
-- **`char_length()`/`character_length()`**: Aliases for `LENGTH()` in string function handler
-- **Tests**: 849 unit, 226 Python pass
+### Implementation Complete (13 new functions)
+- **`atan2(y, x)`**: Direct SQLite ATAN2
+- **`cot(x)`**: `1.0/tan(x)`
+- **`degrees(x)`**: `x * 180 / pi`
+- **`radians(x)`**: `x * pi / 180`
+- **`haversin(x)`**: `(1 - cos(x)) / 2`
+- **`sinh(x)`/`cosh(x)`/`tanh(x)`**: Direct SQLite (3.35+)
+- **`coth(x)`**: `1.0/tanh(x)`
+- **`isNaN(x)`**: `x != x` (returns 0 for numbers, null for SQLite NULL — SQLite doesn't produce IEEE NaN)
+- **`round(x, precision, mode)`**: Deferred — SQLite ROUND doesn't support rounding modes
+- **Tests**: 865 unit pass

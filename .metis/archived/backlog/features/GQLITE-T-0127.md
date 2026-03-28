@@ -1,90 +1,35 @@
 ---
-id: size-labels-n-returns-string
+id: statistical-aggregate-functions
 level: task
-title: "size(labels(n)) returns string length instead of list length"
-short_code: "GQLITE-T-0147"
-created_at: 2026-03-28T00:47:03.841649+00:00
-updated_at: 2026-03-28T01:08:49.550927+00:00
+title: "Statistical aggregate functions (stDev, percentileCont, percentileDisc)"
+short_code: "GQLITE-T-0127"
+created_at: 2026-03-17T13:39:21.531001+00:00
+updated_at: 2026-03-17T18:52:17.843201+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#bug"
-  - "#phase/active"
+  - "#feature"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# size(labels(n)) returns string length instead of list length
+# Statistical aggregate functions (stDev, percentileCont, percentileDisc)
 
-**GitHub Issue**: #42
-**Priority**: P2 - Medium
-
-## Objective
-
-Fix `size()` to return the element count when applied to list-returning functions like `labels()`, `keys()`, etc., instead of the string length of the JSON representation.
-
-## Bug Description
-
-`size(labels(n))` returns the character count of the JSON string (e.g., 12 for `["LabelA42"]`) instead of the number of labels (1). `size()` on literal lists works correctly.
-
-## Root Cause
-
-In `src/backend/transform/transform_func_string.c` (lines 54-68), `size()` only checks for `AST_NODE_LIST` (literal list syntax) to decide whether to use `json_array_length()`. When the argument is a function call like `labels()`, it falls through to `LENGTH()` (string length).
-
-`labels()` in `transform_func_entity.c` returns a JSON array via `json_group_array()`, but `size()` doesn't recognize it as a list.
-
-## Reproduction
-
-```cypher
-CREATE (a:LabelA {id: 'a'})
-CREATE (b:LabelA:LabelB {id: 'b'})
-
-MATCH (n:LabelA {id: 'a'}) RETURN size(labels(n)) AS sz  -- Returns 12 (bug), expected 1
-MATCH (n {id: 'b'}) RETURN size(labels(n)) AS sz          -- Returns 23 (bug), expected 2
-RETURN size([1, 2, 3]) AS sz                               -- Returns 3 (correct, control)
-```
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-## Acceptance Criteria
-
-- [ ] `size(labels(n))` returns the number of labels
-- [ ] `size([literal list])` still works correctly
-- [ ] `size()` on strings still returns string length
-- [ ] Repro tests pass: `TestIssue42` in `test_issue_repro.py`, tests 42a/42b in `11_issue_repro.sql`
-
-## Affected Files
-
-- `src/backend/transform/transform_func_string.c` — detect list-returning function calls in `size()` and use `json_array_length()` instead of `LENGTH()`
-
-## Status Updates
-
-### 2026-03-27: Implementation complete
-
-**Change:** `src/backend/transform/transform_func_string.c` — extended `size()` handling to detect `AST_NODE_FUNCTION_CALL` arguments from known list-returning functions (`labels`, `keys`, `nodes`, `relationships`, `collect`, `range`, `tail`, `split`, `json_keys`) and use `json_array_length()` instead of `LENGTH()`.
-
-**Test results:**
-- 921/921 C unit tests pass
-- `TestIssue42::test_size_labels_single` — PASSES (was returning 12, now returns 1)
-- `TestIssue42::test_size_labels_multiple` — PASSES (was returning 23, now returns 2)
-- `size("hello")` = 5 (string length still works)
-- `size([1,2,3])` = 3 (literal list still works)
-- All 43 functional test files pass
+*This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**
 
 [[Parent Initiative]]
 
-## Objective **[REQUIRED]**
+## Objective
 
-{Clear statement of what this task accomplishes}
+Add statistical aggregate functions: `stDev(expr)` (sample std dev), `stDevP(expr)` (population std dev), `percentileCont(expr, pct)` (continuous/interpolated), `percentileDisc(expr, pct)` (discrete/nearest). Coverage matrix Section 7.4.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -119,6 +64,14 @@ RETURN size([1, 2, 3]) AS sz                               -- Returns 3 (correct
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria **[REQUIRED]**
 
@@ -187,6 +140,12 @@ RETURN size([1, 2, 3]) AS sz                               -- Returns 3 (correct
 ### Risk Considerations
 {Technical risks and mitigation strategies}
 
-## Status Updates **[REQUIRED]**
+## Status Updates
 
-*To be added during implementation*
+### Implementation Complete
+- **`stDev(expr)`**: Sample std dev using `sqrt(N/(N-1) * (AVG(x*x) - AVG(x)*AVG(x)))` — verified [10,20,30,40,50] = 15.81
+- **`stDevP(expr)`**: Population std dev using `sqrt(AVG(x*x) - AVG(x)*AVG(x))` — verified = 14.14
+- **`percentileCont(expr, pct)`**: Continuous (interpolated) percentile via ordered subquery with LIMIT/OFFSET
+- **`percentileDisc(expr, pct)`**: Discrete (nearest value) percentile via ordered subquery
+- **Note**: percentile functions use simplified subquery approach that works for basic cases but may not handle all edge cases (empty sets, extreme percentiles)
+- **Tests**: 865 unit, 226 Python pass

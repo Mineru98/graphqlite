@@ -1,13 +1,13 @@
 ---
-id: duration-arithmetic-and-temporal
+id: list-slicing-and-concatenation
 level: task
-title: "Duration arithmetic and temporal operator support"
-short_code: "GQLITE-T-0137"
-created_at: 2026-03-17T13:41:59.655313+00:00
-updated_at: 2026-03-17T19:16:53.987715+00:00
+title: "List slicing and concatenation operators"
+short_code: "GQLITE-T-0124"
+created_at: 2026-03-17T13:38:37.208056+00:00
+updated_at: 2026-03-17T15:22:33.573209+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -19,7 +19,7 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# Duration arithmetic and temporal operator support
+# List slicing and concatenation operators
 
 *This template includes sections for various types of tasks. Delete sections that don't apply to your specific use case.*
 
@@ -29,7 +29,7 @@ initiative_id: NULL
 
 ## Objective
 
-Implement temporal operators: `date + duration`, `datetime - duration`, `duration * number`, `duration / number`. Depends on GQLITE-T-0131 (temporal types). This is the operator-level support that makes temporal types usable in expressions and comparisons. Coverage matrix Section 5.9.
+Add list slicing (`list[1..3]`, `list[1..]`, `list[..3]`) and list concatenation (`list1 + list2`) operators.
 
 ## Backlog Item Details **[CONDITIONAL: Backlog Item]**
 
@@ -64,6 +64,8 @@ Implement temporal operators: `date + duration`, `datetime - duration`, `duratio
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
@@ -141,20 +143,6 @@ Implement temporal operators: `date + duration`, `datetime - duration`, `duratio
 ## Status Updates
 
 ### Implementation Complete
-
-**Function-based temporal arithmetic:**
-- `dateAdd(temporal, duration_map)` — add duration to date/datetime
-  - `dateAdd("2024-01-15", {days: 30})` → `"2024-02-14"`
-  - `dateAdd("2024-01-15", {years: 1, months: 2, days: 10})` → `"2025-03-25"`
-- `dateSub(temporal, duration_map)` — subtract duration from date/datetime
-  - `dateSub("2024-06-15", {months: 3, days: 5})` → `"2024-03-10"`
-- Works with `duration()` function: `dateAdd("2024-01-01", duration({days: 100}))`
-
-**Design decision:** Implemented as functions (`dateAdd`/`dateSub`) rather than operator overloading (`date + duration`) because the `+` operator transform emits SQL before knowing operand types. Detecting temporal types at transform time would require type inference across the entire expression tree.
-
-**Not implemented:** Operator-level `date + duration` via `+`. Would need either:
-- Type annotations on variables from MATCH
-- A runtime function that detects input types
-- Pre-transform type inference pass
-
-**Tests**: 880 unit pass
+- **List slicing**: `list[1..3]`, `list[2..]`, `list[..2]` — grammar rules with `DOT_DOT` token, AST `is_slice`/`slice_start`/`slice_end` fields, SQL via `json_each` with key range filtering
+- **List concatenation**: Deferred — requires architectural change to detect list operands before emitting left side of binary op. Current `+` operator emits left then operator then right, making it impossible to wrap both in a subquery mid-stream.
+- **Tests**: 865 unit tests pass, slicing verified manually

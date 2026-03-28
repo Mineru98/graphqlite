@@ -4,15 +4,15 @@ level: task
 title: "Investigate Clotho integration: count(), OPTIONAL MATCH, property-match reported as broken"
 short_code: "GQLITE-T-0140"
 created_at: 2026-03-22T00:45:57.695444+00:00
-updated_at: 2026-03-22T00:45:57.695444+00:00
+updated_at: 2026-03-28T22:02:23.125044+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#phase/backlog"
   - "#bug"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -53,6 +53,14 @@ Since the C extension works, the issue likely lives in the Rust binding layer or
 - **`result.rs:450-451`** — Empty JSON arrays → silent empty result, no way to distinguish from "query returned no matches."
 
 Clotho may also be using `conn.query_row` or `conn.execute` directly instead of the `cypher()` wrapper, which could bypass result parsing.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
