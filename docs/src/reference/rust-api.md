@@ -1,6 +1,6 @@
 # Rust API Reference
 
-Version: **0.3.10**
+Version: **0.4.0**
 
 Crate: `graphqlite`
 
