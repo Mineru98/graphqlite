@@ -49,10 +49,16 @@ graph_algo_result* execute_apsp(sqlite3 *db, csr_graph *cached)
 
     int n = graph->node_count;
 
-    /* Warn if graph is too large */
-    if (n > 10000) {
-        CYPHER_DEBUG("Warning: APSP on %d nodes requires O(n³) = %.0f operations",
-                     n, (double)n * n * n);
+    /* Guard against O(N^2) memory and O(N^3) compute */
+    if (n > 5000) {
+        char error[256];
+        snprintf(error, sizeof(error),
+                 "allPairsShortestPath: graph too large (%d nodes, limit 5000). "
+                 "Use dijkstra() for specific source-target pairs.", n);
+        result->success = false;
+        result->error_message = strdup(error);
+        if (should_free_graph) csr_graph_free(graph);
+        return result;
     }
 
     /* Allocate distance matrix - O(V²) space */

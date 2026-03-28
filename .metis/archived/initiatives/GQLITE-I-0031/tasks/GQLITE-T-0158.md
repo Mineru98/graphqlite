@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:13.846973+00:00
 updated_at: 2026-03-28T22:37:15.293579+00:00
 parent: GQLITE-I-0031
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -34,6 +34,8 @@ Check return value of every `sqlite3_create_function()` call in `sqlite3_graphql
 1. Wrap each `sqlite3_create_function()` call with an `if (rc != SQLITE_OK)` check
 2. On failure: free `connection_cache`, return `rc` (propagating the SQLite error)
 3. Apply identical fix to `bundled_init.c`
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

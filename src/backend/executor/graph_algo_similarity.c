@@ -184,6 +184,21 @@ graph_algo_result* execute_node_similarity(sqlite3 *db, csr_graph *cached, const
     }
 
     /* Case 2: All pairs above threshold */
+    /* Guard against O(N^2) explosion — reject graphs above 5000 nodes
+     * for the all-pairs computation. Use top_k or specific pair mode for larger graphs. */
+    int node_limit = 5000;
+    if (graph->node_count > node_limit) {
+        char error[256];
+        snprintf(error, sizeof(error),
+                 "nodeSimilarity: graph too large (%d nodes, limit %d). "
+                 "Use specific node pairs or reduce graph size.",
+                 graph->node_count, node_limit);
+        result->success = false;
+        result->error_message = strdup(error);
+        if (should_free_graph) csr_graph_free(graph);
+        return result;
+    }
+
     /* Allocate space for pairs - worst case is n*(n-1)/2 */
     int max_pairs = (graph->node_count * (graph->node_count - 1)) / 2;
     if (max_pairs == 0) {

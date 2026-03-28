@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:15.179129+00:00
 updated_at: 2026-03-28T22:37:16.582168+00:00
 parent: GQLITE-I-0031
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -33,6 +33,8 @@ Prevent infinite loop in the open-addressing hash table used by `csr_graph_load(
 1. Replace the fixed `HASH_TABLE_SIZE` constant with `next_prime(node_count * 2)` to ensure load factor stays below 0.5
 2. Add a probe counter to the open-addressing loop (lines 104-111); break and return error after `table_size` probes
 3. Implement `next_prime()` helper if not already present
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

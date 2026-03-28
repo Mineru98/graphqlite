@@ -4,14 +4,14 @@ level: task
 title: "REC-06: Make CREATE...RETURN silent discard an explicit error"
 short_code: "GQLITE-T-0161"
 created_at: 2026-03-28T13:59:18.040583+00:00
-updated_at: 2026-03-28T22:27:57.123143+00:00
+updated_at: 2026-03-28T22:45:00.041326+00:00
 parent: GQLITE-I-0031
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -33,6 +33,10 @@ Make `CREATE...RETURN` produce an explicit error instead of silently succeeding 
 1. Add `CLAUSE_RETURN` to the forbidden clause mask for the CREATE execution path in `query_dispatch.c`
 2. Return a specific, descriptive error message (e.g., "RETURN clause is not supported with CREATE")
 3. Add functional tests confirming `CREATE (n:Foo {name:'bar'}) RETURN n` returns an error
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

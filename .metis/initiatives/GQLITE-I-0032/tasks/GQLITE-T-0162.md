@@ -4,14 +4,14 @@ level: task
 title: "REC-07: Scale guards for node similarity and dynamic hash table sizing"
 short_code: "GQLITE-T-0162"
 created_at: 2026-03-28T13:59:24.132761+00:00
-updated_at: 2026-03-28T13:59:24.132761+00:00
+updated_at: 2026-03-28T22:55:19.446959+00:00
 parent: GQLITE-I-0032
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -37,6 +37,8 @@ Add scale guards to prevent O(N^2) memory blowup in graph similarity and replace
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] Similarity functions reject graphs exceeding 5000 nodes with a descriptive error
 - [ ] Hash table size is dynamically computed from node count
 - [ ] Existing graph algorithm tests pass
@@ -49,4 +51,3 @@ Add scale guards to prevent O(N^2) memory blowup in graph similarity and replace
 ## Status Updates
 
 *To be added during implementation*
-

@@ -4,14 +4,14 @@ level: initiative
 title: "Critical Security and Correctness Fixes (Arch Review Wave 1)"
 short_code: "GQLITE-I-0031"
 created_at: 2026-03-28T13:57:23.314651+00:00
-updated_at: 2026-03-28T13:59:01.910150+00:00
+updated_at: 2026-03-28T22:52:21.693468+00:00
 parent: GQLITE-V-0001
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#initiative"
-  - "#phase/decompose"
+  - "#phase/completed"
 
 
 exit_criteria_met: false

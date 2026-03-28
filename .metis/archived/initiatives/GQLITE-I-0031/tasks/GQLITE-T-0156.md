@@ -4,14 +4,14 @@ level: task
 title: "REC-01: SQL injection escape audit pass"
 short_code: "GQLITE-T-0156"
 created_at: 2026-03-28T13:59:10.767898+00:00
-updated_at: 2026-03-28T22:11:12.240185+00:00
+updated_at: 2026-03-28T22:44:59.668041+00:00
 parent: GQLITE-I-0031
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -37,6 +37,10 @@ Apply `escape_sql_string()` to all callsites that interpolate Cypher identifiers
 2. Wrap each identified callsite with `escape_sql_string()` before interpolation into SQL
 3. Verify all existing unit and functional tests still pass
 4. Verify the new injection vector tests now pass (injections blocked)
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
