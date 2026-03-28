@@ -30,6 +30,9 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
+#include <stdint.h>
+#include <stdbool.h>
+
 #ifndef YY_CYPHER_YY_BUILD_PARSER_CYPHER_GRAM_TAB_H_INCLUDED
 # define YY_CYPHER_YY_BUILD_PARSER_CYPHER_GRAM_TAB_H_INCLUDED
 /* Debug traces.  */
@@ -137,7 +140,7 @@ union CYPHER_YYSTYPE
 {
 #line 39 "src/backend/parser/cypher_gram.y"
 
-    int integer;
+    int64_t integer;
     double decimal;
     char *string;
     bool boolean;
