@@ -114,33 +114,36 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                 } else if (pair->value->type == AST_NODE_PARAMETER && executor->params_json) {
                                     /* Handle parameter substitution */
                                     cypher_parameter *param = (cypher_parameter*)pair->value;
-                                    static char str_buf[4096];
+                                    property_value pv;
+                                    property_value_init(&pv);
                                     static int64_t int_buf;
                                     static double real_buf;
                                     static int bool_buf;
 
-                                    int rc = get_param_value(executor->params_json, param->name, &prop_type, str_buf, sizeof(str_buf));
+                                    int rc = get_param_value(executor->params_json, param->name, &prop_type, &pv);
                                     if (rc == -2) {
                                         /* null parameter - skip */
+                                        property_value_free(&pv);
                                         continue;
                                     } else if (rc == 0) {
                                         /* Set prop_value based on type returned */
                                         if (prop_type == PROP_TYPE_TEXT) {
-                                            prop_value = str_buf;
+                                            prop_value = pv.as_str;
                                         } else if (prop_type == PROP_TYPE_INTEGER) {
-                                            int_buf = *(int64_t*)str_buf;
+                                            int_buf = pv.as_int;
                                             prop_value = &int_buf;
                                         } else if (prop_type == PROP_TYPE_REAL) {
-                                            real_buf = *(double*)str_buf;
+                                            real_buf = pv.as_real;
                                             prop_value = &real_buf;
                                         } else if (prop_type == PROP_TYPE_BOOLEAN) {
-                                            bool_buf = *(int*)str_buf;
+                                            bool_buf = pv.as_bool;
                                             prop_value = &bool_buf;
                                         } else if (prop_type == PROP_TYPE_JSON) {
-                                            prop_value = str_buf;
+                                            prop_value = pv.as_str;
                                         }
                                     } else {
                                         CYPHER_DEBUG("Parameter '%s' not found in params_json", param->name);
+                                        property_value_free(&pv);
                                         continue;
                                     }
                                 } else if (pair->value->type == AST_NODE_IDENTIFIER && g_foreach_ctx) {
@@ -285,31 +288,34 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                 } else if (pair->value->type == AST_NODE_PARAMETER && executor->params_json) {
                                     /* Handle parameter substitution */
                                     cypher_parameter *param = (cypher_parameter*)pair->value;
-                                    static char str_buf2[4096];
+                                    property_value pv2;
+                                    property_value_init(&pv2);
                                     static int64_t int_buf2;
                                     static double real_buf2;
                                     static int bool_buf2;
 
-                                    int rc = get_param_value(executor->params_json, param->name, &prop_type, str_buf2, sizeof(str_buf2));
+                                    int rc = get_param_value(executor->params_json, param->name, &prop_type, &pv2);
                                     if (rc == -2) {
+                                        property_value_free(&pv2);
                                         continue;
                                     } else if (rc == 0) {
                                         if (prop_type == PROP_TYPE_TEXT) {
-                                            prop_value = str_buf2;
+                                            prop_value = pv2.as_str;
                                         } else if (prop_type == PROP_TYPE_INTEGER) {
-                                            int_buf2 = *(int64_t*)str_buf2;
+                                            int_buf2 = pv2.as_int;
                                             prop_value = &int_buf2;
                                         } else if (prop_type == PROP_TYPE_REAL) {
-                                            real_buf2 = *(double*)str_buf2;
+                                            real_buf2 = pv2.as_real;
                                             prop_value = &real_buf2;
                                         } else if (prop_type == PROP_TYPE_BOOLEAN) {
-                                            bool_buf2 = *(int*)str_buf2;
+                                            bool_buf2 = pv2.as_bool;
                                             prop_value = &bool_buf2;
                                         } else if (prop_type == PROP_TYPE_JSON) {
-                                            prop_value = str_buf2;
+                                            prop_value = pv2.as_str;
                                         }
                                     } else {
                                         CYPHER_DEBUG("Parameter '%s' not found in params_json", param->name);
+                                        property_value_free(&pv2);
                                         continue;
                                     }
                                 }

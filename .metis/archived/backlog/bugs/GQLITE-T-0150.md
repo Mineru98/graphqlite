@@ -1,10 +1,10 @@
 ---
-id: startnode-and-endnode-return
+id: unwind-does-not-accept-parameter
 level: task
-title: "startNode() and endNode() return integer ID instead of Node"
-short_code: "GQLITE-T-0146"
-created_at: 2026-03-28T00:47:02.423475+00:00
-updated_at: 2026-03-28T02:15:37.149531+00:00
+title: "UNWIND does not accept parameter references"
+short_code: "GQLITE-T-0150"
+created_at: 2026-03-28T00:47:00.323568+00:00
+updated_at: 2026-03-28T02:15:36.281641+00:00
 parent: 
 blocked_by: []
 archived: true
@@ -19,38 +19,38 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# startNode() and endNode() return integer ID instead of Node
+# UNWIND does not accept parameter references
 
-**GitHub Issue**: #41
-**Priority**: P2 - Medium
+**GitHub Issue**: #37
+**Priority**: P1 - High
 
 ## Objective
 
-Make `startNode()` and `endNode()` return Node objects instead of raw integer IDs, enabling function composition (`elementId(startNode(r))`) and property access (`startNode(r).name`).
+Add support for parameter references (`$param`) in UNWIND expressions, and support UNWIND over lists of maps with property access on bound map items.
 
 ## Bug Description
 
-`startNode(r)` and `endNode(r)` return an integer (the node's internal ID) instead of a Node object. This prevents:
-- Function composition: `elementId(startNode(r))` fails with "Failed to transform RETURN clause"
-- Property access: `startNode(r).name` fails similarly
+`UNWIND $param AS row` fails when `$param` is a query parameter containing a list. Only literal lists work. This blocks batch ingestion patterns where data is passed as a parameter array.
+
+Additionally, UNWIND over lists of maps silently skips map items — property access like `item.id` on unwound map items doesn't work.
 
 ## Root Cause
 
-In `src/backend/transform/transform_func_path.c` (lines 211, 254):
-- `startNode()` generates: `SELECT source_id FROM edges WHERE id = ...`
-- `endNode()` generates: `SELECT target_id FROM edges WHERE id = ...`
+In `src/backend/transform/transform_unwind.c`, the expression type switch handles `AST_NODE_LIST`, `AST_NODE_PROPERTY`, `AST_NODE_IDENTIFIER`, and `AST_NODE_FUNCTION_CALL` but NOT `AST_NODE_PARAMETER` (falls through to error at lines 232-234).
 
-These return raw integer IDs from the `edges` table rather than resolving to full node references that downstream transforms can use for property access.
+For map binding, `query_dispatch.c:859-882` only handles `AST_NODE_LITERAL` items; map items (`AST_NODE_MAP`) are silently skipped.
 
 ## Reproduction
 
 ```cypher
-CREATE (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
-MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'}) CREATE (a)-[:KNOWS]->(b)
+-- Parameter reference (fails)
+UNWIND $items AS item RETURN item
+-- with params: {"items": [1, 2, 3]}
+-- Error: "UNWIND requires list literal, property access, variable, or function call"
 
-MATCH ()-[r:KNOWS]->() RETURN startNode(r)        -- Returns: 1 (int, not Node)
-MATCH ()-[r:KNOWS]->() RETURN startNode(r).name   -- Error: Failed to transform
-MATCH ()-[r:KNOWS]->() RETURN endNode(r).name     -- Error: Failed to transform
+-- Literal list works (control)
+UNWIND [1, 2, 3] AS x RETURN x
+-- Returns: [{x:1}, {x:2}, {x:3}]
 ```
 
 ## Acceptance Criteria
@@ -63,25 +63,31 @@ MATCH ()-[r:KNOWS]->() RETURN endNode(r).name     -- Error: Failed to transform
 
 ## Acceptance Criteria
 
-- [ ] `startNode(r).name` returns the source node's property value
-- [ ] `endNode(r).name` returns the target node's property value
-- [ ] `elementId(startNode(r))` works (function composition)
-- [ ] Repro tests pass: `TestIssue41` in `test_issue_repro.py`, tests 41a/41b in `11_issue_repro.sql`
+- [ ] `UNWIND $param AS item` works when parameter is a JSON array
+- [ ] `UNWIND $batch AS item RETURN item.id` works when parameter is a list of objects
+- [ ] Existing literal list UNWIND behavior unchanged
+- [ ] Repro tests pass: `TestIssue37` in `test_issue_repro.py`, test 37b in `11_issue_repro.sql`
 
 ## Affected Files
 
-- `src/backend/transform/transform_func_path.c` — change startNode/endNode to return node references
+- `src/backend/transform/transform_unwind.c` — add `AST_NODE_PARAMETER` case
+- `src/backend/executor/query_dispatch.c` — map item binding in UNWIND loop
 
 ## Status Updates
 
 ### 2026-03-27: Implementation complete
 
-**Change:** `src/backend/transform/transform_expr_ops.c` — Added `AST_NODE_FUNCTION_CALL` handling in `transform_property_access()` for `startNode()` and `endNode()`. When property access is done on these functions (e.g., `startNode(r).name`), generates a COALESCE property lookup using the node ID subquery from the function as the `node_id`.
+**Changes (3 files):**
+
+1. **`src/backend/transform/transform_unwind.c`** — Added `AST_NODE_PARAMETER` case that generates `json_each(:param_name)` for parameter-based UNWIND. Removed `sql_select()` call that added an extra column conflicting with RETURN clause column indexing.
+
+2. **`src/backend/transform/transform_expr_ops.c`** — Added UNWIND JSON property access: when accessing a property on an UNWIND variable (detected by `_unwind_` prefix in projected source), generate `json_extract(source, '$.property')` instead of property table lookups.
 
 **Test results:**
 - 921/921 C unit tests pass
-- `TestIssue41::test_startnode_property_access` — PASSES (`startNode(r).name` returns "Alice")
-- `TestIssue41::test_endnode_property_access` — PASSES (`endNode(r).name` returns "Bob")
+- `TestIssue37::test_unwind_parameter_list` — PASSES (scalar parameter list)
+- `TestIssue37::test_unwind_parameter_map_list` — PASSES (map list + property access)
+- Literal UNWIND still works: `UNWIND [1,2,3] AS x RETURN x` → `[{x:1},{x:2},{x:3}]`
 - All 43 functional test files pass
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**

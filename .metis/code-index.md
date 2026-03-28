@@ -1,6 +1,6 @@
 # Code Index
 
-> Generated: 2026-03-28T00:46:36Z | 56 files | JavaScript, Python, Rust
+> Generated: 2026-03-28T02:35:25Z | 55 files | JavaScript, Python, Rust
 
 ## Project Structure
 
@@ -35,7 +35,6 @@
 │   │   └── tests/
 │   │       ├── test_connection.py
 │   │       ├── test_graph.py
-│   │       ├── test_issue_repro.py
 │   │       ├── test_manager.py
 │   │       └── test_new_functions.py
 │   └── rust/
@@ -516,31 +515,6 @@
 - pub `test_bulk_set_parameter_missing_error` function L1473-1483 — `def test_bulk_set_parameter_missing_error(g)` — PR #45 coverage: missing param for bulk SET should error.
 - pub `test_merge_on_match_set_function` function L1486-1492 — `def test_merge_on_match_set_function(g)` — PR #45 coverage: MERGE ON MATCH SET with function call.
 - pub `test_remove_return` function L1495-1501 — `def test_remove_return(g)` — Test REMOVE + RETURN in a single query.
-
-#### bindings/python/tests/test_issue_repro.py
-
-- pub `get_extension_path` function L17-28 — `def get_extension_path()` — Get path to the built extension.
-- pub `TestIssue34` class L46-84 — `{ test_label_filter_respected, test_null_rows_preserved_with_where }` — OPTIONAL MATCH should respect label filters and preserve null rows.
-- pub `test_label_filter_respected` method L49-65 — `def test_label_filter_respected(self, g)` — OPTIONAL MATCH (a)-->(r:Car) should not return :Pet nodes.
-- pub `test_null_rows_preserved_with_where` method L67-84 — `def test_null_rows_preserved_with_where(self, g)` — OPTIONAL MATCH with WHERE filtering all matches should preserve rows with nulls.
-- pub `TestIssue36` class L93-114 — `{ test_merge_variable_in_with_then_match }` — MERGE-bound variables should persist through WITH clauses.
-- pub `test_merge_variable_in_with_then_match` method L96-114 — `def test_merge_variable_in_with_then_match(self, g)` — Variable bound by MERGE should persist through WITH into a second MATCH.
-- pub `TestIssue37` class L123-142 — `{ test_unwind_parameter_list, test_unwind_parameter_map_list }` — UNWIND should accept parameter references ($param).
-- pub `test_unwind_parameter_list` method L126-133 — `def test_unwind_parameter_list(self, g)` — UNWIND $items AS item should work with a parameter list.
-- pub `test_unwind_parameter_map_list` method L135-142 — `def test_unwind_parameter_map_list(self, g)` — UNWIND over a list of maps from parameters should bind map items.
-- pub `TestIssue39` class L151-164 — `{ test_delete_return_count }` — DELETE + RETURN COUNT should report the actual number deleted.
-- pub `test_delete_return_count` method L154-164 — `def test_delete_return_count(self, g)` — DETACH DELETE n RETURN COUNT(n) should return the count of deleted nodes.
-- pub `TestIssue40` class L173-184 — `{ test_call_subquery_basic }` — CALL {} subqueries should parse and execute.
-- pub `test_call_subquery_basic` method L176-184 — `def test_call_subquery_basic(self, g)` — Basic CALL {} subquery should not raise a parse error.
-- pub `TestIssue41` class L193-222 — `{ test_startnode_property_access, test_endnode_property_access }` — startNode() and endNode() should return Node objects, not integer IDs.
-- pub `test_startnode_property_access` method L196-208 — `def test_startnode_property_access(self, g)` — startNode(r).name should return the source node's name property.
-- pub `test_endnode_property_access` method L210-222 — `def test_endnode_property_access(self, g)` — endNode(r).name should return the target node's name property.
-- pub `TestIssue42` class L231-250 — `{ test_size_labels_single, test_size_labels_multiple }` — size(labels(n)) should return the number of labels, not string length.
-- pub `test_size_labels_single` method L234-241 — `def test_size_labels_single(self, g)` — size(labels(n)) on a node with one label should return 1.
-- pub `test_size_labels_multiple` method L243-250 — `def test_size_labels_multiple(self, g)` — size(labels(n)) on a node with two labels should return 2.
-- pub `TestIssue43` class L259-285 — `{ test_large_integer_preserved, test_timestamp_not_truncated }` — Integer properties should support full 64-bit range.
-- pub `test_large_integer_preserved` method L262-272 — `def test_large_integer_preserved(self, g)` — Integers larger than 2^31 should round-trip correctly.
-- pub `test_timestamp_not_truncated` method L274-285 — `def test_timestamp_not_truncated(self, g)` — timestamp() values (epoch millis) should not be truncated.
 
 #### bindings/python/tests/test_manager.py
 

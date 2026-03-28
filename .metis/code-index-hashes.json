@@ -1,6 +1,6 @@
 {
   "files": {
-    "bindings/python/src/graphqlite/__init__.py": "ffaaf1b71b4d7c1238a2bb8160ea45a1005d20df3206b67efa671194deb52c92",
+    "bindings/python/src/graphqlite/__init__.py": "6e4651897b6ccf3141809caca19310c64a0325ce875a381779e500127a8496cd",
     "bindings/python/src/graphqlite/_platform.py": "3d0908c46378bb4c539026ddf1d7c58278b6ff9b01ceae5ee8d04456d1166334",
     "bindings/python/src/graphqlite/algorithms/__init__.py": "616875690e2e716bd3dd9bdb3d0518c4dc5b3598700d29b3646cddf096827cfb",
     "bindings/python/src/graphqlite/algorithms/_parsing.py": "8fab1231488fe1ec57eca00593eb6d4de3ebaa4220af3bda009cf297c007d4ff",
@@ -23,7 +23,6 @@
     "bindings/python/src/graphqlite/utils.py": "0346f37c60547d97b62ca65de69e823966030031bc25afcbd9ae11b37e65a712",
     "bindings/python/tests/test_connection.py": "de1c79104d55f9e5dd5b0b0ae66ce18994ce405d554804ec0a774d76afd58fe8",
     "bindings/python/tests/test_graph.py": "baf6fa36c56bd1c3d54a18762ffa210f8eb32f2580870c877219e50b36f537cf",
-    "bindings/python/tests/test_issue_repro.py": "2adaf5299c261957c92ec4786afbb39b5fdc97a639d997f646970ecfd2af7a7e",
     "bindings/python/tests/test_manager.py": "22220d47b53960cbfd06c003090033dd71876efc0392a2c33e0c983deeb5b7d0",
     "bindings/python/tests/test_new_functions.py": "20edde40c57ba1d3861abb764d3b9964a24ef3024a67ff334822353f32d13f39",
     "bindings/rust/build.rs": "e4b209fae36edddf2220559b38a591a971b97a1a30db591a227e5fd921da321b",

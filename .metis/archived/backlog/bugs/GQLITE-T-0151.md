@@ -1,10 +1,10 @@
 ---
-id: size-labels-n-returns-string
+id: startnode-and-endnode-return
 level: task
-title: "size(labels(n)) returns string length instead of list length"
-short_code: "GQLITE-T-0147"
-created_at: 2026-03-28T00:47:03.841649+00:00
-updated_at: 2026-03-28T02:15:34.040563+00:00
+title: "startNode() and endNode() return integer ID instead of Node"
+short_code: "GQLITE-T-0151"
+created_at: 2026-03-28T00:47:02.423475+00:00
+updated_at: 2026-03-28T02:15:37.149531+00:00
 parent: 
 blocked_by: []
 archived: true
@@ -19,34 +19,38 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# size(labels(n)) returns string length instead of list length
+# startNode() and endNode() return integer ID instead of Node
 
-**GitHub Issue**: #42
+**GitHub Issue**: #41
 **Priority**: P2 - Medium
 
 ## Objective
 
-Fix `size()` to return the element count when applied to list-returning functions like `labels()`, `keys()`, etc., instead of the string length of the JSON representation.
+Make `startNode()` and `endNode()` return Node objects instead of raw integer IDs, enabling function composition (`elementId(startNode(r))`) and property access (`startNode(r).name`).
 
 ## Bug Description
 
-`size(labels(n))` returns the character count of the JSON string (e.g., 12 for `["LabelA42"]`) instead of the number of labels (1). `size()` on literal lists works correctly.
+`startNode(r)` and `endNode(r)` return an integer (the node's internal ID) instead of a Node object. This prevents:
+- Function composition: `elementId(startNode(r))` fails with "Failed to transform RETURN clause"
+- Property access: `startNode(r).name` fails similarly
 
 ## Root Cause
 
-In `src/backend/transform/transform_func_string.c` (lines 54-68), `size()` only checks for `AST_NODE_LIST` (literal list syntax) to decide whether to use `json_array_length()`. When the argument is a function call like `labels()`, it falls through to `LENGTH()` (string length).
+In `src/backend/transform/transform_func_path.c` (lines 211, 254):
+- `startNode()` generates: `SELECT source_id FROM edges WHERE id = ...`
+- `endNode()` generates: `SELECT target_id FROM edges WHERE id = ...`
 
-`labels()` in `transform_func_entity.c` returns a JSON array via `json_group_array()`, but `size()` doesn't recognize it as a list.
+These return raw integer IDs from the `edges` table rather than resolving to full node references that downstream transforms can use for property access.
 
 ## Reproduction
 
 ```cypher
-CREATE (a:LabelA {id: 'a'})
-CREATE (b:LabelA:LabelB {id: 'b'})
+CREATE (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'}) CREATE (a)-[:KNOWS]->(b)
 
-MATCH (n:LabelA {id: 'a'}) RETURN size(labels(n)) AS sz  -- Returns 12 (bug), expected 1
-MATCH (n {id: 'b'}) RETURN size(labels(n)) AS sz          -- Returns 23 (bug), expected 2
-RETURN size([1, 2, 3]) AS sz                               -- Returns 3 (correct, control)
+MATCH ()-[r:KNOWS]->() RETURN startNode(r)        -- Returns: 1 (int, not Node)
+MATCH ()-[r:KNOWS]->() RETURN startNode(r).name   -- Error: Failed to transform
+MATCH ()-[r:KNOWS]->() RETURN endNode(r).name     -- Error: Failed to transform
 ```
 
 ## Acceptance Criteria
@@ -59,27 +63,25 @@ RETURN size([1, 2, 3]) AS sz                               -- Returns 3 (correct
 
 ## Acceptance Criteria
 
-- [ ] `size(labels(n))` returns the number of labels
-- [ ] `size([literal list])` still works correctly
-- [ ] `size()` on strings still returns string length
-- [ ] Repro tests pass: `TestIssue42` in `test_issue_repro.py`, tests 42a/42b in `11_issue_repro.sql`
+- [ ] `startNode(r).name` returns the source node's property value
+- [ ] `endNode(r).name` returns the target node's property value
+- [ ] `elementId(startNode(r))` works (function composition)
+- [ ] Repro tests pass: `TestIssue41` in `test_issue_repro.py`, tests 41a/41b in `11_issue_repro.sql`
 
 ## Affected Files
 
-- `src/backend/transform/transform_func_string.c` — detect list-returning function calls in `size()` and use `json_array_length()` instead of `LENGTH()`
+- `src/backend/transform/transform_func_path.c` — change startNode/endNode to return node references
 
 ## Status Updates
 
 ### 2026-03-27: Implementation complete
 
-**Change:** `src/backend/transform/transform_func_string.c` — extended `size()` handling to detect `AST_NODE_FUNCTION_CALL` arguments from known list-returning functions (`labels`, `keys`, `nodes`, `relationships`, `collect`, `range`, `tail`, `split`, `json_keys`) and use `json_array_length()` instead of `LENGTH()`.
+**Change:** `src/backend/transform/transform_expr_ops.c` — Added `AST_NODE_FUNCTION_CALL` handling in `transform_property_access()` for `startNode()` and `endNode()`. When property access is done on these functions (e.g., `startNode(r).name`), generates a COALESCE property lookup using the node ID subquery from the function as the `node_id`.
 
 **Test results:**
 - 921/921 C unit tests pass
-- `TestIssue42::test_size_labels_single` — PASSES (was returning 12, now returns 1)
-- `TestIssue42::test_size_labels_multiple` — PASSES (was returning 23, now returns 2)
-- `size("hello")` = 5 (string length still works)
-- `size([1,2,3])` = 3 (literal list still works)
+- `TestIssue41::test_startnode_property_access` — PASSES (`startNode(r).name` returns "Alice")
+- `TestIssue41::test_endnode_property_access` — PASSES (`endNode(r).name` returns "Bob")
 - All 43 functional test files pass
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**

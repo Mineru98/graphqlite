@@ -2,7 +2,7 @@
 id: optional-match-ignores-label
 level: task
 title: "OPTIONAL MATCH ignores label filter and drops null rows"
-short_code: "GQLITE-T-0142"
+short_code: "GQLITE-T-0149"
 created_at: 2026-03-28T00:46:58.952686+00:00
 updated_at: 2026-03-28T02:15:35.807947+00:00
 parent: 

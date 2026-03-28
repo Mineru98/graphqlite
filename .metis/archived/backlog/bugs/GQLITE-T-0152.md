@@ -1,10 +1,10 @@
 ---
-id: integer-property-storage-truncates
+id: delete-return-count-always-returns
 level: task
-title: "Integer property storage truncates values to 32-bit"
-short_code: "GQLITE-T-0148"
-created_at: 2026-03-28T00:47:05.223748+00:00
-updated_at: 2026-03-28T02:15:33.585704+00:00
+title: "DELETE + RETURN COUNT always returns 0"
+short_code: "GQLITE-T-0152"
+created_at: 2026-03-28T00:47:01.298353+00:00
+updated_at: 2026-03-28T02:15:34.889119+00:00
 parent: 
 blocked_by: []
 archived: true
@@ -19,40 +19,37 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# Integer property storage truncates values to 32-bit
+# DELETE + RETURN COUNT always returns 0
 
-**GitHub Issue**: #43 (duplicate: #44)
-**Priority**: P1 - High
+**GitHub Issue**: #39
+**Priority**: P2 - Medium
 
 ## Objective
 
-Fix integer property storage to use 64-bit binding, preventing silent truncation of values larger than 2^31.
+Fix DELETE + RETURN COUNT to report the actual number of deleted entities instead of always returning 0.
 
 ## Bug Description
 
-Integer properties are stored using `sqlite3_bind_int` (32-bit) instead of `sqlite3_bind_int64`, silently truncating any value exceeding 2^31 - 1. This affects `timestamp()` results (epoch millis ~1.7 trillion), large IDs, and any integer > ~2.1 billion.
+`MATCH (n:Temp) DETACH DELETE n RETURN COUNT(n) AS deleted_count` returns 0 even though nodes are successfully deleted. The count goes from 3 to 0 in a subsequent query, but the inline RETURN reports 0.
 
 ## Root Cause
 
-In `src/backend/executor/cypher_schema.c`:
-- Line 756 (nodes): `sqlite3_bind_int(stmt, 3, *(const int*)value)`
-- Line 908 (edges): `sqlite3_bind_int(stmt, 3, *(const int*)value)`
+In `query_dispatch.c` (lines 645-663), `handle_match_delete` first executes the DELETE (which removes the nodes), then re-executes the MATCH+RETURN query against the now-empty graph. COUNT operates on zero rows because the nodes no longer exist.
 
-Both use 32-bit `sqlite3_bind_int` and cast to `const int*`. The SQLite schema (`node_props_int.value INTEGER`) supports 64-bit, so only the bind calls need fixing.
+This is acknowledged in archived task `GQLITE-T-0110` line 107: "deleted entities won't be found by the re-query."
 
-Additionally, the AST literal type in `cypher_ast.h` line 319 stores integers as `int` (32-bit), which would also truncate at parse time for literal values.
+The fix requires capturing the matched row count before deletion and injecting it into the RETURN result.
 
 ## Reproduction
 
 ```cypher
-CREATE (n:IntTest {id: 'big'})
-MATCH (n:IntTest {id: 'big'}) SET n.val = 9999999999
-MATCH (n:IntTest {id: 'big'}) RETURN n.val
--- Returns: 1410065407 (truncated to 32-bit), expected: 9999999999
+CREATE (n:Temp {id: '1'})
+CREATE (n:Temp {id: '2'})
+CREATE (n:Temp {id: '3'})
 
-MATCH (n:IntTest {id: 'big'}) SET n.ts = timestamp()
-MATCH (n:IntTest {id: 'big'}) RETURN n.ts
--- Returns: truncated value < 2^31, expected: ~1.7 trillion
+MATCH (n:Temp) RETURN count(n) AS cnt  -- Returns 3
+MATCH (n:Temp) DETACH DELETE n RETURN COUNT(n) AS deleted_count  -- Returns 0 (bug)
+MATCH (n:Temp) RETURN count(n) AS cnt  -- Returns 0 (nodes gone)
 ```
 
 ## Acceptance Criteria
@@ -65,42 +62,30 @@ MATCH (n:IntTest {id: 'big'}) RETURN n.ts
 
 ## Acceptance Criteria
 
-- [ ] `sqlite3_bind_int64` used for integer property storage (nodes and edges)
-- [ ] Integer values > 2^31 round-trip correctly through SET/RETURN
-- [ ] `timestamp()` values stored without truncation
-- [ ] AST integer literal type widened to `int64_t`
-- [ ] Repro tests pass: `TestIssue43` in `test_issue_repro.py`, tests 43a/43b in `11_issue_repro.sql`
+- [ ] `DELETE n RETURN COUNT(n)` returns the number of deleted nodes
+- [ ] `DETACH DELETE n RETURN COUNT(n)` returns the number of deleted nodes
+- [ ] Simple `DELETE` without RETURN still works
+- [ ] Repro test passes: `TestIssue39` in `test_issue_repro.py`, test 39b in `11_issue_repro.sql`
 
 ## Affected Files
 
-- `src/backend/executor/cypher_schema.c` — lines 756, 908: change `sqlite3_bind_int` to `sqlite3_bind_int64`
-- `src/include/parser/cypher_ast.h` — widen `int integer` to `int64_t integer` in literal union
-- `src/backend/parser/cypher_gram.y` — use `strtoll` for integer literal parsing
+- `src/backend/executor/query_dispatch.c` — `handle_match_delete` needs to capture pre-delete count
+- `src/backend/executor/executor_delete.c` — may need to pass count info to result
 
 ## Status Updates
 
 ### 2026-03-27: Implementation complete
 
-**Changes made across 10 files:**
+**Change:** `src/backend/executor/query_dispatch.c` — added `synthesize_delete_return()` function that detects when a RETURN clause after DELETE contains only COUNT aggregates, and synthesizes the result directly from `nodes_deleted + relationships_deleted` instead of re-querying the now-empty graph. Sets `data_types` to `SQLITE_INTEGER` so the JSON output renders as a number, not a string.
 
-1. **`src/include/parser/cypher_ast.h`** — widened `int integer` to `int64_t integer` in literal union, added `<stdint.h>`, updated `make_integer_literal` signature
-2. **`src/include/parser/cypher_scanner.h`** — widened token value `int integer` to `int64_t integer`, added `<stdint.h>`
-3. **`src/backend/parser/cypher_scanner.l`** — `strtol` → `strtoll` (3 places: hex, octal, decimal)
-4. **`src/backend/parser/cypher_ast.c`** — `make_integer_literal(int)` → `make_integer_literal(int64_t)`, debug printf `%d` → `%lld`
-5. **`src/backend/executor/cypher_schema.c`** — `sqlite3_bind_int(stmt, 3, *(const int*)value)` → `sqlite3_bind_int64(stmt, 3, *(const int64_t*)value)` (both node and edge paths)
-6. **`src/backend/executor/executor_merge.c`** — `sqlite3_bind_int` → `sqlite3_bind_int64` for LITERAL_INTEGER bindings
-7. **`src/backend/transform/transform_match.c`** — `%d` → `%lld` with `(long long)` cast (4 places)
-8. **`src/backend/transform/transform_return.c`** — `%d` → `%lld` with cast
-9. **`src/backend/transform/transform_unwind.c`** — `%d` → `%lld` with cast
-10. **Generated files** — `cypher_scanner.c`, `cypher_gram.tab.h` updated to match
+Falls back to the original re-query path for non-COUNT RETURN clauses.
 
 **Test results:**
 - 921/921 C unit tests pass
-- 331/342 Python tests pass (11 failures are other issue repro tests, expected)
-- All 12 original functional test files pass
-- `TestIssue43::test_large_integer_preserved` — PASSES (was failing)
-- `TestIssue43::test_timestamp_not_truncated` — PASSES (was failing)
-- Cypher functional: `9999999999` round-trips correctly, `timestamp()` returns 1.77 trillion
+- `TestIssue39::test_delete_return_count` — PASSES (was returning 0, now returns 3)
+- Cypher: `[{"deleted_count":3}]` (correct integer output)
+- All 3 existing Python DELETE tests pass
+- All 43 functional test files pass
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**
 

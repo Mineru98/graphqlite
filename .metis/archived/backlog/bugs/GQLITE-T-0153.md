@@ -2,7 +2,7 @@
 id: variables-from-merge-are-unbound
 level: task
 title: "Variables from MERGE are unbound in subsequent WITH/SET clauses"
-short_code: "GQLITE-T-0143"
+short_code: "GQLITE-T-0153"
 created_at: 2026-03-28T00:46:59.327842+00:00
 updated_at: 2026-03-28T02:15:37.925541+00:00
 parent: 

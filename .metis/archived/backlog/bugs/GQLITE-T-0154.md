@@ -1,10 +1,10 @@
 ---
-id: unwind-does-not-accept-parameter
+id: integer-property-storage-truncates
 level: task
-title: "UNWIND does not accept parameter references"
-short_code: "GQLITE-T-0144"
-created_at: 2026-03-28T00:47:00.323568+00:00
-updated_at: 2026-03-28T02:15:36.281641+00:00
+title: "Integer property storage truncates values to 32-bit"
+short_code: "GQLITE-T-0154"
+created_at: 2026-03-28T00:47:05.223748+00:00
+updated_at: 2026-03-28T02:15:33.585704+00:00
 parent: 
 blocked_by: []
 archived: true
@@ -19,38 +19,40 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# UNWIND does not accept parameter references
+# Integer property storage truncates values to 32-bit
 
-**GitHub Issue**: #37
+**GitHub Issue**: #43 (duplicate: #44)
 **Priority**: P1 - High
 
 ## Objective
 
-Add support for parameter references (`$param`) in UNWIND expressions, and support UNWIND over lists of maps with property access on bound map items.
+Fix integer property storage to use 64-bit binding, preventing silent truncation of values larger than 2^31.
 
 ## Bug Description
 
-`UNWIND $param AS row` fails when `$param` is a query parameter containing a list. Only literal lists work. This blocks batch ingestion patterns where data is passed as a parameter array.
-
-Additionally, UNWIND over lists of maps silently skips map items — property access like `item.id` on unwound map items doesn't work.
+Integer properties are stored using `sqlite3_bind_int` (32-bit) instead of `sqlite3_bind_int64`, silently truncating any value exceeding 2^31 - 1. This affects `timestamp()` results (epoch millis ~1.7 trillion), large IDs, and any integer > ~2.1 billion.
 
 ## Root Cause
 
-In `src/backend/transform/transform_unwind.c`, the expression type switch handles `AST_NODE_LIST`, `AST_NODE_PROPERTY`, `AST_NODE_IDENTIFIER`, and `AST_NODE_FUNCTION_CALL` but NOT `AST_NODE_PARAMETER` (falls through to error at lines 232-234).
+In `src/backend/executor/cypher_schema.c`:
+- Line 756 (nodes): `sqlite3_bind_int(stmt, 3, *(const int*)value)`
+- Line 908 (edges): `sqlite3_bind_int(stmt, 3, *(const int*)value)`
 
-For map binding, `query_dispatch.c:859-882` only handles `AST_NODE_LITERAL` items; map items (`AST_NODE_MAP`) are silently skipped.
+Both use 32-bit `sqlite3_bind_int` and cast to `const int*`. The SQLite schema (`node_props_int.value INTEGER`) supports 64-bit, so only the bind calls need fixing.
+
+Additionally, the AST literal type in `cypher_ast.h` line 319 stores integers as `int` (32-bit), which would also truncate at parse time for literal values.
 
 ## Reproduction
 
 ```cypher
--- Parameter reference (fails)
-UNWIND $items AS item RETURN item
--- with params: {"items": [1, 2, 3]}
--- Error: "UNWIND requires list literal, property access, variable, or function call"
+CREATE (n:IntTest {id: 'big'})
+MATCH (n:IntTest {id: 'big'}) SET n.val = 9999999999
+MATCH (n:IntTest {id: 'big'}) RETURN n.val
+-- Returns: 1410065407 (truncated to 32-bit), expected: 9999999999
 
--- Literal list works (control)
-UNWIND [1, 2, 3] AS x RETURN x
--- Returns: [{x:1}, {x:2}, {x:3}]
+MATCH (n:IntTest {id: 'big'}) SET n.ts = timestamp()
+MATCH (n:IntTest {id: 'big'}) RETURN n.ts
+-- Returns: truncated value < 2^31, expected: ~1.7 trillion
 ```
 
 ## Acceptance Criteria
@@ -63,32 +65,42 @@ UNWIND [1, 2, 3] AS x RETURN x
 
 ## Acceptance Criteria
 
-- [ ] `UNWIND $param AS item` works when parameter is a JSON array
-- [ ] `UNWIND $batch AS item RETURN item.id` works when parameter is a list of objects
-- [ ] Existing literal list UNWIND behavior unchanged
-- [ ] Repro tests pass: `TestIssue37` in `test_issue_repro.py`, test 37b in `11_issue_repro.sql`
+- [ ] `sqlite3_bind_int64` used for integer property storage (nodes and edges)
+- [ ] Integer values > 2^31 round-trip correctly through SET/RETURN
+- [ ] `timestamp()` values stored without truncation
+- [ ] AST integer literal type widened to `int64_t`
+- [ ] Repro tests pass: `TestIssue43` in `test_issue_repro.py`, tests 43a/43b in `11_issue_repro.sql`
 
 ## Affected Files
 
-- `src/backend/transform/transform_unwind.c` — add `AST_NODE_PARAMETER` case
-- `src/backend/executor/query_dispatch.c` — map item binding in UNWIND loop
+- `src/backend/executor/cypher_schema.c` — lines 756, 908: change `sqlite3_bind_int` to `sqlite3_bind_int64`
+- `src/include/parser/cypher_ast.h` — widen `int integer` to `int64_t integer` in literal union
+- `src/backend/parser/cypher_gram.y` — use `strtoll` for integer literal parsing
 
 ## Status Updates
 
 ### 2026-03-27: Implementation complete
 
-**Changes (3 files):**
+**Changes made across 10 files:**
 
-1. **`src/backend/transform/transform_unwind.c`** — Added `AST_NODE_PARAMETER` case that generates `json_each(:param_name)` for parameter-based UNWIND. Removed `sql_select()` call that added an extra column conflicting with RETURN clause column indexing.
-
-2. **`src/backend/transform/transform_expr_ops.c`** — Added UNWIND JSON property access: when accessing a property on an UNWIND variable (detected by `_unwind_` prefix in projected source), generate `json_extract(source, '$.property')` instead of property table lookups.
+1. **`src/include/parser/cypher_ast.h`** — widened `int integer` to `int64_t integer` in literal union, added `<stdint.h>`, updated `make_integer_literal` signature
+2. **`src/include/parser/cypher_scanner.h`** — widened token value `int integer` to `int64_t integer`, added `<stdint.h>`
+3. **`src/backend/parser/cypher_scanner.l`** — `strtol` → `strtoll` (3 places: hex, octal, decimal)
+4. **`src/backend/parser/cypher_ast.c`** — `make_integer_literal(int)` → `make_integer_literal(int64_t)`, debug printf `%d` → `%lld`
+5. **`src/backend/executor/cypher_schema.c`** — `sqlite3_bind_int(stmt, 3, *(const int*)value)` → `sqlite3_bind_int64(stmt, 3, *(const int64_t*)value)` (both node and edge paths)
+6. **`src/backend/executor/executor_merge.c`** — `sqlite3_bind_int` → `sqlite3_bind_int64` for LITERAL_INTEGER bindings
+7. **`src/backend/transform/transform_match.c`** — `%d` → `%lld` with `(long long)` cast (4 places)
+8. **`src/backend/transform/transform_return.c`** — `%d` → `%lld` with cast
+9. **`src/backend/transform/transform_unwind.c`** — `%d` → `%lld` with cast
+10. **Generated files** — `cypher_scanner.c`, `cypher_gram.tab.h` updated to match
 
 **Test results:**
 - 921/921 C unit tests pass
-- `TestIssue37::test_unwind_parameter_list` — PASSES (scalar parameter list)
-- `TestIssue37::test_unwind_parameter_map_list` — PASSES (map list + property access)
-- Literal UNWIND still works: `UNWIND [1,2,3] AS x RETURN x` → `[{x:1},{x:2},{x:3}]`
-- All 43 functional test files pass
+- 331/342 Python tests pass (11 failures are other issue repro tests, expected)
+- All 12 original functional test files pass
+- `TestIssue43::test_large_integer_preserved` — PASSES (was failing)
+- `TestIssue43::test_timestamp_not_truncated` — PASSES (was failing)
+- Cypher functional: `9999999999` round-trips correctly, `timestamp()` returns 1.77 trillion
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**
 

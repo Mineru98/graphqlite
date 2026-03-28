@@ -3,6 +3,8 @@
 
 #include "graphqlite_sqlite.h"
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <time.h>
 
 /* Forward declarations */
@@ -16,6 +18,35 @@ typedef enum property_type {
     PROP_TYPE_BOOLEAN,
     PROP_TYPE_JSON
 } property_type;
+
+/* Type-safe container for property values.
+ * Eliminates strict-aliasing violations from void* + pointer cast patterns.
+ * Strings/JSON are dynamically allocated — caller must free as_str when done. */
+typedef struct property_value {
+    union {
+        int64_t  as_int;
+        double   as_real;
+        int      as_bool;
+    };
+    char *as_str;       /* Dynamically allocated for TEXT/JSON, NULL for numeric types */
+    size_t as_str_len;  /* Length of as_str (0 for numeric types) */
+} property_value;
+
+/* Initialize a property_value to safe defaults */
+static inline void property_value_init(property_value *pv) {
+    pv->as_int = 0;
+    pv->as_str = NULL;
+    pv->as_str_len = 0;
+}
+
+/* Free any dynamically allocated string in a property_value */
+static inline void property_value_free(property_value *pv) {
+    if (pv->as_str) {
+        free(pv->as_str);
+        pv->as_str = NULL;
+        pv->as_str_len = 0;
+    }
+}
 
 /* Schema manager - handles DDL and property key caching */
 typedef struct cypher_schema_manager {

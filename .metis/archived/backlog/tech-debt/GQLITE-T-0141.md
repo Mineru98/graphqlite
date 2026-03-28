@@ -4,15 +4,15 @@ level: task
 title: "Fix strict-aliasing violations in executor property value passing"
 short_code: "GQLITE-T-0141"
 created_at: 2026-03-27T13:03:50.793919+00:00
-updated_at: 2026-03-27T13:03:50.793919+00:00
+updated_at: 2026-03-28T12:39:12.280584+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#phase/backlog"
   - "#tech-debt"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -64,6 +64,14 @@ Change `get_param_value()` and `evaluate_function_call_via_sqlite()` signatures 
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
 - [ ] No `*(int64_t*)char_buf` or `*(double*)char_buf` casts remain in executor code
 - [ ] `get_param_value()` and `evaluate_function_call_via_sqlite()` use `property_value` union
 - [ ] All callers updated to use union members
@@ -72,4 +80,27 @@ Change `get_param_value()` and `evaluate_function_call_via_sqlite()` signatures 
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-28: Implementation complete
+
+**Approach:** Replaced `void* + char[]` pattern with a `property_value` struct that uses proper typed union members for numerics and dynamically allocated strings for TEXT/JSON (no more 4096 truncation for param values).
+
+**Changes (6 files):**
+
+1. **`src/include/executor/cypher_schema.h`** — Added `property_value` struct with `as_int`, `as_real`, `as_bool` union + `as_str` (dynamic), plus `property_value_init()` / `property_value_free()` helpers
+2. **`src/include/executor/executor_internal.h`** — Updated `get_param_value()` signature: `void *out_value, size_t value_size` → `property_value *out_value`
+3. **`src/backend/executor/executor_helpers.c`** — `get_param_value()` writes to union members, dynamically allocates strings
+4. **`src/backend/executor/executor_set.c`** — `evaluate_function_call_via_sqlite()` uses `property_value*`, all callers updated
+5. **`src/backend/executor/executor_create.c`** — Both param call sites updated
+6. **`src/backend/executor/graph_algorithms.c`** — All three resolve functions updated
+
+**Verification:**
+- `grep` for `*(int64_t*)`, `*(double*)`, `*(int*)out` in executor code: **0 matches**
+- 921/921 C unit tests pass
+- 43/43 functional tests pass
+- 329 Python tests pass (6 skipped)
+
+**Update:** Also eliminated the two remaining `char[4096]` buffers in `executor_set.c`:
+- `set_properties_from_json_object`: `str_buf[4096]` → dynamic `malloc` for string/JSON values with `free` after schema call
+- Bulk SET map literal: `static char bulk_str_buf[4096]` → pass `serialize_ast_to_json` result directly (no unnecessary copy+truncate)
+
+**Final audit:** 0 aliasing violations, 0 fixed 4096 buffers in executor code.

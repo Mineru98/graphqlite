@@ -264,11 +264,15 @@ static char* resolve_string_arg(ast_node *node, const char *params_json)
         if (!params_json || !param->name) return NULL;
 
         property_type ptype;
-        char str_buf[256];
-        int rc = get_param_value(params_json, param->name, &ptype, str_buf, sizeof(str_buf));
+        property_value pv;
+        property_value_init(&pv);
+        int rc = get_param_value(params_json, param->name, &ptype, &pv);
         if (rc == 0 && ptype == PROP_TYPE_TEXT) {
-            return strdup(str_buf);
+            char *result = strdup(pv.as_str);
+            property_value_free(&pv);
+            return result;
         }
+        property_value_free(&pv);
         return NULL;
     }
 
@@ -297,13 +301,17 @@ static int resolve_int_arg(ast_node *node, const char *params_json, int default_
         if (!params_json || !param->name) return default_value;
 
         property_type ptype;
-        char str_buf[256];
-        int rc = get_param_value(params_json, param->name, &ptype, str_buf, sizeof(str_buf));
+        property_value pv;
+        property_value_init(&pv);
+        int rc = get_param_value(params_json, param->name, &ptype, &pv);
         if (rc == 0 && ptype == PROP_TYPE_INTEGER) {
-            int64_t int_buf = *(int64_t*)str_buf;
+            int64_t int_buf = pv.as_int;
+            property_value_free(&pv);
             if (int_buf >= INT_MIN && int_buf <= INT_MAX) {
                 return (int)int_buf;
             }
+        } else {
+            property_value_free(&pv);
         }
 
         return default_value;
@@ -339,18 +347,23 @@ static double resolve_double_arg(ast_node *node, const char *params_json, double
         if (!params_json || !param->name) return default_value;
 
         property_type ptype;
-        char str_buf[256];
-        int rc = get_param_value(params_json, param->name, &ptype, str_buf, sizeof(str_buf));
+        property_value pv;
+        property_value_init(&pv);
+        int rc = get_param_value(params_json, param->name, &ptype, &pv);
 
         if (rc == 0 && ptype == PROP_TYPE_REAL) {
-            return *(double*)str_buf;
+            double result = pv.as_real;
+            property_value_free(&pv);
+            return result;
         }
 
         if (rc == 0 && ptype == PROP_TYPE_INTEGER) {
-            int64_t int_buf = *(int64_t*)str_buf;
-            return (double)int_buf;
+            double result = (double)pv.as_int;
+            property_value_free(&pv);
+            return result;
         }
 
+        property_value_free(&pv);
         return default_value;
     }
 

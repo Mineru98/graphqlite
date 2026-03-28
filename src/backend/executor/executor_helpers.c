@@ -14,7 +14,7 @@
 
 /* Helper to lookup a parameter value from JSON */
 int get_param_value(const char *params_json, const char *param_name,
-                    property_type *out_type, void *out_value, size_t value_size)
+                    property_type *out_type, property_value *out_value)
 {
     if (!params_json || !param_name || !out_type || !out_value) {
         return -1;
@@ -52,36 +52,48 @@ int get_param_value(const char *params_json, const char *param_name,
         if (is_match) {
             /* Parse the value */
             if (*p == '"') {
-                /* String value */
+                /* String value — scan to find length, then allocate */
                 p++;
-                char *str_val = (char*)out_value;
+                const char *str_start = p;
+                size_t raw_len = 0;
+                const char *scan = p;
+                while (*scan && *scan != '"') {
+                    if (*scan == '\\' && *(scan+1)) scan++;
+                    scan++;
+                    raw_len++;
+                }
+                char *buf = malloc(raw_len + 1);
+                if (!buf) return -1;
                 size_t i = 0;
-                while (*p && *p != '"' && i < value_size - 1) {
+                while (*p && *p != '"') {
                     if (*p == '\\' && *(p+1)) {
                         p++;
                         switch (*p) {
-                            case 'n': str_val[i++] = '\n'; break;
-                            case 't': str_val[i++] = '\t'; break;
-                            case 'r': str_val[i++] = '\r'; break;
-                            case '"': str_val[i++] = '"'; break;
-                            case '\\': str_val[i++] = '\\'; break;
-                            default: str_val[i++] = *p; break;
+                            case 'n': buf[i++] = '\n'; break;
+                            case 't': buf[i++] = '\t'; break;
+                            case 'r': buf[i++] = '\r'; break;
+                            case '"': buf[i++] = '"'; break;
+                            case '\\': buf[i++] = '\\'; break;
+                            default: buf[i++] = *p; break;
                         }
                     } else {
-                        str_val[i++] = *p;
+                        buf[i++] = *p;
                     }
                     p++;
                 }
-                str_val[i] = '\0';
+                buf[i] = '\0';
+                if (*p) p++;  /* Skip closing quote */
+                out_value->as_str = buf;
+                out_value->as_str_len = i;
                 *out_type = PROP_TYPE_TEXT;
                 return 0;
             } else if (*p == 't') {
                 *out_type = PROP_TYPE_BOOLEAN;
-                *(int*)out_value = 1;
+                out_value->as_bool = 1;
                 return 0;
             } else if (*p == 'f') {
                 *out_type = PROP_TYPE_BOOLEAN;
-                *(int*)out_value = 0;
+                out_value->as_bool = 0;
                 return 0;
             } else if (*p == 'n') {
                 return -2;  /* null - special return code */
@@ -95,10 +107,10 @@ int get_param_value(const char *params_json, const char *param_name,
 
                 if (is_float) {
                     *out_type = PROP_TYPE_REAL;
-                    *(double*)out_value = strtod(num_start, NULL);
+                    out_value->as_real = strtod(num_start, NULL);
                 } else {
                     *out_type = PROP_TYPE_INTEGER;
-                    *(int64_t*)out_value = strtoll(num_start, NULL, 10);
+                    out_value->as_int = strtoll(num_start, NULL, 10);
                 }
                 return 0;
             } else if (*p == '[' || *p == '{') {
@@ -119,14 +131,12 @@ int get_param_value(const char *params_json, const char *param_name,
                     if (*p) p++;
                 }
                 size_t json_len = p - json_start;
-                char *json_val = (char*)out_value;
-                if (json_len < value_size) {
-                    memcpy(json_val, json_start, json_len);
-                    json_val[json_len] = '\0';
-                } else {
-                    memcpy(json_val, json_start, value_size - 1);
-                    json_val[value_size - 1] = '\0';
-                }
+                char *buf = malloc(json_len + 1);
+                if (!buf) return -1;
+                memcpy(buf, json_start, json_len);
+                buf[json_len] = '\0';
+                out_value->as_str = buf;
+                out_value->as_str_len = json_len;
                 *out_type = PROP_TYPE_JSON;
                 return 0;
             }

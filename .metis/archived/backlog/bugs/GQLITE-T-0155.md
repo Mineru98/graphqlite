@@ -1,10 +1,10 @@
 ---
-id: delete-return-count-always-returns
+id: size-labels-n-returns-string
 level: task
-title: "DELETE + RETURN COUNT always returns 0"
-short_code: "GQLITE-T-0145"
-created_at: 2026-03-28T00:47:01.298353+00:00
-updated_at: 2026-03-28T02:15:34.889119+00:00
+title: "size(labels(n)) returns string length instead of list length"
+short_code: "GQLITE-T-0155"
+created_at: 2026-03-28T00:47:03.841649+00:00
+updated_at: 2026-03-28T02:15:34.040563+00:00
 parent: 
 blocked_by: []
 archived: true
@@ -19,37 +19,34 @@ exit_criteria_met: false
 initiative_id: NULL
 ---
 
-# DELETE + RETURN COUNT always returns 0
+# size(labels(n)) returns string length instead of list length
 
-**GitHub Issue**: #39
+**GitHub Issue**: #42
 **Priority**: P2 - Medium
 
 ## Objective
 
-Fix DELETE + RETURN COUNT to report the actual number of deleted entities instead of always returning 0.
+Fix `size()` to return the element count when applied to list-returning functions like `labels()`, `keys()`, etc., instead of the string length of the JSON representation.
 
 ## Bug Description
 
-`MATCH (n:Temp) DETACH DELETE n RETURN COUNT(n) AS deleted_count` returns 0 even though nodes are successfully deleted. The count goes from 3 to 0 in a subsequent query, but the inline RETURN reports 0.
+`size(labels(n))` returns the character count of the JSON string (e.g., 12 for `["LabelA42"]`) instead of the number of labels (1). `size()` on literal lists works correctly.
 
 ## Root Cause
 
-In `query_dispatch.c` (lines 645-663), `handle_match_delete` first executes the DELETE (which removes the nodes), then re-executes the MATCH+RETURN query against the now-empty graph. COUNT operates on zero rows because the nodes no longer exist.
+In `src/backend/transform/transform_func_string.c` (lines 54-68), `size()` only checks for `AST_NODE_LIST` (literal list syntax) to decide whether to use `json_array_length()`. When the argument is a function call like `labels()`, it falls through to `LENGTH()` (string length).
 
-This is acknowledged in archived task `GQLITE-T-0110` line 107: "deleted entities won't be found by the re-query."
-
-The fix requires capturing the matched row count before deletion and injecting it into the RETURN result.
+`labels()` in `transform_func_entity.c` returns a JSON array via `json_group_array()`, but `size()` doesn't recognize it as a list.
 
 ## Reproduction
 
 ```cypher
-CREATE (n:Temp {id: '1'})
-CREATE (n:Temp {id: '2'})
-CREATE (n:Temp {id: '3'})
+CREATE (a:LabelA {id: 'a'})
+CREATE (b:LabelA:LabelB {id: 'b'})
 
-MATCH (n:Temp) RETURN count(n) AS cnt  -- Returns 3
-MATCH (n:Temp) DETACH DELETE n RETURN COUNT(n) AS deleted_count  -- Returns 0 (bug)
-MATCH (n:Temp) RETURN count(n) AS cnt  -- Returns 0 (nodes gone)
+MATCH (n:LabelA {id: 'a'}) RETURN size(labels(n)) AS sz  -- Returns 12 (bug), expected 1
+MATCH (n {id: 'b'}) RETURN size(labels(n)) AS sz          -- Returns 23 (bug), expected 2
+RETURN size([1, 2, 3]) AS sz                               -- Returns 3 (correct, control)
 ```
 
 ## Acceptance Criteria
@@ -62,29 +59,27 @@ MATCH (n:Temp) RETURN count(n) AS cnt  -- Returns 0 (nodes gone)
 
 ## Acceptance Criteria
 
-- [ ] `DELETE n RETURN COUNT(n)` returns the number of deleted nodes
-- [ ] `DETACH DELETE n RETURN COUNT(n)` returns the number of deleted nodes
-- [ ] Simple `DELETE` without RETURN still works
-- [ ] Repro test passes: `TestIssue39` in `test_issue_repro.py`, test 39b in `11_issue_repro.sql`
+- [ ] `size(labels(n))` returns the number of labels
+- [ ] `size([literal list])` still works correctly
+- [ ] `size()` on strings still returns string length
+- [ ] Repro tests pass: `TestIssue42` in `test_issue_repro.py`, tests 42a/42b in `11_issue_repro.sql`
 
 ## Affected Files
 
-- `src/backend/executor/query_dispatch.c` — `handle_match_delete` needs to capture pre-delete count
-- `src/backend/executor/executor_delete.c` — may need to pass count info to result
+- `src/backend/transform/transform_func_string.c` — detect list-returning function calls in `size()` and use `json_array_length()` instead of `LENGTH()`
 
 ## Status Updates
 
 ### 2026-03-27: Implementation complete
 
-**Change:** `src/backend/executor/query_dispatch.c` — added `synthesize_delete_return()` function that detects when a RETURN clause after DELETE contains only COUNT aggregates, and synthesizes the result directly from `nodes_deleted + relationships_deleted` instead of re-querying the now-empty graph. Sets `data_types` to `SQLITE_INTEGER` so the JSON output renders as a number, not a string.
-
-Falls back to the original re-query path for non-COUNT RETURN clauses.
+**Change:** `src/backend/transform/transform_func_string.c` — extended `size()` handling to detect `AST_NODE_FUNCTION_CALL` arguments from known list-returning functions (`labels`, `keys`, `nodes`, `relationships`, `collect`, `range`, `tail`, `split`, `json_keys`) and use `json_array_length()` instead of `LENGTH()`.
 
 **Test results:**
 - 921/921 C unit tests pass
-- `TestIssue39::test_delete_return_count` — PASSES (was returning 0, now returns 3)
-- Cypher: `[{"deleted_count":3}]` (correct integer output)
-- All 3 existing Python DELETE tests pass
+- `TestIssue42::test_size_labels_single` — PASSES (was returning 12, now returns 1)
+- `TestIssue42::test_size_labels_multiple` — PASSES (was returning 23, now returns 2)
+- `size("hello")` = 5 (string length still works)
+- `size([1,2,3])` = 3 (literal list still works)
 - All 43 functional test files pass
 
 ## Parent Initiative **[CONDITIONAL: Assigned Task]**

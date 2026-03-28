@@ -18,8 +18,7 @@ static int evaluate_function_call_via_sqlite(
     cypher_executor *executor,
     cypher_function_call *func_call,
     property_type *out_type,
-    void *out_value,
-    size_t value_size)
+    property_value *out_value)
 {
     cypher_transform_context *ctx = cypher_transform_create_context(executor->db);
     if (!ctx) return -1;
@@ -52,11 +51,11 @@ static int evaluate_function_call_via_sqlite(
     switch (col_type) {
         case SQLITE_INTEGER:
             *out_type = PROP_TYPE_INTEGER;
-            *(int64_t*)out_value = sqlite3_column_int64(stmt, 0);
+            out_value->as_int = sqlite3_column_int64(stmt, 0);
             break;
         case SQLITE_FLOAT:
             *out_type = PROP_TYPE_REAL;
-            *(double*)out_value = sqlite3_column_double(stmt, 0);
+            out_value->as_real = sqlite3_column_double(stmt, 0);
             break;
         case SQLITE_TEXT: {
             const char *text = (const char*)sqlite3_column_text(stmt, 0);
@@ -66,10 +65,11 @@ static int evaluate_function_call_via_sqlite(
                 *out_type = PROP_TYPE_TEXT;
             }
             if (text) {
-                strncpy((char*)out_value, text, value_size - 1);
-                ((char*)out_value)[value_size - 1] = '\0';
+                out_value->as_str = strdup(text);
+                out_value->as_str_len = strlen(text);
             } else {
-                ((char*)out_value)[0] = '\0';
+                out_value->as_str = strdup("");
+                out_value->as_str_len = 0;
             }
             break;
         }
@@ -134,41 +134,48 @@ static int set_properties_from_json_object(
 
         /* Parse value */
         property_type pt;
-        char str_buf[4096];
+        char *dyn_str = NULL;  /* Dynamically allocated for string/JSON values */
         const void *pv = NULL;
         int64_t json_int_buf;
         double json_real_buf;
         int json_bool_buf;
 
         if (*p == '"') {
-            /* String */
+            /* String — scan for length, then allocate */
             p++;
+            const char *scan = p;
+            size_t raw_len = 0;
+            while (*scan && *scan != '"') {
+                if (*scan == '\\' && *(scan+1)) scan++;
+                scan++;
+                raw_len++;
+            }
+            dyn_str = malloc(raw_len + 1);
+            if (!dyn_str) {
+                set_result_error(result, "Memory allocation failed in bulk SET");
+                return -1;
+            }
             size_t i = 0;
-            while (*p && *p != '"' && i < sizeof(str_buf) - 1) {
+            while (*p && *p != '"') {
                 if (*p == '\\' && *(p+1)) {
                     p++;
                     switch (*p) {
-                        case 'n': str_buf[i++] = '\n'; break;
-                        case 't': str_buf[i++] = '\t'; break;
-                        case 'r': str_buf[i++] = '\r'; break;
-                        case '"': str_buf[i++] = '"'; break;
-                        case '\\': str_buf[i++] = '\\'; break;
-                        default: str_buf[i++] = *p; break;
+                        case 'n': dyn_str[i++] = '\n'; break;
+                        case 't': dyn_str[i++] = '\t'; break;
+                        case 'r': dyn_str[i++] = '\r'; break;
+                        case '"': dyn_str[i++] = '"'; break;
+                        case '\\': dyn_str[i++] = '\\'; break;
+                        default: dyn_str[i++] = *p; break;
                     }
                 } else {
-                    str_buf[i++] = *p;
+                    dyn_str[i++] = *p;
                 }
                 p++;
             }
-            str_buf[i] = '\0';
-            /* Skip past closing quote, even if buffer was full */
-            while (*p && *p != '"') {
-                if (*p == '\\' && *(p+1)) p++;
-                p++;
-            }
+            dyn_str[i] = '\0';
             if (*p == '"') p++;
             pt = PROP_TYPE_TEXT;
-            pv = str_buf;
+            pv = dyn_str;
         } else if (*p == 't') {
             pt = PROP_TYPE_BOOLEAN;
             json_bool_buf = 1;
@@ -217,11 +224,15 @@ static int set_properties_from_json_object(
                 if (*p) p++;
             }
             size_t json_len = p - json_start;
-            if (json_len >= sizeof(str_buf)) json_len = sizeof(str_buf) - 1;
-            memcpy(str_buf, json_start, json_len);
-            str_buf[json_len] = '\0';
+            dyn_str = malloc(json_len + 1);
+            if (!dyn_str) {
+                set_result_error(result, "Memory allocation failed in bulk SET");
+                return -1;
+            }
+            memcpy(dyn_str, json_start, json_len);
+            dyn_str[json_len] = '\0';
             pt = PROP_TYPE_JSON;
-            pv = str_buf;
+            pv = dyn_str;
         } else {
             /* Skip unknown value types */
             while (*p && *p != ',' && *p != '}') p++;
@@ -234,6 +245,7 @@ static int set_properties_from_json_object(
         } else {
             rc = cypher_schema_set_node_property(executor->schema_mgr, entity_id, key, pt, pv);
         }
+        free(dyn_str);  /* Safe even if NULL */
         if (rc == 0) {
             result->properties_set++;
         }
@@ -464,7 +476,8 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
             /* Resolve the map expression — map literal or parameter */
             cypher_map *map = NULL;
             char *resolved_json = NULL;
-            static char param_json_buf[4096];
+            property_value param_pv;
+            property_value_init(&param_pv);
 
             if (item->expr->type == AST_NODE_MAP) {
                 map = (cypher_map*)item->expr;
@@ -472,19 +485,21 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                 cypher_parameter *param = (cypher_parameter*)item->expr;
                 property_type pt;
                 int rc = get_param_value(executor->params_json, param->name,
-                                         &pt, param_json_buf, sizeof(param_json_buf));
+                                         &pt, &param_pv);
                 if (rc == -2) {
                     /* null parameter — fall through with resolved_json = NULL */
                 } else if (rc < 0) {
                     char error[256];
                     snprintf(error, sizeof(error), "Parameter '%s' not found for bulk SET", param->name);
                     set_result_error(result, error);
+                    property_value_free(&param_pv);
                     return -1;
                 } else if (pt != PROP_TYPE_JSON) {
                     set_result_error(result, "Bulk SET parameter must be a JSON object");
+                    property_value_free(&param_pv);
                     return -1;
                 } else {
-                    resolved_json = param_json_buf;
+                    resolved_json = param_pv.as_str;
                 }
             } else {
                 set_result_error(result, "Bulk SET value must be a map literal or parameter");
@@ -530,7 +545,7 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
 
                     property_type pt = PROP_TYPE_TEXT;
                     const void *pv = NULL;
-                    static char bulk_str_buf[4096];
+                    char *bulk_json_str = NULL;  /* Dynamically allocated for JSON values */
 
                     if (pair->value->type == AST_NODE_LITERAL) {
                         cypher_literal *lit = (cypher_literal*)pair->value;
@@ -555,17 +570,13 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                                 continue; /* Skip null values */
                         }
                     } else if (pair->value->type == AST_NODE_MAP || pair->value->type == AST_NODE_LIST) {
-                        char *json_str = serialize_ast_to_json(pair->value);
-                        if (!json_str) {
+                        bulk_json_str = serialize_ast_to_json(pair->value);
+                        if (!bulk_json_str) {
                             set_result_error(result, "Failed to serialize map/list value in bulk SET");
                             return -1;
                         }
                         pt = PROP_TYPE_JSON;
-                        /* Store in static buffer for schema call */
-                        strncpy(bulk_str_buf, json_str, sizeof(bulk_str_buf) - 1);
-                        bulk_str_buf[sizeof(bulk_str_buf) - 1] = '\0';
-                        free(json_str);
-                        pv = bulk_str_buf;
+                        pv = bulk_json_str;
                     } else {
                         continue; /* Skip unsupported value types */
                     }
@@ -576,6 +587,7 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                     } else {
                         rc = cypher_schema_set_node_property(executor->schema_mgr, entity_id, pair->key, pt, pv);
                     }
+                    free(bulk_json_str);  /* Safe even if NULL */
                     if (rc == 0) {
                         result->properties_set++;
                     }
@@ -586,10 +598,12 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
             if (resolved_json) {
                 if (set_properties_from_json_object(executor, entity_id, is_edge,
                                                      resolved_json, result) < 0) {
+                    property_value_free(&param_pv);
                     return -1;
                 }
             }
 
+            property_value_free(&param_pv);
             continue;
         }
 
@@ -632,13 +646,15 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
         /* Evaluate the value expression */
         property_type prop_type = PROP_TYPE_TEXT;
         const void *prop_value = NULL;
-        static char set_str_buf[4096];
+        property_value set_pv;
+        property_value_init(&set_pv);
         static int64_t set_int_buf;
         static double set_real_buf;
         static int set_bool_buf;
 
         if (!item->expr) {
             set_result_error(result, "SET value is missing");
+            property_value_free(&set_pv);
             return -1;
         }
 
@@ -686,6 +702,7 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                     char error[512];
                     snprintf(error, sizeof(error), "Failed to set JSON property '%s' on edge %d", prop->property_name, entity_id);
                     set_result_error(result, error);
+                    property_value_free(&set_pv);
                     return -1;
                 }
             } else {
@@ -697,6 +714,7 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                     char error[512];
                     snprintf(error, sizeof(error), "Failed to set JSON property '%s' on node %d", prop->property_name, entity_id);
                     set_result_error(result, error);
+                    property_value_free(&set_pv);
                     return -1;
                 }
             }
@@ -706,59 +724,64 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
             /* Handle parameter substitution */
             cypher_parameter *param = (cypher_parameter*)item->expr;
 
-            int rc = get_param_value(executor->params_json, param->name, &prop_type, set_str_buf, sizeof(set_str_buf));
+            int rc = get_param_value(executor->params_json, param->name, &prop_type, &set_pv);
             if (rc == -2) {
                 /* null parameter - skip */
+                property_value_free(&set_pv);
                 continue;
             } else if (rc == 0) {
                 if (prop_type == PROP_TYPE_TEXT) {
-                    prop_value = set_str_buf;
+                    prop_value = set_pv.as_str;
                 } else if (prop_type == PROP_TYPE_INTEGER) {
-                    set_int_buf = *(int64_t*)set_str_buf;
+                    set_int_buf = set_pv.as_int;
                     prop_value = &set_int_buf;
                 } else if (prop_type == PROP_TYPE_REAL) {
-                    set_real_buf = *(double*)set_str_buf;
+                    set_real_buf = set_pv.as_real;
                     prop_value = &set_real_buf;
                 } else if (prop_type == PROP_TYPE_BOOLEAN) {
-                    set_bool_buf = *(int*)set_str_buf;
+                    set_bool_buf = set_pv.as_bool;
                     prop_value = &set_bool_buf;
                 } else if (prop_type == PROP_TYPE_JSON) {
-                    prop_value = set_str_buf;
+                    prop_value = set_pv.as_str;
                 }
             } else {
                 char error[256];
                 snprintf(error, sizeof(error), "Parameter '%s' not found in params_json", param->name);
                 set_result_error(result, error);
+                property_value_free(&set_pv);
                 return -1;
             }
         } else if (item->expr->type == AST_NODE_FUNCTION_CALL) {
             cypher_function_call *func = (cypher_function_call*)item->expr;
             int rc = evaluate_function_call_via_sqlite(
-                executor, func, &prop_type, set_str_buf, sizeof(set_str_buf));
+                executor, func, &prop_type, &set_pv);
             if (rc == -2) {
                 /* NULL result — skip property */
+                property_value_free(&set_pv);
                 continue;
             } else if (rc < 0) {
                 char error[256];
                 snprintf(error, sizeof(error), "Failed to evaluate function '%s' in SET",
                          func->function_name ? func->function_name : "unknown");
                 set_result_error(result, error);
+                property_value_free(&set_pv);
                 return -1;
             }
             if (prop_type == PROP_TYPE_TEXT) {
-                prop_value = set_str_buf;
+                prop_value = set_pv.as_str;
             } else if (prop_type == PROP_TYPE_INTEGER) {
-                set_int_buf = *(int64_t*)set_str_buf;
+                set_int_buf = set_pv.as_int;
                 prop_value = &set_int_buf;
             } else if (prop_type == PROP_TYPE_REAL) {
-                set_real_buf = *(double*)set_str_buf;
+                set_real_buf = set_pv.as_real;
                 prop_value = &set_real_buf;
             } else if (prop_type == PROP_TYPE_BOOLEAN) {
-                set_bool_buf = *(int*)set_str_buf;
+                set_bool_buf = set_pv.as_bool;
                 prop_value = &set_bool_buf;
             }
         } else {
             set_result_error(result, "SET value must be a literal, map, list, parameter, or function call");
+            property_value_free(&set_pv);
             return -1;
         }
 
@@ -772,6 +795,7 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                     char error[512];
                     snprintf(error, sizeof(error), "Failed to set property '%s' on edge %d", prop->property_name, entity_id);
                     set_result_error(result, error);
+                    property_value_free(&set_pv);
                     return -1;
                 }
             } else {
@@ -782,10 +806,12 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                     char error[512];
                     snprintf(error, sizeof(error), "Failed to set property '%s' on node %d", prop->property_name, entity_id);
                     set_result_error(result, error);
+                    property_value_free(&set_pv);
                     return -1;
                 }
             }
         }
+        property_value_free(&set_pv);
     }
 
     return 0;
