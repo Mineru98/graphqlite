@@ -282,7 +282,7 @@ static const query_pattern patterns[] = {
     {
         .name = "CREATE",
         .required = CLAUSE_CREATE,
-        .forbidden = CLAUSE_MATCH | CLAUSE_UNWIND,
+        .forbidden = CLAUSE_MATCH | CLAUSE_UNWIND | CLAUSE_RETURN,
         .handler = handle_create,
         .priority = 50
     },

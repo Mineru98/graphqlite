@@ -4,14 +4,14 @@ level: task
 title: "REC-06: Make CREATE...RETURN silent discard an explicit error"
 short_code: "GQLITE-T-0161"
 created_at: 2026-03-28T13:59:18.040583+00:00
-updated_at: 2026-03-28T13:59:18.040583+00:00
+updated_at: 2026-03-28T22:27:57.123143+00:00
 parent: GQLITE-I-0031
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -36,6 +36,8 @@ Make `CREATE...RETURN` produce an explicit error instead of silently succeeding 
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] `CREATE...RETURN` queries return an explicit error message
 - [ ] `CREATE` without RETURN still works correctly
 - [ ] Functional test added for `CREATE...RETURN` error case
@@ -47,5 +49,6 @@ Make `CREATE...RETURN` produce an explicit error instead of silently succeeding 
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-28: Complete
 
+One-line fix: added `CLAUSE_RETURN` to forbidden mask of CREATE pattern. Falls through to generic transform which returns `"RETURN after CREATE not yet implemented"`. All tests pass.
