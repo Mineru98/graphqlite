@@ -430,7 +430,13 @@ impl CypherResult {
             Ok(v) => v,
             Err(_) => {
                 // Non-JSON result (possibly a status message or error)
-                if trimmed.starts_with("Error") {
+                if trimmed.starts_with("Error") || trimmed.starts_with("{\"error\"") {
+                    // Try to parse structured JSON error
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                        if let Some(msg) = v.get("error").and_then(|e| e.as_str()) {
+                            return Err(crate::Error::Cypher(msg.to_string()));
+                        }
+                    }
                     return Err(crate::Error::Cypher(trimmed.to_string()));
                 }
                 // Return as a scalar result

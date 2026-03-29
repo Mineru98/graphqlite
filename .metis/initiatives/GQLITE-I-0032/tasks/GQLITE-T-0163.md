@@ -4,14 +4,14 @@ level: task
 title: "REC-08: Migrate Graph API to parameterized queries (Python + Rust)"
 short_code: "GQLITE-T-0163"
 created_at: 2026-03-28T13:59:25.509553+00:00
-updated_at: 2026-03-29T00:38:17.565269+00:00
+updated_at: 2026-03-29T00:45:48.612254+00:00
 parent: GQLITE-I-0032
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -37,6 +37,8 @@ Eliminate SQL injection risk in the Python and Rust Graph API layers by replacin
 2. Rewrite each to use `?` parameter placeholders with value tuples
 3. Apply the same pattern to Rust binding query methods
 4. Add tests with adversarial input (e.g., label names containing `'; DROP TABLE`)
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

@@ -122,9 +122,9 @@ impl Connection {
 
         match result {
             Some(json_str) => {
-                // Check for error response
-                if json_str.starts_with("Error") {
-                    return Err(Error::Cypher(json_str));
+                // Check for error response (legacy prefix or structured JSON)
+                if json_str.starts_with("Error") || json_str.starts_with("{\"error\"") {
+                    return Err(parse_structured_error(&json_str));
                 }
                 CypherResult::from_json(&json_str)
             }
@@ -171,8 +171,8 @@ impl Connection {
 
         match result {
             Some(json_str) => {
-                if json_str.starts_with("Error") {
-                    return Err(Error::Cypher(json_str));
+                if json_str.starts_with("Error") || json_str.starts_with("{\"error\"") {
+                    return Err(parse_structured_error(&json_str));
                 }
                 CypherResult::from_json(&json_str)
             }
@@ -278,6 +278,17 @@ fn load_extension(conn: &rusqlite::Connection, path: &std::path::Path) -> Result
     }
 
     Ok(())
+}
+
+/// Parse a structured JSON error from the extension into an Error.
+/// Handles both structured `{"error":"msg","code":"CODE"}` and legacy `"Error: msg"` formats.
+fn parse_structured_error(s: &str) -> Error {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
+        if let Some(msg) = v.get("error").and_then(|e| e.as_str()) {
+            return Error::Cypher(msg.to_string());
+        }
+    }
+    Error::Cypher(s.to_string())
 }
 
 #[cfg(test)]

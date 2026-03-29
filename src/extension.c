@@ -24,6 +24,22 @@
  */
 const sqlite3_api_routines *sqlite3_api = 0;
 
+/* Error codes for structured error responses */
+#define GQL_ERR_VALIDATION    "VALIDATION_ERROR"
+#define GQL_ERR_PARSE         "PARSE_ERROR"
+#define GQL_ERR_EXECUTION     "EXECUTION_ERROR"
+#define GQL_ERR_MEMORY        "MEMORY_ERROR"
+#define GQL_ERR_INTERNAL      "INTERNAL_ERROR"
+#define GQL_ERR_NOT_IMPL      "NOT_IMPLEMENTED"
+
+/* Return a structured JSON error via sqlite3_result_error.
+ * Format: {"error": "message", "code": "ERROR_CODE"} */
+static void graphqlite_result_error(sqlite3_context *context, const char *message, const char *code) {
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "{\"error\":\"%s\",\"code\":\"%s\"}", message, code);
+    sqlite3_result_error(context, buf, -1);
+}
+
 /* Per-connection executor cache structure */
 typedef struct {
     sqlite3 *db;
@@ -57,18 +73,18 @@ static void simple_test_func(sqlite3_context *context, int argc, sqlite3_value *
 /* Cypher function - full implementation with cached executor */
 static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_value **argv) {
     if (argc < 1 || argc > 2) {
-        sqlite3_result_error(context, "cypher() requires 1 or 2 arguments: (query) or (query, params_json)", -1);
+        graphqlite_result_error(context, "cypher() requires 1 or 2 arguments: (query) or (query, params_json)", GQL_ERR_VALIDATION);
         return;
     }
 
     if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
-        sqlite3_result_error(context, "cypher() first argument (query) must be text", -1);
+        graphqlite_result_error(context, "cypher() first argument (query) must be text", GQL_ERR_VALIDATION);
         return;
     }
 
     const char *query = (const char*)sqlite3_value_text(argv[0]);
     if (!query) {
-        sqlite3_result_error(context, "cypher() query cannot be null", -1);
+        graphqlite_result_error(context, "cypher() query cannot be null", GQL_ERR_VALIDATION);
         return;
     }
 
@@ -78,7 +94,7 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
         if (sqlite3_value_type(argv[1]) == SQLITE_NULL) {
             /* NULL is allowed - treat as no params */
         } else if (sqlite3_value_type(argv[1]) != SQLITE_TEXT) {
-            sqlite3_result_error(context, "cypher() second argument (params) must be JSON text or NULL", -1);
+            graphqlite_result_error(context, "cypher() second argument (params) must be JSON text or NULL", GQL_ERR_VALIDATION);
             return;
         } else {
             params_json = (const char*)sqlite3_value_text(argv[1]);
@@ -101,7 +117,7 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
         CYPHER_DEBUG("Creating new executor for db=%p", (void*)db);
         executor = cypher_executor_create(db);
         if (!executor) {
-            sqlite3_result_error(context, "Failed to create cypher executor", -1);
+            graphqlite_result_error(context, "Failed to create cypher executor", GQL_ERR_INTERNAL);
             return;
         }
 
@@ -125,7 +141,7 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
     }
     if (!result) {
         /* Don't free cached executor on error */
-        sqlite3_result_error(context, "Failed to execute cypher query", -1);
+        graphqlite_result_error(context, "Failed to execute cypher query", GQL_ERR_EXECUTION);
         return;
     }
     
@@ -169,7 +185,7 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
 
                 char *json_result = malloc(buffer_size);
                 if (!json_result) {
-                    sqlite3_result_error(context, "Memory allocation failed for agtype result formatting", -1);
+                    graphqlite_result_error(context, "Memory allocation failed for agtype result formatting", GQL_ERR_MEMORY);
                     cypher_result_free(result);
                     return;
                 }
@@ -249,7 +265,7 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
 
             char *json_result = malloc(buffer_size);
             if (!json_result) {
-                sqlite3_result_error(context, "Memory allocation failed for result formatting", -1);
+                graphqlite_result_error(context, "Memory allocation failed for result formatting", GQL_ERR_MEMORY);
                 cypher_result_free(result);
                 return;
             }
@@ -326,7 +342,24 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
             sqlite3_result_text(context, response, -1, SQLITE_TRANSIENT);
         }
     } else {
-        sqlite3_result_error(context, result->error_message ? result->error_message : "Query execution failed", -1);
+        const char *err_code = GQL_ERR_EXECUTION;
+        if (result->error_message && (strstr(result->error_message, "syntax error") || strstr(result->error_message, "Line "))) {
+            err_code = GQL_ERR_PARSE;
+        } else if (result->error_message && strstr(result->error_message, "not yet implemented")) {
+            err_code = GQL_ERR_NOT_IMPL;
+        }
+        const char *err_msg = result->error_message ? result->error_message : "Query execution failed";
+        /* Sanitize double quotes in dynamic error messages to avoid breaking JSON */
+        char sanitized_msg[512];
+        const char *src = err_msg;
+        char *dst = sanitized_msg;
+        char *end = sanitized_msg + sizeof(sanitized_msg) - 1;
+        while (*src && dst < end) {
+            *dst++ = (*src == '"') ? '\'' : *src;
+            src++;
+        }
+        *dst = '\0';
+        graphqlite_result_error(context, sanitized_msg, err_code);
     }
     
     /* Cleanup - only free result, executor is cached */
@@ -358,7 +391,7 @@ static void gql_load_graph_func(sqlite3_context *context, int argc, sqlite3_valu
 
     connection_cache *cache = (connection_cache *)sqlite3_user_data(context);
     if (!cache) {
-        sqlite3_result_error(context, "No connection cache available", -1);
+        graphqlite_result_error(context, "No connection cache available", GQL_ERR_INTERNAL);
         return;
     }
 
@@ -404,7 +437,7 @@ static void gql_unload_graph_func(sqlite3_context *context, int argc, sqlite3_va
 
     connection_cache *cache = (connection_cache *)sqlite3_user_data(context);
     if (!cache) {
-        sqlite3_result_error(context, "No connection cache available", -1);
+        graphqlite_result_error(context, "No connection cache available", GQL_ERR_INTERNAL);
         return;
     }
 
@@ -430,7 +463,7 @@ static void gql_reload_graph_func(sqlite3_context *context, int argc, sqlite3_va
 
     connection_cache *cache = (connection_cache *)sqlite3_user_data(context);
     if (!cache) {
-        sqlite3_result_error(context, "No connection cache available", -1);
+        graphqlite_result_error(context, "No connection cache available", GQL_ERR_INTERNAL);
         return;
     }
 
@@ -472,7 +505,7 @@ static void gql_graph_loaded_func(sqlite3_context *context, int argc, sqlite3_va
 
     connection_cache *cache = (connection_cache *)sqlite3_user_data(context);
     if (!cache) {
-        sqlite3_result_error(context, "No connection cache available", -1);
+        graphqlite_result_error(context, "No connection cache available", GQL_ERR_INTERNAL);
         return;
     }
 
@@ -505,7 +538,7 @@ static void regexp_func(
     int cflags = REG_EXTENDED | REG_NOSUB;
 
     if (argc != 2) {
-        sqlite3_result_error(context, "regexp() requires 2 arguments", -1);
+        graphqlite_result_error(context, "regexp() requires 2 arguments", GQL_ERR_VALIDATION);
         return;
     }
 
@@ -530,7 +563,9 @@ static void regexp_func(
     if (ret != 0) {
         char errbuf[256];
         regerror(ret, &regex, errbuf, sizeof(errbuf));
-        sqlite3_result_error(context, errbuf, -1);
+        /* Sanitize double quotes in dynamic error message */
+        for (char *p = errbuf; *p; p++) { if (*p == '"') *p = '\''; }
+        graphqlite_result_error(context, errbuf, GQL_ERR_EXECUTION);
         return;
     }
 
@@ -548,7 +583,7 @@ static void regexp_func(
  */
 static void cypher_validate_func(sqlite3_context *context, int argc, sqlite3_value **argv) {
     if (argc < 1) {
-        sqlite3_result_error(context, "cypher_validate requires a query argument", -1);
+        graphqlite_result_error(context, "cypher_validate requires a query argument", GQL_ERR_VALIDATION);
         return;
     }
 

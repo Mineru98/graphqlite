@@ -1,6 +1,6 @@
 # Code Index
 
-> Generated: 2026-03-29T00:37:58Z | 55 files | JavaScript, Python, Rust
+> Generated: 2026-03-29T00:45:57Z | 55 files | JavaScript, Python, Rust
 
 ## Project Structure
 
@@ -251,33 +251,33 @@
 
 #### bindings/python/src/graphqlite/graph/edges.py
 
-- pub `EdgesMixin` class L9-128 — `(BaseMixin) { has_edge, get_edge, upsert_edge, delete_edge, get_all_edges }` — Mixin providing edge CRUD operations.
-- pub `has_edge` method L12-33 — `def has_edge(self, source_id: str, target_id: str, rel_type: Optional[str] = Non...` — Check if an edge exists between two nodes.
-- pub `get_edge` method L35-54 — `def get_edge(self, source_id: str, target_id: str, rel_type: Optional[str] = Non...` — Get edge properties between two nodes.
-- pub `upsert_edge` method L56-101 — `def upsert_edge( self, source_id: str, target_id: str, edge_data: dict[str, Any]...` — Create or update an edge between two nodes.
-- pub `delete_edge` method L103-116 — `def delete_edge(self, source_id: str, target_id: str, rel_type: Optional[str] = ...` — Delete edge between two nodes.
-- pub `get_all_edges` method L118-128 — `def get_all_edges(self) -> list[dict]` — Get all edges with source and target info.
+- pub `EdgesMixin` class L9-127 — `(BaseMixin) { has_edge, get_edge, upsert_edge, delete_edge, get_all_edges }` — Mixin providing edge CRUD operations.
+- pub `has_edge` method L12-34 — `def has_edge(self, source_id: str, target_id: str, rel_type: Optional[str] = Non...` — Check if an edge exists between two nodes.
+- pub `get_edge` method L36-56 — `def get_edge(self, source_id: str, target_id: str, rel_type: Optional[str] = Non...` — Get edge properties between two nodes.
+- pub `upsert_edge` method L58-99 — `def upsert_edge( self, source_id: str, target_id: str, edge_data: dict[str, Any]...` — Create or update an edge between two nodes.
+- pub `delete_edge` method L101-115 — `def delete_edge(self, source_id: str, target_id: str, rel_type: Optional[str] = ...` — Delete edge between two nodes.
+- pub `get_all_edges` method L117-127 — `def get_all_edges(self) -> list[dict]` — Get all edges with source and target info.
 
 #### bindings/python/src/graphqlite/graph/nodes.py
 
-- pub `NodesMixin` class L9-124 — `(BaseMixin) { has_node, get_node, upsert_node, delete_node, get_all_nodes }` — Mixin providing node CRUD operations.
-- pub `has_node` method L12-28 — `def has_node(self, node_id: str) -> bool` — Check if a node exists.
-- pub `get_node` method L30-45 — `def get_node(self, node_id: str) -> Optional[dict]` — Get a node by ID.
-- pub `upsert_node` method L47-84 — `def upsert_node( self, node_id: str, node_data: dict[str, Any], label: str = "En...` — Create or update a node.
-- pub `delete_node` method L86-95 — `def delete_node(self, node_id: str) -> None` — Delete a node and its relationships.
-- pub `get_all_nodes` method L97-124 — `def get_all_nodes(self, label: Optional[str] = None) -> list[dict]` — Get all nodes, optionally filtered by label.
+- pub `NodesMixin` class L9-120 — `(BaseMixin) { has_node, get_node, upsert_node, delete_node, get_all_nodes }` — Mixin providing node CRUD operations.
+- pub `has_node` method L12-29 — `def has_node(self, node_id: str) -> bool` — Check if a node exists.
+- pub `get_node` method L31-47 — `def get_node(self, node_id: str) -> Optional[dict]` — Get a node by ID.
+- pub `upsert_node` method L49-79 — `def upsert_node( self, node_id: str, node_data: dict[str, Any], label: str = "En...` — Create or update a node.
+- pub `delete_node` method L81-91 — `def delete_node(self, node_id: str) -> None` — Delete a node and its relationships.
+- pub `get_all_nodes` method L93-120 — `def get_all_nodes(self, label: Optional[str] = None) -> list[dict]` — Get all nodes, optionally filtered by label.
 
 #### bindings/python/src/graphqlite/graph/queries.py
 
-- pub `QueriesMixin` class L8-147 — `(BaseMixin) { node_degree, get_neighbors, get_node_edges, get_edges_from, get_ed...` — Mixin providing graph query operations.
-- pub `node_degree` method L11-30 — `def node_degree(self, node_id: str) -> int` — Get the degree (number of connections) of a node.
-- pub `get_neighbors` method L32-48 — `def get_neighbors(self, node_id: str) -> list[dict]` — Get all neighboring nodes.
-- pub `get_node_edges` method L50-64 — `def get_node_edges(self, node_id: str) -> list[tuple[str, str, dict]]` — Get all edges connected to a node.
-- pub `get_edges_from` method L66-80 — `def get_edges_from(self, node_id: str) -> list[dict]` — Get all outgoing edges from a node.
-- pub `get_edges_to` method L82-96 — `def get_edges_to(self, node_id: str) -> list[dict]` — Get all incoming edges to a node.
-- pub `get_edges_by_type` method L98-115 — `def get_edges_by_type(self, node_id: str, rel_type: str) -> list[dict]` — Get outgoing edges of a specific type from a node.
-- pub `stats` method L117-133 — `def stats(self) -> dict[str, int]` — Get graph statistics.
-- pub `query` method L135-147 — `def query(self, cypher: str, params: Optional[dict] = None) -> list[dict]` — Execute a raw Cypher query with optional parameters.
+- pub `QueriesMixin` class L8-153 — `(BaseMixin) { node_degree, get_neighbors, get_node_edges, get_edges_from, get_ed...` — Mixin providing graph query operations.
+- pub `node_degree` method L11-31 — `def node_degree(self, node_id: str) -> int` — Get the degree (number of connections) of a node.
+- pub `get_neighbors` method L33-50 — `def get_neighbors(self, node_id: str) -> list[dict]` — Get all neighboring nodes.
+- pub `get_node_edges` method L52-67 — `def get_node_edges(self, node_id: str) -> list[tuple[str, str, dict]]` — Get all edges connected to a node.
+- pub `get_edges_from` method L69-84 — `def get_edges_from(self, node_id: str) -> list[dict]` — Get all outgoing edges from a node.
+- pub `get_edges_to` method L86-101 — `def get_edges_to(self, node_id: str) -> list[dict]` — Get all incoming edges to a node.
+- pub `get_edges_by_type` method L103-121 — `def get_edges_by_type(self, node_id: str, rel_type: str) -> list[dict]` — Get outgoing edges of a specific type from a node.
+- pub `stats` method L123-139 — `def stats(self) -> dict[str, int]` — Get graph statistics.
+- pub `query` method L141-153 — `def query(self, cypher: str, params: Optional[dict] = None) -> list[dict]` — Execute a raw Cypher query with optional parameters.
 
 ### bindings/python/tests
 
@@ -971,12 +971,12 @@
 
 #### bindings/rust/src/graph/edges.rs
 
-- pub `has_edge` function L9-23 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<bool...` — Check if a directed edge exists from source to target.
-- pub `get_edge` function L26-39 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<Opti...` — Get edge properties between two nodes.
-- pub `upsert_edge` function L46-87 — `( &self, source_id: &str, target_id: &str, props: I, rel_type: &str, ) -> Result...` — Create or update an edge between two nodes.
-- pub `delete_edge` function L90-100 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<()>` — Delete the directed edge between two nodes.
-- pub `get_all_edges` function L103-106 — `(&self) -> Result<CypherResult>` — Get all edges in the graph.
--  `Graph` type L7-107 — `= Graph` — Edge operations for Graph.
+- pub `has_edge` function L9-25 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<bool...` — Check if a directed edge exists from source to target.
+- pub `get_edge` function L28-43 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<Opti...` — Get edge properties between two nodes.
+- pub `upsert_edge` function L50-97 — `( &self, source_id: &str, target_id: &str, props: I, rel_type: &str, ) -> Result...` — Create or update an edge between two nodes.
+- pub `delete_edge` function L100-112 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<()>` — Delete the directed edge between two nodes.
+- pub `get_all_edges` function L115-118 — `(&self) -> Result<CypherResult>` — Get all edges in the graph.
+-  `Graph` type L7-119 — `= Graph` — Edge operations for Graph.
 
 #### bindings/rust/src/graph/mod.rs
 
@@ -1007,23 +1007,23 @@
 
 #### bindings/rust/src/graph/nodes.rs
 
-- pub `has_node` function L9-20 — `(&self, node_id: &str) -> Result<bool>` — Check if a node with the given ID exists.
-- pub `get_node` function L25-35 — `(&self, node_id: &str) -> Result<Option<Value>>` — Get a node by ID.
-- pub `upsert_node` function L41-74 — `(&self, node_id: &str, props: I, label: &str) -> Result<()>` — Create or update a node.
-- pub `delete_node` function L77-84 — `(&self, node_id: &str) -> Result<()>` — Delete a node and all its relationships.
-- pub `get_all_nodes` function L87-100 — `(&self, label: Option<&str>) -> Result<Vec<Value>>` — Get all nodes, optionally filtered by label.
--  `Graph` type L7-101 — `= Graph` — Node operations for Graph.
+- pub `has_node` function L9-19 — `(&self, node_id: &str) -> Result<bool>` — Check if a node with the given ID exists.
+- pub `get_node` function L24-33 — `(&self, node_id: &str) -> Result<Option<Value>>` — Get a node by ID.
+- pub `upsert_node` function L39-74 — `(&self, node_id: &str, props: I, label: &str) -> Result<()>` — Create or update a node.
+- pub `delete_node` function L77-83 — `(&self, node_id: &str) -> Result<()>` — Delete a node and all its relationships.
+- pub `get_all_nodes` function L86-99 — `(&self, label: Option<&str>) -> Result<Vec<Value>>` — Get all nodes, optionally filtered by label.
+-  `Graph` type L7-100 — `= Graph` — Node operations for Graph.
 
 #### bindings/rust/src/graph/queries.rs
 
-- pub `node_degree` function L9-19 — `(&self, node_id: &str) -> Result<i64>` — Get the degree (number of connections) of a node.
-- pub `get_neighbors` function L22-35 — `(&self, node_id: &str) -> Result<Vec<Value>>` — Get all neighboring nodes (connected via any edge direction).
-- pub `stats` function L38-55 — `(&self) -> Result<GraphStats>` — Get graph statistics (node and edge counts).
-- pub `get_edges_from` function L60-66 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all outgoing edges from a node.
-- pub `get_edges_to` function L71-77 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all incoming edges to a node.
-- pub `get_edges_by_type` function L82-90 — `(&self, node_id: &str, rel_type: &str) -> Result<CypherResult>` — Get outgoing edges of a specific type from a node.
-- pub `get_node_edges` function L95-101 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all edges (both directions) connected to a node.
--  `Graph` type L7-102 — `= Graph` — Query operations for Graph.
+- pub `node_degree` function L9-18 — `(&self, node_id: &str) -> Result<i64>` — Get the degree (number of connections) of a node.
+- pub `get_neighbors` function L21-33 — `(&self, node_id: &str) -> Result<Vec<Value>>` — Get all neighboring nodes (connected via any edge direction).
+- pub `stats` function L36-53 — `(&self) -> Result<GraphStats>` — Get graph statistics (node and edge counts).
+- pub `get_edges_from` function L58-63 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all outgoing edges from a node.
+- pub `get_edges_to` function L68-73 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all incoming edges to a node.
+- pub `get_edges_by_type` function L78-88 — `(&self, node_id: &str, rel_type: &str) -> Result<CypherResult>` — Get outgoing edges of a specific type from a node.
+- pub `get_node_edges` function L93-98 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all edges (both directions) connected to a node.
+-  `Graph` type L7-99 — `= Graph` — Query operations for Graph.
 
 ### bindings/rust/tests
 

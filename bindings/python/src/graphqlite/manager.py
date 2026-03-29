@@ -258,9 +258,29 @@ class GraphManager:
         import json
         if params:
             params_json = json.dumps(params)
-            cursor = coord.execute("SELECT cypher(?, ?)", (cypher, params_json))
+            try:
+                cursor = coord.execute("SELECT cypher(?, ?)", (cypher, params_json))
+            except sqlite3.Error as e:
+                err_str = str(e)
+                try:
+                    err_data = json.loads(err_str)
+                    if isinstance(err_data, dict) and "error" in err_data:
+                        raise sqlite3.Error(err_data["error"]) from None
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                raise
         else:
-            cursor = coord.execute("SELECT cypher(?)", (cypher,))
+            try:
+                cursor = coord.execute("SELECT cypher(?)", (cypher,))
+            except sqlite3.Error as e:
+                err_str = str(e)
+                try:
+                    err_data = json.loads(err_str)
+                    if isinstance(err_data, dict) and "error" in err_data:
+                        raise sqlite3.Error(err_data["error"]) from None
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                raise
 
         row = cursor.fetchone()
 
@@ -273,7 +293,7 @@ class GraphManager:
         try:
             data = json.loads(result_str)
         except json.JSONDecodeError:
-            if result_str.startswith("Error"):
+            if result_str.startswith("Error") or result_str.startswith("{\"error\""):
                 raise sqlite3.Error(result_str)
             return CypherResult([{"result": result_str}], ["result"])
 

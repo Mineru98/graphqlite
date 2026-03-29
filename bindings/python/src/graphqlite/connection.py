@@ -142,11 +142,23 @@ class Connection:
         Example:
             >>> db.cypher("MATCH (n) WHERE n.name = $name RETURN n", {"name": "Alice"})
         """
-        if params:
-            params_json = json.dumps(params)
-            cursor = self._conn.execute("SELECT cypher(?, ?)", (query, params_json))
-        else:
-            cursor = self._conn.execute("SELECT cypher(?)", (query,))
+        try:
+            if params:
+                params_json = json.dumps(params)
+                cursor = self._conn.execute("SELECT cypher(?, ?)", (query, params_json))
+            else:
+                cursor = self._conn.execute("SELECT cypher(?)", (query,))
+        except sqlite3.Error as e:
+            # Parse structured JSON error from extension
+            err_str = str(e)
+            try:
+                err_data = json.loads(err_str)
+                if isinstance(err_data, dict) and "error" in err_data:
+                    raise sqlite3.Error(err_data["error"]) from None
+            except (json.JSONDecodeError, TypeError):
+                pass
+            raise
+
         row = cursor.fetchone()
 
         if row is None or row[0] is None:
@@ -158,8 +170,8 @@ class Connection:
         try:
             data = json.loads(result_str)
         except json.JSONDecodeError:
-            # Non-JSON result (error message or scalar)
-            if result_str.startswith("Error"):
+            # Non-JSON result (scalar or legacy error)
+            if result_str.startswith("Error") or result_str.startswith("{\"error\""):
                 raise sqlite3.Error(result_str)
             return CypherResult([{"result": result_str}], ["result"])
 

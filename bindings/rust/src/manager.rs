@@ -280,7 +280,13 @@ impl GraphManager {
 
         match result {
             Some(json_str) => {
-                if json_str.starts_with("Error") {
+                if json_str.starts_with("Error") || json_str.starts_with("{\"error\"") {
+                    // Parse structured JSON error
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        if let Some(msg) = v.get("error").and_then(|e| e.as_str()) {
+                            return Err(Error::Cypher(msg.to_string()));
+                        }
+                    }
                     return Err(Error::Cypher(json_str));
                 }
                 CypherResult::from_json(&json_str)
