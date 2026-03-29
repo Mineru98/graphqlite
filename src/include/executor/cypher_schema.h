@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <time.h>
 
+/* Schema version — increment when table structure changes.
+ * Stored in PRAGMA user_version for migration detection. */
+#define GRAPHQLITE_SCHEMA_VERSION 1
+
 /* Forward declarations */
 typedef struct property_key_cache property_key_cache;
 

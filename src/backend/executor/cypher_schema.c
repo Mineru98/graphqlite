@@ -372,7 +372,31 @@ int cypher_schema_initialize(cypher_schema_manager *manager)
     }
     
     CYPHER_DEBUG("Initializing schema");
-    
+
+    /* Check schema version via PRAGMA user_version */
+    {
+        sqlite3_stmt *ver_stmt;
+        int rc = sqlite3_prepare_v2(manager->db, "PRAGMA user_version", -1, &ver_stmt, NULL);
+        if (rc == SQLITE_OK && sqlite3_step(ver_stmt) == SQLITE_ROW) {
+            int db_version = sqlite3_column_int(ver_stmt, 0);
+            sqlite3_finalize(ver_stmt);
+
+            if (db_version > GRAPHQLITE_SCHEMA_VERSION) {
+                CYPHER_DEBUG("Schema version %d is newer than supported %d",
+                             db_version, GRAPHQLITE_SCHEMA_VERSION);
+                return -1;  /* Database created by newer version */
+            }
+
+            if (db_version > 0 && db_version < GRAPHQLITE_SCHEMA_VERSION) {
+                CYPHER_DEBUG("Migrating schema from version %d to %d",
+                             db_version, GRAPHQLITE_SCHEMA_VERSION);
+                /* Future migration steps go here */
+            }
+        } else {
+            if (ver_stmt) sqlite3_finalize(ver_stmt);
+        }
+    }
+
     /* Create all tables */
     if (cypher_schema_create_tables(manager) < 0) {
         return -1;
@@ -412,8 +436,15 @@ int cypher_schema_initialize(cypher_schema_manager *manager)
         return -1;
     }
     
+    /* Stamp schema version */
+    {
+        char ver_sql[64];
+        snprintf(ver_sql, sizeof(ver_sql), "PRAGMA user_version = %d", GRAPHQLITE_SCHEMA_VERSION);
+        sqlite3_exec(manager->db, ver_sql, NULL, NULL, NULL);
+    }
+
     manager->schema_initialized = true;
-    CYPHER_DEBUG("Schema initialization complete");
+    CYPHER_DEBUG("Schema initialization complete (version %d)", GRAPHQLITE_SCHEMA_VERSION);
     
     return 0;
 }

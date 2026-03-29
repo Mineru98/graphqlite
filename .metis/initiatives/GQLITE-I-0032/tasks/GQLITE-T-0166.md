@@ -4,14 +4,14 @@ level: task
 title: "REC-12: Schema versioning via PRAGMA user_version"
 short_code: "GQLITE-T-0166"
 created_at: 2026-03-28T13:59:29.503077+00:00
-updated_at: 2026-03-28T13:59:29.503077+00:00
+updated_at: 2026-03-29T00:24:23.884466+00:00
 parent: GQLITE-I-0032
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -38,6 +38,8 @@ Add schema versioning so GraphQLite can detect outdated schemas and run migratio
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] `GRAPHQLITE_SCHEMA_VERSION` defined in header
 - [ ] Fresh databases get `user_version` set to 1
 - [ ] Existing databases with version 0 are migrated (currently no-op, just sets version)
@@ -51,4 +53,3 @@ Add schema versioning so GraphQLite can detect outdated schemas and run migratio
 ## Status Updates
 
 *To be added during implementation*
-
