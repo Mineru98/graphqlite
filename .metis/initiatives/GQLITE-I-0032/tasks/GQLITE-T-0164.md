@@ -4,14 +4,14 @@ level: task
 title: "REC-10: Single-pass result enumeration and O(n) JSON serialization"
 short_code: "GQLITE-T-0164"
 created_at: 2026-03-28T13:59:26.821059+00:00
-updated_at: 2026-03-28T13:59:26.821059+00:00
+updated_at: 2026-03-29T00:26:11.606059+00:00
 parent: GQLITE-I-0032
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -39,6 +39,8 @@ Replace count-then-read double pass in `build_query_results()` with single-pass 
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] `build_query_results()` uses single-pass row reading with incremental realloc
 - [ ] JSON assembly uses offset-based writes instead of `strcat`
 - [ ] All unit and functional tests pass
@@ -51,4 +53,3 @@ Replace count-then-read double pass in `build_query_results()` with single-pass 
 ## Status Updates
 
 *To be added during implementation*
-

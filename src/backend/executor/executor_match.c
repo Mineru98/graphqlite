@@ -175,7 +175,7 @@ int execute_match_return_query(cypher_executor *executor, cypher_match *match, c
 int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_return *return_clause, cypher_result *result, cypher_transform_context *ctx)
 {
 #ifdef GRAPHQLITE_PERF_TIMING
-    struct timespec t_start, t_count, t_read;
+    struct timespec t_start, t_read;
     clock_gettime(CLOCK_MONOTONIC, &t_start);
 #endif
 
@@ -267,69 +267,56 @@ int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_re
     }
     result->column_count = column_count;
 
-    /* Count rows first */
-#ifdef GRAPHQLITE_PERF_TIMING
-    struct timespec t_first_step;
-#endif
-    int row_count = 0;
-    int first_step_rc = sqlite3_step(stmt);
-#ifdef GRAPHQLITE_PERF_TIMING
-    clock_gettime(CLOCK_MONOTONIC, &t_first_step);
-#endif
-    if (first_step_rc == SQLITE_ROW) {
-        row_count++;
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            row_count++;
-        }
-    }
-
-#ifdef GRAPHQLITE_PERF_TIMING
-    clock_gettime(CLOCK_MONOTONIC, &t_count);
-    double first_step_ms = (t_first_step.tv_sec - t_start.tv_sec) * 1000.0 + (t_first_step.tv_nsec - t_start.tv_nsec) / 1000000.0;
-    CYPHER_DEBUG("SQL FIRST_STEP TIMING: %.2fms", first_step_ms);
-#endif
-
-    if (row_count == 0) {
-#ifdef GRAPHQLITE_PERF_TIMING
-        double count_ms = (t_count.tv_sec - t_start.tv_sec) * 1000.0 + (t_count.tv_nsec - t_start.tv_nsec) / 1000000.0;
-        CYPHER_DEBUG("BUILD_RESULTS TIMING: count_rows=%.2fms (0 rows), read_data=0ms", count_ms);
-#endif
-        result->row_count = 0;
-        result->data = NULL;
-        result->success = true;
-        return 0;
-    }
-    
-    /* Reset statement for actual data reading */
-    sqlite3_reset(stmt);
-    
-    /* Allocate data arrays */
-    result->data = malloc(row_count * sizeof(char**));
-    if (!result->data) {
+    /* Single-pass result reading with incremental realloc.
+     * Eliminates the double SQLite execution pass (count then read). */
+    int allocated = 64;
+    result->data = malloc(allocated * sizeof(char**));
+    result->data_types = malloc(allocated * sizeof(int*));
+    if (!result->data || !result->data_types) {
         set_result_error(result, "Memory allocation failed for result data");
         return -1;
     }
 
-    /* Allocate data_types array for type preservation */
-    result->data_types = malloc(row_count * sizeof(int*));
-    if (!result->data_types) {
-        set_result_error(result, "Memory allocation failed for data types");
-        return -1;
-    }
-
-    /* Allocate agtype data if we have graph entities or property access */
     if (has_agtype_values) {
-        result->agtype_data = malloc(row_count * sizeof(agtype_value**));
+        result->agtype_data = malloc(allocated * sizeof(agtype_value**));
         if (!result->agtype_data) {
             set_result_error(result, "Memory allocation failed for agtype data");
             return -1;
         }
         result->use_agtype = true;
     }
-    
-    /* Read actual data */
+
+#ifdef GRAPHQLITE_PERF_TIMING
+    struct timespec t_first_step;
+#endif
     int current_row = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW && current_row < row_count) {
+    int first_step_rc = sqlite3_step(stmt);
+#ifdef GRAPHQLITE_PERF_TIMING
+    clock_gettime(CLOCK_MONOTONIC, &t_first_step);
+#endif
+
+    while (first_step_rc == SQLITE_ROW) {
+        /* Grow arrays if needed */
+        if (current_row >= allocated) {
+            allocated *= 2;
+            char ***new_data = realloc(result->data, allocated * sizeof(char**));
+            int **new_types = realloc(result->data_types, allocated * sizeof(int*));
+            if (!new_data || !new_types) {
+                set_result_error(result, "Memory allocation failed growing result data");
+                return -1;
+            }
+            result->data = new_data;
+            result->data_types = new_types;
+            if (has_agtype_values) {
+                agtype_value ***new_ag = realloc(result->agtype_data, allocated * sizeof(agtype_value**));
+                if (!new_ag) {
+                    set_result_error(result, "Memory allocation failed growing agtype data");
+                    return -1;
+                }
+                result->agtype_data = new_ag;
+            }
+        }
+
         result->data[current_row] = malloc(column_count * sizeof(char*));
         if (!result->data[current_row]) {
             set_result_error(result, "Memory allocation failed for row data");
@@ -457,17 +444,28 @@ int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_re
             }
         }
         current_row++;
+        first_step_rc = sqlite3_step(stmt);
     }
-    
-    result->row_count = row_count;
+
+    if (current_row == 0) {
+        /* No rows — free allocated arrays and return empty */
+        free(result->data); result->data = NULL;
+        free(result->data_types); result->data_types = NULL;
+        if (has_agtype_values) { free(result->agtype_data); result->agtype_data = NULL; }
+        result->row_count = 0;
+        result->success = true;
+        return 0;
+    }
+
+    result->row_count = current_row;
     result->success = true;
 
 #ifdef GRAPHQLITE_PERF_TIMING
     clock_gettime(CLOCK_MONOTONIC, &t_read);
-    double count_ms = (t_count.tv_sec - t_start.tv_sec) * 1000.0 + (t_count.tv_nsec - t_start.tv_nsec) / 1000000.0;
-    double read_ms = (t_read.tv_sec - t_count.tv_sec) * 1000.0 + (t_read.tv_nsec - t_count.tv_nsec) / 1000000.0;
-    CYPHER_DEBUG("BUILD_RESULTS TIMING: count_rows=%.2fms (%d rows), read_data=%.2fms (agtype: %s)",
-                count_ms, row_count, read_ms, has_agtype_values ? "yes" : "no");
+    double first_step_ms = (t_first_step.tv_sec - t_start.tv_sec) * 1000.0 + (t_first_step.tv_nsec - t_start.tv_nsec) / 1000000.0;
+    double total_ms = (t_read.tv_sec - t_start.tv_sec) * 1000.0 + (t_read.tv_nsec - t_start.tv_nsec) / 1000000.0;
+    CYPHER_DEBUG("BUILD_RESULTS TIMING: first_step=%.2fms, total=%.2fms (%d rows, agtype: %s)",
+                first_step_ms, total_ms, current_row, has_agtype_values ? "yes" : "no");
 #endif
 
     return 0;
