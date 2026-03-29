@@ -92,6 +92,6 @@ This documentation follows the [Diátaxis](https://diataxis.fr/) framework:
 
 ## Version and License
 
-Current version: **0.4.0** — MIT License
+Current version: **0.4.1** — MIT License
 
 Source code and issue tracker: [https://github.com/colliery-io/graphqlite](https://github.com/colliery-io/graphqlite)
