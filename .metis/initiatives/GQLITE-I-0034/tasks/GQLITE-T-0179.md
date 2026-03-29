@@ -4,14 +4,14 @@ level: task
 title: "CALL subquery integration tests and openCypher compliance"
 short_code: "GQLITE-T-0179"
 created_at: 2026-03-29T01:05:18.723369+00:00
-updated_at: 2026-03-29T17:49:15.517702+00:00
+updated_at: 2026-03-29T17:55:15.186602+00:00
 parent: GQLITE-I-0034
 blocked_by: [GQLITE-T-0176, GQLITE-T-0177, GQLITE-T-0178]
 archived: false
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -84,6 +84,8 @@ Build comprehensive integration tests for CALL subquery covering basic usage, WI
 - Python binding tests should verify CALL works through the extension API (at least 3 scenarios: basic, WITH import, UNION)
 - Rust binding tests should verify CALL works through the extension API (same 3 scenarios)
 - Verify behavior against openCypher spec sections 3 and 6.5
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

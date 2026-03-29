@@ -563,7 +563,7 @@ lint:
 	@echo "         missing prototypes, and other C99/C11 violations that break CI."
 	@FAIL=0; \
 	for f in src/backend/parser/cypher_ast.c src/backend/parser/cypher_parser.c src/backend/parser/cypher_scanner_api.c src/backend/parser/cypher_keywords.c \
-		src/backend/transform/*.c src/backend/executor/*.c src/extension.c src/bundled_init.c; do \
+		src/backend/transform/*.c src/backend/executor/*.c src/extension.c; do \
 		/usr/bin/clang -std=c11 -Wall -Wextra -Werror -Wc23-extensions \
 			-Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable \
 			-Wno-unused-but-set-variable -Wno-unused-function \

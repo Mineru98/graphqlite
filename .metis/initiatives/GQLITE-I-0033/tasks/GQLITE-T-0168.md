@@ -4,14 +4,14 @@ level: task
 title: "REC-09: Consolidate extension.c and bundled_init.c into shared implementation"
 short_code: "GQLITE-T-0168"
 created_at: 2026-03-28T13:59:38.265929+00:00
-updated_at: 2026-03-28T13:59:38.265929+00:00
+updated_at: 2026-03-29T17:58:54.558578+00:00
 parent: GQLITE-I-0033
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -39,6 +39,8 @@ Eliminate code duplication between `extension.c` and `bundled_init.c` by extract
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] No duplicated function handler code between extension entry points
 - [ ] Both build configurations (if applicable) compile and pass tests
 - [ ] If `bundled_init.c` is unused, it is deleted with a note in the commit message
@@ -50,5 +52,6 @@ Eliminate code duplication between `extension.c` and `bundled_init.c` by extract
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-29: Complete
 
+`bundled_init.c` was never compiled in any build target — only referenced in the Makefile lint glob. Deleted the file and removed it from lint. No shared implementation needed since only `extension.c` is used.
