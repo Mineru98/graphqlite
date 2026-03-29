@@ -160,6 +160,8 @@ static int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *q
                                       cypher_result *result, clause_flags flags);
 static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                 cypher_result *result, clause_flags flags);
+static int handle_create_return(cypher_executor *executor, cypher_query *query,
+                                cypher_result *result, clause_flags flags);
 
 /*
  * Pattern registry - ordered by priority (highest first)
@@ -293,6 +295,13 @@ static const query_pattern patterns[] = {
     /*
      * Priority 50: Standalone write clauses
      */
+    {
+        .name = "CREATE+RETURN",
+        .required = CLAUSE_CREATE | CLAUSE_RETURN,
+        .forbidden = CLAUSE_MATCH | CLAUSE_UNWIND,
+        .handler = handle_create_return,
+        .priority = 55
+    },
     {
         .name = "CREATE",
         .required = CLAUSE_CREATE,
@@ -1334,6 +1343,132 @@ static int handle_return_only(cypher_executor *executor, cypher_query *query,
 
     /* Standard SQL-based execution for non-algorithm queries */
     return handle_generic_transform(executor, query, result, flags);
+}
+
+/*
+ * CREATE+RETURN handler
+ *
+ * Executes the CREATE clause, then queries the created nodes to build
+ * the RETURN result.
+ */
+static int handle_create_return(cypher_executor *executor, cypher_query *query,
+                                cypher_result *result, clause_flags flags)
+{
+    (void)flags;
+    cypher_create *create = find_create_clause(query);
+    cypher_return *ret = find_return_clause(query);
+
+    CYPHER_DEBUG("Executing CREATE+RETURN via pattern dispatch");
+
+    /* Execute CREATE and keep the variable map */
+    variable_map *var_map = NULL;
+    int rc = execute_create_clause_with_varmap(executor, create, result, &var_map);
+    if (rc < 0) {
+        if (var_map) free_variable_map(var_map);
+        return -1;
+    }
+
+    if (!var_map || var_map->count == 0 || !ret || !ret->items) {
+        result->success = true;
+        if (var_map) free_variable_map(var_map);
+        return 0;
+    }
+
+    /* Build a SQL query to fetch the RETURN data from created nodes.
+     * For each return item like p.name, generate:
+     *   SELECT value FROM node_props_text WHERE node_id = ? AND key_id = (
+     *     SELECT id FROM property_keys WHERE key = 'name')
+     * We build a single row with all requested columns. */
+    int col_count = ret->items->count;
+    result->column_count = col_count;
+    result->column_names = malloc(col_count * sizeof(char*));
+    result->row_count = 1;
+    result->data = malloc(sizeof(char**));
+    result->data[0] = malloc(col_count * sizeof(char*));
+
+    for (int i = 0; i < col_count; i++) {
+        cypher_return_item *item = (cypher_return_item*)ret->items->items[i];
+        const char *alias = item->alias;
+        ast_node *expr = item->expr;
+
+        /* Determine column name */
+        if (alias) {
+            result->column_names[i] = strdup(alias);
+        } else {
+            /* Build name from expression */
+            result->column_names[i] = strdup("?column?");
+        }
+
+        result->data[0][i] = NULL;
+
+        /* Handle property access: p.name */
+        if (expr && expr->type == AST_NODE_PROPERTY) {
+            cypher_property *prop = (cypher_property*)expr;
+            const char *prop_name = prop->property_name;
+            const char *var_name = NULL;
+
+            /* Get variable name from the base expression */
+            if (prop->expr && prop->expr->type == AST_NODE_IDENTIFIER) {
+                var_name = ((cypher_identifier*)prop->expr)->name;
+            }
+
+            if (var_name && prop_name) {
+                /* Build column name like "p.name" if no alias */
+                if (!alias) {
+                    free(result->column_names[i]);
+                    char col_name[256];
+                    snprintf(col_name, sizeof(col_name), "%s.%s", var_name, prop_name);
+                    result->column_names[i] = strdup(col_name);
+                }
+
+                int node_id = get_variable_node_id(var_map, var_name);
+                if (node_id >= 0) {
+                    /* Query each property type table for the value */
+                    const char *type_tables[] = {
+                        "node_props_text", "node_props_int",
+                        "node_props_real", "node_props_bool", NULL
+                    };
+                    for (int t = 0; type_tables[t]; t++) {
+                        char sql[512];
+                        snprintf(sql, sizeof(sql),
+                            "SELECT CAST(value AS TEXT) FROM %s "
+                            "WHERE node_id = %d AND key_id = "
+                            "(SELECT id FROM property_keys WHERE key = '%s')",
+                            type_tables[t], node_id, prop_name);
+
+                        sqlite3_stmt *stmt;
+                        if (sqlite3_prepare_v2(executor->db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+                            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                                const char *val = (const char*)sqlite3_column_text(stmt, 0);
+                                if (val) {
+                                    result->data[0][i] = strdup(val);
+                                }
+                            }
+                            sqlite3_finalize(stmt);
+                        }
+                        if (result->data[0][i]) break; /* Found it */
+                    }
+                }
+            }
+        } else if (expr && expr->type == AST_NODE_IDENTIFIER) {
+            /* Return whole node: RETURN p — return node ID for now */
+            const char *var_name = ((cypher_identifier*)expr)->name;
+            int node_id = get_variable_node_id(var_map, var_name);
+            if (node_id >= 0) {
+                if (!alias) {
+                    free(result->column_names[i]);
+                    result->column_names[i] = strdup(var_name);
+                }
+                char id_str[32];
+                snprintf(id_str, sizeof(id_str), "%d", node_id);
+                result->data[0][i] = strdup(id_str);
+            }
+        }
+    }
+
+    result->success = true;
+    free_variable_map(var_map);
+    return 0;
 }
 
 /*

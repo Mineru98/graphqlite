@@ -465,3 +465,39 @@ int execute_create_clause(cypher_executor *executor, cypher_create *create, cyph
 
     return 0;
 }
+
+/* Execute CREATE clause, returning the variable map with created node IDs.
+ * Caller is responsible for freeing the returned variable_map. */
+int execute_create_clause_with_varmap(cypher_executor *executor, cypher_create *create,
+                                      cypher_result *result, variable_map **out_var_map)
+{
+    if (!executor || !create || !result || !out_var_map) {
+        return -1;
+    }
+
+    if (!create->pattern) {
+        set_result_error(result, "No pattern in CREATE clause");
+        return -1;
+    }
+
+    CYPHER_DEBUG("Executing CREATE clause (with varmap) with %d patterns", create->pattern->count);
+
+    variable_map *var_map = create_variable_map();
+    if (!var_map) {
+        set_result_error(result, "Failed to create variable map");
+        return -1;
+    }
+
+    for (int i = 0; i < create->pattern->count; i++) {
+        ast_node *pattern = create->pattern->items[i];
+        if (pattern->type == AST_NODE_PATH) {
+            if (execute_path_pattern_with_variables(executor, (cypher_path*)pattern, result, var_map) < 0) {
+                free_variable_map(var_map);
+                return -1;
+            }
+        }
+    }
+
+    *out_var_map = var_map;
+    return 0;
+}

@@ -85,6 +85,8 @@ int get_param_value(const char *params_json, const char *param_name,
 
 /* Clause execution functions (used by main dispatcher and other clauses) */
 int execute_create_clause(cypher_executor *executor, cypher_create *create, cypher_result *result);
+int execute_create_clause_with_varmap(cypher_executor *executor, cypher_create *create,
+                                      cypher_result *result, variable_map **out_var_map);
 int execute_foreach_clause(cypher_executor *executor, cypher_foreach *foreach, cypher_result *result);
 int execute_merge_clause(cypher_executor *executor, cypher_merge *merge, cypher_result *result);
 int execute_merge_with_variables(cypher_executor *executor, cypher_merge *merge,
