@@ -1,7 +1,7 @@
 //! Edge operations for Graph.
 
 use super::Graph;
-use crate::utils::{escape_string, rel_type_pattern, sanitize_rel_type, PropertyValue};
+use crate::utils::{rel_type_pattern, sanitize_rel_type, PropertyValue};
 use crate::{CypherResult, Result, Value};
 
 impl Graph {
@@ -9,12 +9,14 @@ impl Graph {
     pub fn has_edge(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<bool> {
         let rel_pattern = rel_type_pattern(rel_type);
         let query = format!(
-            "MATCH (a {{id: '{}'}})-[r{}]->(b {{id: '{}'}}) RETURN count(r) AS cnt",
-            escape_string(source_id),
-            rel_pattern,
-            escape_string(target_id)
+            "MATCH (a {{id: $src}})-[r{}]->(b {{id: $tgt}}) RETURN count(r) AS cnt",
+            rel_pattern
         );
-        let result = self.connection().cypher(&query)?;
+        let result = self.connection()
+            .cypher_builder(&query)
+            .param("src", source_id)
+            .param("tgt", target_id)
+            .run()?;
         if result.is_empty() {
             return Ok(false);
         }
@@ -26,12 +28,14 @@ impl Graph {
     pub fn get_edge(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<Option<Value>> {
         let rel_pattern = rel_type_pattern(rel_type);
         let query = format!(
-            "MATCH (a {{id: '{}'}})-[r{}]->(b {{id: '{}'}}) RETURN r",
-            escape_string(source_id),
-            rel_pattern,
-            escape_string(target_id)
+            "MATCH (a {{id: $src}})-[r{}]->(b {{id: $tgt}}) RETURN r",
+            rel_pattern
         );
-        let result = self.connection().cypher(&query)?;
+        let result = self.connection()
+            .cypher_builder(&query)
+            .param("src", source_id)
+            .param("tgt", target_id)
+            .run()?;
         if result.is_empty() {
             return Ok(None);
         }
@@ -56,8 +60,6 @@ impl Graph {
         V: Into<PropertyValue>,
     {
         let safe_rel_type = sanitize_rel_type(rel_type);
-        let esc_source = escape_string(source_id);
-        let esc_target = escape_string(target_id);
 
         let props: Vec<(String, PropertyValue)> = props
             .into_iter()
@@ -65,10 +67,14 @@ impl Graph {
             .collect();
 
         let merge_query = format!(
-            "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[r:{}]->(b)",
-            esc_source, esc_target, safe_rel_type
+            "MATCH (a {{id: $src}}), (b {{id: $tgt}}) MERGE (a)-[r:{}]->(b)",
+            safe_rel_type
         );
-        self.connection().cypher(&merge_query)?;
+        self.connection()
+            .cypher_builder(&merge_query)
+            .param("src", source_id)
+            .param("tgt", target_id)
+            .run()?;
 
         if !props.is_empty() {
             let set_parts: Vec<String> = props
@@ -77,10 +83,14 @@ impl Graph {
                 .collect();
             let set_str = set_parts.join(", ");
             let set_query = format!(
-                "MATCH (a {{id: '{}'}})-[r:{}]->(b {{id: '{}'}}) SET {}",
-                esc_source, safe_rel_type, esc_target, set_str
+                "MATCH (a {{id: $src}})-[r:{}]->(b {{id: $tgt}}) SET {}",
+                safe_rel_type, set_str
             );
-            self.connection().cypher(&set_query)?;
+            self.connection()
+                .cypher_builder(&set_query)
+                .param("src", source_id)
+                .param("tgt", target_id)
+                .run()?;
         }
 
         Ok(())
@@ -90,12 +100,14 @@ impl Graph {
     pub fn delete_edge(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<()> {
         let rel_pattern = rel_type_pattern(rel_type);
         let query = format!(
-            "MATCH (a {{id: '{}'}})-[r{}]->(b {{id: '{}'}}) DELETE r",
-            escape_string(source_id),
-            rel_pattern,
-            escape_string(target_id)
+            "MATCH (a {{id: $src}})-[r{}]->(b {{id: $tgt}}) DELETE r",
+            rel_pattern
         );
-        self.connection().cypher(&query)?;
+        self.connection()
+            .cypher_builder(&query)
+            .param("src", source_id)
+            .param("tgt", target_id)
+            .run()?;
         Ok(())
     }
 

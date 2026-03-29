@@ -21,8 +21,9 @@ class QueriesMixin(BaseMixin):
             Number of edges connected to the node
         """
         result = self._conn.cypher(
-            f"MATCH (n {{id: '{self._escape(node_id)}'}})-[r]-() "
-            f"RETURN count(r) AS degree"
+            "MATCH (n {id: $id})-[r]-() "
+            "RETURN count(r) AS degree",
+            params={"id": node_id},
         )
         if len(result) == 0:
             return 0
@@ -42,8 +43,9 @@ class QueriesMixin(BaseMixin):
             List of neighbor node dicts
         """
         result = self._conn.cypher(
-            f"MATCH (n {{id: '{self._escape(node_id)}'}})-[]-(m) "
-            f"RETURN DISTINCT m"
+            "MATCH (n {id: $id})-[]-(m) "
+            "RETURN DISTINCT m",
+            params={"id": node_id},
         )
         return [row.get("m") for row in result if row.get("m")]
 
@@ -58,8 +60,9 @@ class QueriesMixin(BaseMixin):
             List of (source_id, target_id, properties) tuples
         """
         result = self._conn.cypher(
-            f"MATCH (n {{id: '{self._escape(node_id)}'}})-[r]-(m) "
-            f"RETURN n.id AS source, m.id AS target, r"
+            "MATCH (n {id: $id})-[r]-(m) "
+            "RETURN n.id AS source, m.id AS target, r",
+            params={"id": node_id},
         )
         return [(row["source"], row["target"], row.get("r", {})) for row in result]
 
@@ -74,8 +77,9 @@ class QueriesMixin(BaseMixin):
             List of dicts with 'source', 'target', 'r' keys
         """
         result = self._conn.cypher(
-            f"MATCH (a {{id: '{self._escape(node_id)}'}})-[r]->(b) "
-            f"RETURN a.id AS source, b.id AS target, r"
+            "MATCH (a {id: $id})-[r]->(b) "
+            "RETURN a.id AS source, b.id AS target, r",
+            params={"id": node_id},
         )
         return result.to_list()
 
@@ -90,8 +94,9 @@ class QueriesMixin(BaseMixin):
             List of dicts with 'source', 'target', 'r' keys
         """
         result = self._conn.cypher(
-            f"MATCH (a)-[r]->(b {{id: '{self._escape(node_id)}'}}) "
-            f"RETURN a.id AS source, b.id AS target, r"
+            "MATCH (a)-[r]->(b {id: $id}) "
+            "RETURN a.id AS source, b.id AS target, r",
+            params={"id": node_id},
         )
         return result.to_list()
 
@@ -109,8 +114,9 @@ class QueriesMixin(BaseMixin):
         from ..utils import sanitize_rel_type
         safe_type = sanitize_rel_type(rel_type)
         result = self._conn.cypher(
-            f"MATCH (a {{id: '{self._escape(node_id)}'}})-[r:{safe_type}]->(b) "
-            f"RETURN a.id AS source, b.id AS target, r"
+            f"MATCH (a {{id: $id}})-[r:{safe_type}]->(b) "
+            f"RETURN a.id AS source, b.id AS target, r",
+            params={"id": node_id},
         )
         return result.to_list()
 

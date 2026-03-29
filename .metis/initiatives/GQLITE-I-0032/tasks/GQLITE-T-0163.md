@@ -4,14 +4,14 @@ level: task
 title: "REC-08: Migrate Graph API to parameterized queries (Python + Rust)"
 short_code: "GQLITE-T-0163"
 created_at: 2026-03-28T13:59:25.509553+00:00
-updated_at: 2026-03-28T13:59:25.509553+00:00
+updated_at: 2026-03-29T00:38:17.565269+00:00
 parent: GQLITE-I-0032
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -40,6 +40,8 @@ Eliminate SQL injection risk in the Python and Rust Graph API layers by replacin
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] No f-string or format-string SQL interpolation remains in Python graph API
 - [ ] No format! SQL interpolation remains in Rust graph API
 - [ ] All Python and Rust tests pass
@@ -52,4 +54,3 @@ Eliminate SQL injection risk in the Python and Rust Graph API layers by replacin
 ## Status Updates
 
 *To be added during implementation*
-

@@ -1,1 +1,6 @@
-/Users/dstorey/Desktop/graphqlite/bindings/rust/src/platform.rs
+/Users/dstorey/Desktop/graphqlite/bindings/python/src/graphqlite/graph/nodes.py
+/Users/dstorey/Desktop/graphqlite/bindings/python/src/graphqlite/graph/queries.py
+/Users/dstorey/Desktop/graphqlite/bindings/python/src/graphqlite/graph/edges.py
+/Users/dstorey/Desktop/graphqlite/bindings/rust/src/graph/nodes.rs
+/Users/dstorey/Desktop/graphqlite/bindings/rust/src/graph/edges.rs
+/Users/dstorey/Desktop/graphqlite/bindings/rust/src/graph/queries.rs

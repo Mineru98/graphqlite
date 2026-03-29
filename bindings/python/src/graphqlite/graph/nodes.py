@@ -20,7 +20,8 @@ class NodesMixin(BaseMixin):
             True if node exists, False otherwise
         """
         result = self._conn.cypher(
-            f"MATCH (n {{id: '{self._escape(node_id)}'}}) RETURN count(n) AS cnt"
+            "MATCH (n {id: $id}) RETURN count(n) AS cnt",
+            params={"id": node_id},
         )
         if len(result) == 0:
             return False
@@ -38,7 +39,8 @@ class NodesMixin(BaseMixin):
             Node dict with 'id', 'labels', 'properties' or None if not found
         """
         result = self._conn.cypher(
-            f"MATCH (n {{id: '{self._escape(node_id)}'}}) RETURN n"
+            "MATCH (n {id: $id}) RETURN n",
+            params={"id": node_id},
         )
         if len(result) == 0:
             return None
@@ -66,17 +68,10 @@ class NodesMixin(BaseMixin):
         if self.has_node(node_id):
             # Update existing node
             for k, v in node_data.items():
-                if isinstance(v, str):
-                    val = f"'{self._escape(v)}'"
-                elif isinstance(v, bool):
-                    val = str(v).lower()
-                elif v is None:
-                    val = "null"
-                else:
-                    val = str(v)
                 self._conn.cypher(
-                    f"MATCH (n {{id: '{self._escape(node_id)}'}}) "
-                    f"SET n.{k} = {val} RETURN n"
+                    f"MATCH (n {{id: $id}}) "
+                    f"SET n.{k} = $val RETURN n",
+                    params={"id": node_id, "val": v},
                 )
         else:
             # Create new node
@@ -91,7 +86,8 @@ class NodesMixin(BaseMixin):
             node_id: The node's id property value
         """
         self._conn.cypher(
-            f"MATCH (n {{id: '{self._escape(node_id)}'}}) DETACH DELETE n"
+            "MATCH (n {id: $id}) DETACH DELETE n",
+            params={"id": node_id},
         )
 
     def get_all_nodes(self, label: Optional[str] = None) -> list[dict]:

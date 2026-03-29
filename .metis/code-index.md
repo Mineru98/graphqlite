@@ -1,6 +1,6 @@
 # Code Index
 
-> Generated: 2026-03-28T21:58:50Z | 55 files | JavaScript, Python, Rust
+> Generated: 2026-03-29T00:37:58Z | 55 files | JavaScript, Python, Rust
 
 ## Project Structure
 
@@ -833,7 +833,7 @@
 #### bindings/rust/src/platform.rs
 
 - pub `get_extension_path` function L49-61 — `() -> Result<PathBuf>` — Get the path to the extracted extension binary.
-- pub `load_bundled_extension` function L108-129 — `(conn: &rusqlite::Connection) -> Result<()>` — Load the bundled extension into a rusqlite connection.
+- pub `load_bundled_extension` function L185-206 — `(conn: &rusqlite::Connection) -> Result<()>` — Load the bundled extension into a rusqlite connection.
 -  `EXTENSION_FILENAME` variable L14 — `: &str` — Extension filename for current platform
 -  `EXTENSION_FILENAME` variable L17 — `: &str` — are embedded in the Rust binary and extracted to a temp file at runtime.
 -  `EXTENSION_FILENAME` variable L20 — `: &str` — are embedded in the Rust binary and extracted to a temp file at runtime.
@@ -843,7 +843,10 @@
 -  `EXTENSION_BYTES` variable L36 — `: &[u8]` — Embedded extension binary for Linux ARM64
 -  `EXTENSION_BYTES` variable L40 — `: &[u8]` — Embedded extension binary for Windows x86_64
 -  `EXTENSION_PATH` variable L43 — `: Mutex<Option<PathBuf>>` — Cache for the extracted extension path
--  `extract_extension` function L64-105 — `() -> Result<PathBuf>` — Extract the embedded extension binary to a temp file.
+-  `extract_extension` function L70-102 — `() -> Result<PathBuf>` — Extract the embedded extension binary to a temp file.
+-  `dirs_fallback` function L105-120 — `() -> PathBuf` — Fallback directory: ~/.cache/graphqlite/ (or %LOCALAPPDATA%\graphqlite on Windows)
+-  `try_extract_to` function L123-168 — `(dir: &PathBuf, filename: &str) -> Result<PathBuf>` — Try to extract the extension to a specific directory.
+-  `cleanup_old_versions` function L171-182 — `(dir: &PathBuf, current_filename: &str)` — Remove old versioned extension files from the directory.
 
 #### bindings/rust/src/query_builder.rs
 

@@ -23,9 +23,10 @@ class EdgesMixin(BaseMixin):
         """
         rel_pattern = f":{sanitize_rel_type(rel_type)}" if rel_type else ""
         result = self._conn.cypher(
-            f"MATCH (a {{id: '{self._escape(source_id)}'}})-[r{rel_pattern}]->"
-            f"(b {{id: '{self._escape(target_id)}'}}) "
-            f"RETURN count(r) AS cnt"
+            f"MATCH (a {{id: $src}})-[r{rel_pattern}]->"
+            f"(b {{id: $tgt}}) "
+            f"RETURN count(r) AS cnt",
+            params={"src": source_id, "tgt": target_id},
         )
         if len(result) == 0:
             return False
@@ -46,8 +47,9 @@ class EdgesMixin(BaseMixin):
         """
         rel_pattern = f":{sanitize_rel_type(rel_type)}" if rel_type else ""
         result = self._conn.cypher(
-            f"MATCH (a {{id: '{self._escape(source_id)}'}})-[r{rel_pattern}]->"
-            f"(b {{id: '{self._escape(target_id)}'}}) RETURN r"
+            f"MATCH (a {{id: $src}})-[r{rel_pattern}]->"
+            f"(b {{id: $tgt}}) RETURN r",
+            params={"src": source_id, "tgt": target_id},
         )
         if len(result) == 0:
             return None
@@ -75,29 +77,25 @@ class EdgesMixin(BaseMixin):
             rel_type: Relationship type label
         """
         safe_rel_type = sanitize_rel_type(rel_type)
-        esc_source = self._escape(source_id)
-        esc_target = self._escape(target_id)
 
         self._conn.cypher(
-            f"MATCH (a {{id: '{esc_source}'}}), (b {{id: '{esc_target}'}}) "
-            f"MERGE (a)-[r:{safe_rel_type}]->(b)"
+            f"MATCH (a {{id: $src}}), (b {{id: $tgt}}) "
+            f"MERGE (a)-[r:{safe_rel_type}]->(b)",
+            params={"src": source_id, "tgt": target_id},
         )
 
         if edge_data:
+            params = {"src": source_id, "tgt": target_id}
             set_parts = []
-            for k, v in edge_data.items():
-                if isinstance(v, str):
-                    set_parts.append(f"r.{k} = '{self._escape(v)}'")
-                elif isinstance(v, bool):
-                    set_parts.append(f"r.{k} = {str(v).lower()}")
-                elif v is None:
-                    set_parts.append(f"r.{k} = null")
-                else:
-                    set_parts.append(f"r.{k} = {v}")
+            for i, (k, v) in enumerate(edge_data.items()):
+                param_name = f"v{i}"
+                set_parts.append(f"r.{k} = ${param_name}")
+                params[param_name] = v
             set_str = ", ".join(set_parts)
             self._conn.cypher(
-                f"MATCH (a {{id: '{esc_source}'}})-[r:{safe_rel_type}]->"
-                f"(b {{id: '{esc_target}'}}) SET {set_str}"
+                f"MATCH (a {{id: $src}})-[r:{safe_rel_type}]->"
+                f"(b {{id: $tgt}}) SET {set_str}",
+                params=params,
             )
 
     def delete_edge(self, source_id: str, target_id: str, rel_type: Optional[str] = None) -> None:
@@ -111,8 +109,9 @@ class EdgesMixin(BaseMixin):
         """
         rel_pattern = f":{sanitize_rel_type(rel_type)}" if rel_type else ""
         self._conn.cypher(
-            f"MATCH (a {{id: '{self._escape(source_id)}'}})-[r{rel_pattern}]->"
-            f"(b {{id: '{self._escape(target_id)}'}}) DELETE r"
+            f"MATCH (a {{id: $src}})-[r{rel_pattern}]->"
+            f"(b {{id: $tgt}}) DELETE r",
+            params={"src": source_id, "tgt": target_id},
         )
 
     def get_all_edges(self) -> list[dict]:

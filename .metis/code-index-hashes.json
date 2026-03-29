@@ -44,7 +44,7 @@
     "bindings/rust/src/graph/queries.rs": "3ab3f4139f503fbe5ec331ff24ecaf06245364c56b190d7b832cbd576cccf49d",
     "bindings/rust/src/lib.rs": "d4a5750b04a14a1316c2b60e8900c2cf677b4b29815612d43468d59573b8e48e",
     "bindings/rust/src/manager.rs": "6f452979b84f9f2eeedc796a7c1c4dac27b51a13fb80768bbf0e03fd78f623aa",
-    "bindings/rust/src/platform.rs": "f2e9c37d2a118a3d0ed897567ed7b560151552c166e99c7921735764036f94ec",
+    "bindings/rust/src/platform.rs": "ea14827b4f70380ea9848def2754f3618b808ca8305b728e58de641c90c3f92d",
     "bindings/rust/src/query_builder.rs": "21afdc2e1d2e245487bb5a7ff298b6b9fb184cff3a3d098a07ac2402cc030105",
     "bindings/rust/src/result.rs": "8bb2098c7c9b9e2e0845e28e4db9b4f6f6ab725d34a52bfbe770d27168c573c9",
     "bindings/rust/src/utils.rs": "af2b6b66c7107c7218fca2929992a8202b4f33595fd90e1ed18b8c7c98425202",

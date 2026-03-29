@@ -7,11 +7,10 @@ use super::Graph;
 impl Graph {
     /// Check if a node with the given ID exists.
     pub fn has_node(&self, node_id: &str) -> Result<bool> {
-        let query = format!(
-            "MATCH (n {{id: '{}'}}) RETURN count(n) AS cnt",
-            escape_string(node_id)
-        );
-        let result = self.connection().cypher(&query)?;
+        let result = self.connection()
+            .cypher_builder("MATCH (n {id: $id}) RETURN count(n) AS cnt")
+            .param("id", node_id)
+            .run()?;
         if result.is_empty() {
             return Ok(false);
         }
@@ -23,11 +22,10 @@ impl Graph {
     ///
     /// Returns the node as a [`Value`], or `None` if not found.
     pub fn get_node(&self, node_id: &str) -> Result<Option<Value>> {
-        let query = format!(
-            "MATCH (n {{id: '{}'}}) RETURN n",
-            escape_string(node_id)
-        );
-        let result = self.connection().cypher(&query)?;
+        let result = self.connection()
+            .cypher_builder("MATCH (n {id: $id}) RETURN n")
+            .param("id", node_id)
+            .run()?;
         if result.is_empty() {
             return Ok(None);
         }
@@ -53,12 +51,14 @@ impl Graph {
             // Update existing node
             for (k, v) in props {
                 let query = format!(
-                    "MATCH (n {{id: '{}'}}) SET n.{} = {} RETURN n",
-                    escape_string(node_id),
+                    "MATCH (n {{id: $id}}) SET n.{} = {} RETURN n",
                     k,
                     v.to_cypher()
                 );
-                self.connection().cypher(&query)?;
+                self.connection()
+                    .cypher_builder(&query)
+                    .param("id", node_id)
+                    .run()?;
             }
         } else {
             // Create new node
@@ -75,11 +75,10 @@ impl Graph {
 
     /// Delete a node and all its relationships.
     pub fn delete_node(&self, node_id: &str) -> Result<()> {
-        let query = format!(
-            "MATCH (n {{id: '{}'}}) DETACH DELETE n",
-            escape_string(node_id)
-        );
-        self.connection().cypher(&query)?;
+        self.connection()
+            .cypher_builder("MATCH (n {id: $id}) DETACH DELETE n")
+            .param("id", node_id)
+            .run()?;
         Ok(())
     }
 
