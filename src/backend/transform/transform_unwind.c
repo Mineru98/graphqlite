@@ -32,9 +32,8 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
     }
 
     /* Generate unique CTE name */
-    static int unwind_cte_counter = 0;
     char cte_name[32];
-    snprintf(cte_name, sizeof(cte_name), "_unwind_%d", unwind_cte_counter++);
+    snprintf(cte_name, sizeof(cte_name), "_unwind_%d", ctx->unwind_cte_counter++);
 
     /*
      * Build inner SQL from builder state directly.

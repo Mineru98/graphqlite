@@ -23,9 +23,9 @@ int transform_with_clause(cypher_transform_context *ctx, cypher_with *with);
 int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind);
 
 /* Pending property joins for aggregation optimization */
-void add_pending_prop_join(const char *join_sql);
-const char* get_pending_prop_joins(void);
-size_t get_pending_prop_joins_len(void);
-void reset_pending_prop_joins(void);
+void add_pending_prop_join(cypher_transform_context *ctx, const char *join_sql);
+const char* get_pending_prop_joins(cypher_transform_context *ctx);
+size_t get_pending_prop_joins_len(cypher_transform_context *ctx);
+void reset_pending_prop_joins(cypher_transform_context *ctx);
 
 #endif /* TRANSFORM_INTERNAL_H */

@@ -4,14 +4,14 @@ level: task
 title: "REC-09: Consolidate extension.c and bundled_init.c into shared implementation"
 short_code: "GQLITE-T-0168"
 created_at: 2026-03-28T13:59:38.265929+00:00
-updated_at: 2026-03-29T17:58:54.558578+00:00
+updated_at: 2026-03-29T18:03:19.178719+00:00
 parent: GQLITE-I-0033
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -36,6 +36,8 @@ Eliminate code duplication between `extension.c` and `bundled_init.c` by extract
 2. If both are needed: extract the 6 SQLite function handler implementations and `connection_cache` management into `extension_impl.c/.h`
 3. Have both `extension.c` and `bundled_init.c` include and call the shared implementation
 4. Ensure both loadable-extension and bundled build paths compile and test correctly
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

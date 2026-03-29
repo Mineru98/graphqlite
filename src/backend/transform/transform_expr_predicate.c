@@ -362,8 +362,6 @@ int transform_list_predicate(cypher_transform_context *ctx, cypher_list_predicat
  */
 int transform_reduce_expr(cypher_transform_context *ctx, cypher_reduce_expr *reduce)
 {
-    static int reduce_counter = 0;
-
     CYPHER_DEBUG("Transforming reduce expression");
 
     if (!reduce || !reduce->accumulator || !reduce->initial_value ||
@@ -375,7 +373,7 @@ int transform_reduce_expr(cypher_transform_context *ctx, cypher_reduce_expr *red
 
     /* Generate unique CTE name */
     char cte_name[32];
-    snprintf(cte_name, sizeof(cte_name), "_reduce_%d", reduce_counter++);
+    snprintf(cte_name, sizeof(cte_name), "_reduce_%d", ctx->reduce_counter++);
 
     /* Save existing aliases for accumulator and variable names */
     const char *old_acc_alias = transform_var_get_alias(ctx->var_ctx, reduce->accumulator);

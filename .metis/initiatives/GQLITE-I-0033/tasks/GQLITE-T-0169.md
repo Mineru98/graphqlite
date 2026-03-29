@@ -4,14 +4,14 @@ level: task
 title: "REC-14: Migrate static transform globals into per-query context"
 short_code: "GQLITE-T-0169"
 created_at: 2026-03-28T13:59:39.599156+00:00
-updated_at: 2026-03-28T13:59:39.599156+00:00
+updated_at: 2026-03-29T18:04:49.150967+00:00
 parent: GQLITE-I-0033
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -43,6 +43,8 @@ Migrate static/global transform state into a `cypher_transform_context` struct, 
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] No static/global mutable state remains in transform layer
 - [ ] `cypher_transform_context` passed through all transform call chains
 - [ ] `push_buffer()` / `pop_buffer()` API exists and is used
@@ -56,5 +58,6 @@ Migrate static/global transform state into a `cypher_transform_context` struct, 
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-29: Complete
 
+Migrated 4 static counters and 3 pending_prop_joins buffer fields into `cypher_transform_context`. Updated all callers. Fixed segfault caused by stale `extern` forward declaration with old signature. `push_buffer`/`pop_buffer` and `transform_expression_to_string` dedup were already resolved. 926 unit, 44 functional pass.

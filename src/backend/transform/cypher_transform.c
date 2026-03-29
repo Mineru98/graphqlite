@@ -56,8 +56,17 @@ cypher_transform_context* cypher_transform_create_context(sqlite3 *db)
     ctx->param_count = 0;
     ctx->param_capacity = 0;
 
-    /* Initialize CTE counter */
+    /* Initialize counters */
     ctx->cte_count = 0;
+    ctx->with_cte_counter = 0;
+    ctx->unwind_cte_counter = 0;
+    ctx->reduce_counter = 0;
+    ctx->prop_join_counter = 0;
+
+    /* Initialize pending property JOINs buffer */
+    ctx->pending_prop_joins = NULL;
+    ctx->pending_prop_joins_len = 0;
+    ctx->pending_prop_joins_cap = 0;
 
     /* Initialize unified SQL builder */
     ctx->unified_builder = sql_builder_create();
@@ -96,7 +105,8 @@ void cypher_transform_free_context(cypher_transform_context *ctx)
     /* Free buffers */
     free(ctx->sql_buffer);
     free(ctx->error_message);
-    
+    free(ctx->pending_prop_joins);
+
     free(ctx);
 }
 

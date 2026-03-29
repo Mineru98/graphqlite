@@ -71,12 +71,11 @@ int transform_with_clause(cypher_transform_context *ctx, cypher_with *with)
     }
 
     /* Reset pending property JOINs for this WITH clause */
-    reset_pending_prop_joins();
+    reset_pending_prop_joins(ctx);
 
     /* Generate a unique CTE name */
-    static int with_cte_counter = 0;
     char cte_name[32];
-    snprintf(cte_name, sizeof(cte_name), "_with_%d", with_cte_counter++);
+    snprintf(cte_name, sizeof(cte_name), "_with_%d", ctx->with_cte_counter++);
 
     /*
      * Extract builder state directly instead of generating SQL and doing string manipulation.
@@ -311,12 +310,12 @@ with_star_columns_done:
     }
 
     /* Add pending property JOINs from aggregate functions */
-    size_t pending_len = get_pending_prop_joins_len();
+    size_t pending_len = get_pending_prop_joins_len(ctx);
     if (pending_len > 0) {
-        const char *pending_joins = get_pending_prop_joins();
+        const char *pending_joins = get_pending_prop_joins(ctx);
         dbuf_append(&cte_body, pending_joins);
         CYPHER_DEBUG("WITH: Added property JOINs: %s", pending_joins);
-        reset_pending_prop_joins();
+        reset_pending_prop_joins(ctx);
     }
 
     if (where_clause) {

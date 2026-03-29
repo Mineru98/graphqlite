@@ -47,6 +47,15 @@ struct cypher_transform_context {
     
     /* Unique alias counters */
     int global_alias_counter;       /* Global counter for all unnamed entities (like AGE) */
+    int with_cte_counter;           /* Counter for WITH CTE names (_with_N) */
+    int unwind_cte_counter;         /* Counter for UNWIND CTE names (_unwind_N) */
+    int reduce_counter;             /* Counter for REDUCE CTE names (_reduce_N) */
+    int prop_join_counter;          /* Counter for property JOIN aliases */
+
+    /* Pending property JOINs buffer (accumulated during RETURN transform) */
+    char *pending_prop_joins;
+    size_t pending_prop_joins_len;
+    size_t pending_prop_joins_cap;
     
     /* Query type tracking */
     enum {

@@ -15,11 +15,9 @@
 
 #include "transform/cypher_transform.h"
 #include "transform/transform_functions.h"
+#include "transform/transform_internal.h"
 #include "parser/cypher_ast.h"
 #include "parser/cypher_debug.h"
-
-/* Forward declaration for pending property joins (defined in transform_return.c) */
-extern void add_pending_prop_join(const char *join_sql);
 
 /* Transform COUNT function */
 int transform_count_function(cypher_transform_context *ctx, cypher_function_call *func_call)
@@ -141,8 +139,7 @@ int transform_aggregate_with_property(cypher_transform_context *ctx,
     }
 
     /* Generate unique alias for property joins */
-    static int prop_join_counter = 0;
-    int join_id = ++prop_join_counter;
+    int join_id = ++ctx->prop_join_counter;
 
     /* Generate SQL function call - convert to uppercase */
     char upper_func[64];
@@ -184,7 +181,7 @@ int transform_aggregate_with_property(cypher_transform_context *ctx,
                  join_alias_real, join_alias_real, node_id_ref, join_alias_real, pk_subquery,
                  join_alias_text, join_alias_text, node_id_ref, join_alias_text, pk_subquery);
 
-        add_pending_prop_join(join_sql);
+        add_pending_prop_join(ctx, join_sql);
         CYPHER_DEBUG("Added pending property JOINs for %s aggregation", upper_func);
 
         /* Generate the aggregation expression using joined columns */
