@@ -4,15 +4,15 @@ level: task
 title: "CALL subquery support"
 short_code: "GQLITE-T-0133"
 created_at: 2026-03-17T13:40:58.710070+00:00
-updated_at: 2026-03-17T18:58:20.298435+00:00
+updated_at: 2026-03-29T01:03:19.463755+00:00
 parent: 
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
   - "#feature"
-  - "#phase/blocked"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -64,6 +64,14 @@ Implement `CALL { subquery }` syntax for inline subquery evaluation. Subquery ca
 - **Current Problems**: {What's difficult/slow/buggy now}
 - **Benefits of Fixing**: {What improves after refactoring}
 - **Risk Assessment**: {Risks of not addressing this}
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

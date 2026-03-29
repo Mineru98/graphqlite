@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:29.503077+00:00
 updated_at: 2026-03-29T00:26:01.309555+00:00
 parent: GQLITE-I-0032
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -35,6 +35,8 @@ Add schema versioning so GraphQLite can detect outdated schemas and run migratio
 2. At end of `cypher_schema_initialize()`, set `PRAGMA user_version = 1`
 3. At start of init, read `PRAGMA user_version`; if 0 (fresh DB), proceed normally; if < current version, run migration steps; if > current version, return error
 4. Add a migration framework skeleton (version switch/case) for future use
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

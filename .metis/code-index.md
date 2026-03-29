@@ -1,6 +1,6 @@
 # Code Index
 
-> Generated: 2026-03-29T00:45:57Z | 55 files | JavaScript, Python, Rust
+> Generated: 2026-03-29T00:57:54Z | 55 files | JavaScript, Python, Rust
 
 ## Project Structure
 
@@ -104,23 +104,23 @@
 - pub `__len__` method L21-22 — `def __len__(self) -> int`
 - pub `__getitem__` method L24-25 — `def __getitem__(self, index: int) -> dict[str, Any]`
 - pub `to_list` method L32-34 — `def to_list(self) -> list[dict[str, Any]]` — Return results as a list of dictionaries.
-- pub `Connection` class L37-207 — `{ __init__, cypher, execute, commit, rollback, close, sqlite_connection }` — GraphQLite database connection with Cypher query support.
+- pub `Connection` class L37-219 — `{ __init__, cypher, execute, commit, rollback, close, sqlite_connection }` — GraphQLite database connection with Cypher query support.
 - pub `__init__` method L40-49 — `def __init__(self, conn: sqlite3.Connection, extension_path: Optional[str] = Non...` — Initialize GraphQLite connection.
-- pub `cypher` method L128-180 — `def cypher(self, query: str, params: Optional[dict[str, Any]] = None) -> CypherR...` — Execute a Cypher query with optional parameters.
-- pub `execute` method L182-184 — `def execute(self, sql: str, parameters: tuple = ()) -> sqlite3.Cursor` — Execute a raw SQL query.
-- pub `commit` method L186-188 — `def commit(self) -> None` — Commit the current transaction.
-- pub `rollback` method L190-192 — `def rollback(self) -> None` — Rollback the current transaction.
-- pub `close` method L194-196 — `def close(self) -> None` — Close the database connection.
-- pub `__enter__` method L198-199 — `def __enter__(self) -> "Connection"`
-- pub `__exit__` method L201-202 — `def __exit__(self, exc_type, exc_val, exc_tb) -> None`
-- pub `connect` function L210-234 — `def connect( database: Union[str, Path] = ":memory:", extension_path: Optional[s...` — Open a GraphQLite database connection.
-- pub `wrap` function L237-254 — `def wrap(conn: sqlite3.Connection, extension_path: Optional[str] = None) -> Conn...` — Wrap an existing SQLite connection with GraphQLite support.
+- pub `cypher` method L128-192 — `def cypher(self, query: str, params: Optional[dict[str, Any]] = None) -> CypherR...` — Execute a Cypher query with optional parameters.
+- pub `execute` method L194-196 — `def execute(self, sql: str, parameters: tuple = ()) -> sqlite3.Cursor` — Execute a raw SQL query.
+- pub `commit` method L198-200 — `def commit(self) -> None` — Commit the current transaction.
+- pub `rollback` method L202-204 — `def rollback(self) -> None` — Rollback the current transaction.
+- pub `close` method L206-208 — `def close(self) -> None` — Close the database connection.
+- pub `__enter__` method L210-211 — `def __enter__(self) -> "Connection"`
+- pub `__exit__` method L213-214 — `def __exit__(self, exc_type, exc_val, exc_tb) -> None`
+- pub `connect` function L222-246 — `def connect( database: Union[str, Path] = ":memory:", extension_path: Optional[s...` — Open a GraphQLite database connection.
+- pub `wrap` function L249-266 — `def wrap(conn: sqlite3.Connection, extension_path: Optional[str] = None) -> Conn...` — Wrap an existing SQLite connection with GraphQLite support.
 -  `_find_extension` method L51-87 — `def _find_extension(self) -> str` — Find the GraphQLite extension library.
 -  `_load_extension` method L89-126 — `def _load_extension(self, extension_path: Optional[str] = None) -> None` — Load the GraphQLite SQLite extension.
 
 #### bindings/python/src/graphqlite/manager.py
 
-- pub `GraphManager` class L15-365 — `{ __init__, list, exists, create, open, open_or_create, drop, query, query_sql, ...` — Manager for multiple graph databases in a directory.
+- pub `GraphManager` class L15-385 — `{ __init__, list, exists, create, open, open_or_create, drop, query, query_sql, ...` — Manager for multiple graph databases in a directory.
 - pub `__init__` method L32-50 — `def __init__( self, base_path: Union[str, Path], extension_path: Optional[str] =...` — Initialize GraphManager.
 - pub `list` method L68-82 — `def list(self) -> list[str]` — List all available graphs in the base directory.
 - pub `exists` method L84-94 — `def exists(self, name: str) -> bool` — Check if a graph exists.
@@ -128,15 +128,15 @@
 - pub `open` method L121-151 — `def open(self, name: str) -> Graph` — Open an existing graph.
 - pub `open_or_create` method L153-168 — `def open_or_create(self, name: str) -> Graph` — Open a graph, creating it if it doesn't exist.
 - pub `drop` method L170-203 — `def drop(self, name: str) -> None` — Delete a graph and its database file.
-- pub `query` method L205-290 — `def query( self, cypher: str, graphs: Optional[list[str]] = None, params: Option...` — Execute a cross-graph Cypher query.
-- pub `query_sql` method L292-335 — `def query_sql( self, sql: str, graphs: list[str], parameters: tuple = () ) -> li...` — Execute a raw SQL query across attached graphs.
-- pub `close` method L337-345 — `def close(self) -> None` — Close all open graph connections and the coordinator.
-- pub `__enter__` method L347-349 — `def __enter__(self) -> "GraphManager"` — Context manager entry.
-- pub `__exit__` method L351-353 — `def __exit__(self, exc_type, exc_val, exc_tb) -> None` — Context manager exit - close all connections.
-- pub `__iter__` method L355-357 — `def __iter__(self) -> Iterator[str]` — Iterate over graph names.
-- pub `__contains__` method L359-361 — `def __contains__(self, name: str) -> bool` — Check if a graph exists.
-- pub `__len__` method L363-365 — `def __len__(self) -> int` — Return number of graphs.
-- pub `graphs` function L368-391 — `def graphs( base_path: Union[str, Path], extension_path: Optional[str] = None ) ...` — Create a GraphManager for managing multiple graphs.
+- pub `query` method L205-310 — `def query( self, cypher: str, graphs: Optional[list[str]] = None, params: Option...` — Execute a cross-graph Cypher query.
+- pub `query_sql` method L312-355 — `def query_sql( self, sql: str, graphs: list[str], parameters: tuple = () ) -> li...` — Execute a raw SQL query across attached graphs.
+- pub `close` method L357-365 — `def close(self) -> None` — Close all open graph connections and the coordinator.
+- pub `__enter__` method L367-369 — `def __enter__(self) -> "GraphManager"` — Context manager entry.
+- pub `__exit__` method L371-373 — `def __exit__(self, exc_type, exc_val, exc_tb) -> None` — Context manager exit - close all connections.
+- pub `__iter__` method L375-377 — `def __iter__(self) -> Iterator[str]` — Iterate over graph names.
+- pub `__contains__` method L379-381 — `def __contains__(self, name: str) -> bool` — Check if a graph exists.
+- pub `__len__` method L383-385 — `def __len__(self) -> int` — Return number of graphs.
+- pub `graphs` function L388-411 — `def graphs( base_path: Union[str, Path], extension_path: Optional[str] = None ) ...` — Create a GraphManager for managing multiple graphs.
 -  `_graph_path` method L52-54 — `def _graph_path(self, name: str) -> Path` — Get the file path for a graph.
 -  `_ensure_coordinator` method L56-66 — `def _ensure_coordinator(self) -> sqlite3.Connection` — Get or create the coordinator connection for cross-graph queries.
 
@@ -776,10 +776,11 @@
 -  `execute_cypher_with_params` function L165-181 — `(&self, query: &str, params: &serde_json::Value) -> Result<CypherResult>` — Internal: execute a parameterized Cypher query.
 -  `find_extension` function L217-258 — `() -> Result<PathBuf>` — Find the GraphQLite extension library.
 -  `load_extension` function L262-281 — `(conn: &rusqlite::Connection, path: &std::path::Path) -> Result<()>` — Load the GraphQLite extension into a connection.
--  `tests` module L284-324 — `-` — GraphQLite connection wrapper.
--  `get_test_extension_path` function L288-305 — `() -> Option<std::path::PathBuf>` — GraphQLite connection wrapper.
--  `test_find_extension` function L309-315 — `()` — GraphQLite connection wrapper.
--  `test_bundled_connection` function L319-323 — `()` — GraphQLite connection wrapper.
+-  `parse_structured_error` function L285-292 — `(s: &str) -> Error` — Parse a structured JSON error from the extension into an Error.
+-  `tests` module L295-335 — `-` — GraphQLite connection wrapper.
+-  `get_test_extension_path` function L299-316 — `() -> Option<std::path::PathBuf>` — GraphQLite connection wrapper.
+-  `test_find_extension` function L320-326 — `()` — GraphQLite connection wrapper.
+-  `test_bundled_connection` function L330-334 — `()` — GraphQLite connection wrapper.
 
 #### bindings/rust/src/error.rs
 
@@ -809,26 +810,26 @@
 - pub `open_or_create` function L174-180 — `(&mut self, name: &str) -> Result<&Graph>` — Open a graph, creating it if it doesn't exist.
 - pub `get_mut` function L191-193 — `(&mut self, name: &str) -> Option<&mut Graph>` — Get a mutable reference to an open graph.
 - pub `drop` function L204-226 — `(&mut self, name: &str) -> Result<()>` — Delete a graph and its database file.
-- pub `query` function L241-290 — `(&mut self, cypher: &str, graph_names: &[&str]) -> Result<CypherResult>` — Execute a cross-graph Cypher query.
-- pub `query_sql` function L300-350 — `(&mut self, sql: &str, graph_names: &[&str]) -> Result<Vec<Vec<rusqlite::types::...` — Execute a raw SQL query across attached graphs.
-- pub `len` function L353-355 — `(&self) -> Result<usize>` — Get the number of graphs in the directory.
-- pub `is_empty` function L358-360 — `(&self) -> Result<bool>` — Check if the directory is empty (no graphs).
-- pub `contains` function L363-365 — `(&self, name: &str) -> bool` — Check if a graph name is in the directory.
-- pub `iter` function L368-370 — `(&self) -> Result<impl Iterator<Item = String>>` — Iterate over graph names.
-- pub `graphs` function L382-384 — `(base_path: P) -> Result<GraphManager>` — Create a new GraphManager instance (convenience function).
--  `GraphManager` type L46-371 — `= GraphManager` — in a directory, with cross-graph query support via ATTACH.
+- pub `query` function L241-296 — `(&mut self, cypher: &str, graph_names: &[&str]) -> Result<CypherResult>` — Execute a cross-graph Cypher query.
+- pub `query_sql` function L306-356 — `(&mut self, sql: &str, graph_names: &[&str]) -> Result<Vec<Vec<rusqlite::types::...` — Execute a raw SQL query across attached graphs.
+- pub `len` function L359-361 — `(&self) -> Result<usize>` — Get the number of graphs in the directory.
+- pub `is_empty` function L364-366 — `(&self) -> Result<bool>` — Check if the directory is empty (no graphs).
+- pub `contains` function L369-371 — `(&self, name: &str) -> bool` — Check if a graph name is in the directory.
+- pub `iter` function L374-376 — `(&self) -> Result<impl Iterator<Item = String>>` — Iterate over graph names.
+- pub `graphs` function L388-390 — `(base_path: P) -> Result<GraphManager>` — Create a new GraphManager instance (convenience function).
+-  `GraphManager` type L46-377 — `= GraphManager` — in a directory, with cross-graph query support via ATTACH.
 -  `graph_path` function L66-68 — `(&self, name: &str) -> PathBuf` — Get the file path for a graph.
 -  `ensure_coordinator` function L71-77 — `(&mut self) -> Result<&Connection>` — Get or create the coordinator connection for cross-graph queries.
--  `GraphManager` type L373-379 — `impl Drop for GraphManager` — in a directory, with cross-graph query support via ATTACH.
--  `drop` function L374-378 — `(&mut self)` — in a directory, with cross-graph query support via ATTACH.
--  `tests` module L387-449 — `-` — in a directory, with cross-graph query support via ATTACH.
--  `test_create_manager` function L392-396 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_list_empty` function L399-403 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_create_graph` function L406-412 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_create_duplicate_fails` function L415-420 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_open_missing_fails` function L423-427 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_drop_graph` function L430-437 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_list_multiple` function L440-448 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `GraphManager` type L379-385 — `impl Drop for GraphManager` — in a directory, with cross-graph query support via ATTACH.
+-  `drop` function L380-384 — `(&mut self)` — in a directory, with cross-graph query support via ATTACH.
+-  `tests` module L393-455 — `-` — in a directory, with cross-graph query support via ATTACH.
+-  `test_create_manager` function L398-402 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_list_empty` function L405-409 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_create_graph` function L412-418 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_create_duplicate_fails` function L421-426 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_open_missing_fails` function L429-433 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_drop_graph` function L436-443 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_list_multiple` function L446-454 — `()` — in a directory, with cross-graph query support via ATTACH.
 
 #### bindings/rust/src/platform.rs
 
@@ -877,12 +878,12 @@
 - pub `FromValue` interface L292-295 — `{ fn from_value() }` — Trait for converting from [`Value`] to typed Rust values.
 - pub `CypherResult` struct L405-408 — `{ rows: Vec<Row>, columns: Vec<String> }` — Result of a Cypher query, containing zero or more rows.
 - pub `empty` function L412-417 — `() -> Self` — Create an empty result with no rows or columns.
-- pub `from_json` function L422-497 — `(json_str: &str) -> crate::Result<Self>` — Parse a JSON string into a `CypherResult`.
-- pub `len` function L500-502 — `(&self) -> usize` — Returns the number of rows in the result.
-- pub `is_empty` function L505-507 — `(&self) -> bool` — Returns `true` if the result contains no rows.
-- pub `columns` function L512-514 — `(&self) -> &[String]` — Returns the column names from the query.
-- pub `get` function L517-519 — `(&self, index: usize) -> Option<&Row>` — Returns a reference to the row at the given index, or `None` if out of bounds.
-- pub `iter` function L522-524 — `(&self) -> impl Iterator<Item = &Row>` — Returns an iterator over the rows.
+- pub `from_json` function L422-503 — `(json_str: &str) -> crate::Result<Self>` — Parse a JSON string into a `CypherResult`.
+- pub `len` function L506-508 — `(&self) -> usize` — Returns the number of rows in the result.
+- pub `is_empty` function L511-513 — `(&self) -> bool` — Returns `true` if the result contains no rows.
+- pub `columns` function L518-520 — `(&self) -> &[String]` — Returns the column names from the query.
+- pub `get` function L523-525 — `(&self, index: usize) -> Option<&Row>` — Returns a reference to the row at the given index, or `None` if out of bounds.
+- pub `iter` function L528-530 — `(&self) -> impl Iterator<Item = &Row>` — Returns an iterator over the rows.
 -  `Value` type L65-182 — `= Value` — ```
 -  `Value` type L184-195 — `= Value` — ```
 -  `Output` type L185 — `= Value` — ```
@@ -897,17 +898,17 @@
 -  `from_value` function L340-349 — `(value: &Value) -> crate::Result<Self>` — ```
 -  `from_value` function L353-364 — `(value: &Value) -> crate::Result<Self>` — ```
 -  `from_value` function L368-373 — `(value: &Value) -> crate::Result<Self>` — ```
--  `CypherResult` type L410-525 — `= CypherResult` — ```
--  `Item` type L528 — `= &'a Row` — ```
--  `IntoIter` type L529 — `= std::slice::Iter<'a, Row>` — ```
--  `into_iter` function L531-533 — `(self) -> Self::IntoIter` — ```
--  `CypherResult` type L536-543 — `impl IntoIterator for CypherResult` — ```
--  `Item` type L537 — `= Row` — ```
--  `IntoIter` type L538 — `= std::vec::IntoIter<Row>` — ```
--  `into_iter` function L540-542 — `(self) -> Self::IntoIter` — ```
--  `CypherResult` type L545-551 — `= CypherResult` — ```
--  `Output` type L546 — `= Row` — ```
--  `index` function L548-550 — `(&self, index: usize) -> &Self::Output` — ```
+-  `CypherResult` type L410-531 — `= CypherResult` — ```
+-  `Item` type L534 — `= &'a Row` — ```
+-  `IntoIter` type L535 — `= std::slice::Iter<'a, Row>` — ```
+-  `into_iter` function L537-539 — `(self) -> Self::IntoIter` — ```
+-  `CypherResult` type L542-549 — `impl IntoIterator for CypherResult` — ```
+-  `Item` type L543 — `= Row` — ```
+-  `IntoIter` type L544 — `= std::vec::IntoIter<Row>` — ```
+-  `into_iter` function L546-548 — `(self) -> Self::IntoIter` — ```
+-  `CypherResult` type L551-557 — `= CypherResult` — ```
+-  `Output` type L552 — `= Row` — ```
+-  `index` function L554-556 — `(&self, index: usize) -> &Self::Output` — ```
 
 #### bindings/rust/src/utils.rs
 

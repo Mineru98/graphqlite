@@ -4,14 +4,14 @@ level: task
 title: "REC-11: Structured error codes and fix prefix-based error detection"
 short_code: "GQLITE-T-0165"
 created_at: 2026-03-28T13:59:28.174160+00:00
-updated_at: 2026-03-29T00:48:45.973769+00:00
+updated_at: 2026-03-29T00:57:12.416160+00:00
 parent: GQLITE-I-0032
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -37,6 +37,10 @@ Replace unstructured `"Error: ..."` string responses with JSON-structured error 
 3. Update Python `connection.py:162` to detect errors via JSON parse instead of string prefix
 4. Update Rust `connection.rs:126` similarly
 5. Add backward compatibility note if needed
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:26.821059+00:00
 updated_at: 2026-03-29T00:32:09.769804+00:00
 parent: GQLITE-I-0032
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -36,6 +36,8 @@ Replace count-then-read double pass in `build_query_results()` with single-pass 
 1. In `build_query_results()`, remove the initial count query; instead, start with an estimated allocation and grow with incremental `realloc` as rows are read
 2. In `graphqlite_cypher_func()`, replace `strcat` loop with an `offset` variable and `snprintf(buf + offset, remaining, ...)` pattern
 3. Benchmark before/after with a query returning 1000+ rows
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

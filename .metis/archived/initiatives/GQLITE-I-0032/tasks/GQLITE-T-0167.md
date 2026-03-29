@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:30.936753+00:00
 updated_at: 2026-03-29T00:37:49.484858+00:00
 parent: GQLITE-I-0032
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -34,6 +34,8 @@ Harden the Rust embedded extension extraction with atomic writes, integrity veri
 2. **Content integrity**: compute SHA-256 of extracted bytes and compare against a hash embedded at build time
 3. **Noexec fallback**: if extraction to temp dir fails (e.g., noexec mount), retry from `~/.cache/graphqlite/`
 4. **Old version cleanup**: on successful extraction, delete any older versioned extension files in the same directory
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

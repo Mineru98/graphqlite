@@ -4,14 +4,14 @@ level: initiative
 title: "Major Correctness, Performance, and API Improvements (Arch Review Wave 2)"
 short_code: "GQLITE-I-0032"
 created_at: 2026-03-28T13:57:24.637513+00:00
-updated_at: 2026-03-28T22:53:24.491277+00:00
+updated_at: 2026-03-29T00:57:36.702368+00:00
 parent: GQLITE-V-0001
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#initiative"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
