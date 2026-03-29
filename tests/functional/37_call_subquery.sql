@@ -155,4 +155,43 @@ SELECT cypher('CALL { CREATE (x:CallTemp {source: "call"}) }') as result;
 SELECT 'Test 10.2 - Verify write-only CALL:' as test_name;
 SELECT cypher('MATCH (x:CallTemp) RETURN x.source') as result;
 
+-- =======================================================================
+-- SECTION 11: Multiple sequential CALL clauses
+-- =======================================================================
+SELECT '=== Section 11: Multiple CALL clauses ===' as section;
+
+SELECT 'Test 11.1 - First CALL in sequence:' as test_name;
+SELECT cypher('MATCH (n:CallPerson {name: "Alice"}) CALL { WITH n SET n.call1 = true }') as result;
+
+SELECT 'Test 11.2 - Second CALL in sequence:' as test_name;
+SELECT cypher('MATCH (n:CallPerson {name: "Alice"}) CALL { WITH n SET n.call2 = true }') as result;
+
+SELECT 'Test 11.3 - Verify both applied:' as test_name;
+SELECT cypher('MATCH (n:CallPerson {name: "Alice"}) RETURN n.call1, n.call2') as result;
+
+-- =======================================================================
+-- SECTION 12: CREATE inside CALL body
+-- =======================================================================
+SELECT '=== Section 12: CREATE inside CALL ===' as section;
+
+SELECT 'Test 12.1 - CREATE node inside CALL:' as test_name;
+SELECT cypher('CALL { CREATE (x:CallCreated {via: "call_body"}) }') as result;
+
+SELECT 'Test 12.2 - Verify created node:' as test_name;
+SELECT cypher('MATCH (x:CallCreated) RETURN x.via') as result;
+
+-- =======================================================================
+-- SECTION 13: Large outer result set
+-- =======================================================================
+SELECT '=== Section 13: Large outer set ===' as section;
+
+SELECT 'Test 13.1 - Create 20 nodes:' as test_name;
+SELECT cypher('FOREACH (i IN [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20] | CREATE (:BulkNode {idx: i}))') as result;
+
+SELECT 'Test 13.2 - CALL SET on all 20:' as test_name;
+SELECT cypher('MATCH (b:BulkNode) CALL { WITH b SET b.processed = true }') as result;
+
+SELECT 'Test 13.3 - Verify all 20 processed:' as test_name;
+SELECT cypher('MATCH (b:BulkNode {processed: true}) RETURN count(b) AS cnt') as result;
+
 SELECT '=== Test 37 Complete ===' as test_section;

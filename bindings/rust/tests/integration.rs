@@ -3607,3 +3607,49 @@ fn test_clotho_pattern_predicate_in_where() {
     assert_eq!(results[0].get::<String>("n.title").unwrap(), "Orphan");
 }
 
+// =============================================================================
+// CALL {} Subquery
+// =============================================================================
+
+#[test]
+fn test_call_subquery_standalone() {
+    let conn = test_connection();
+    conn.cypher("CREATE (:CallRs {name: 'Alice'})").unwrap();
+    conn.cypher("CREATE (:CallRs {name: 'Bob'})").unwrap();
+
+    let results = conn
+        .cypher("CALL { MATCH (n:CallRs) RETURN n.name ORDER BY n.name }")
+        .unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].get::<String>("n.name").unwrap(), "Alice");
+    assert_eq!(results[1].get::<String>("n.name").unwrap(), "Bob");
+}
+
+#[test]
+fn test_call_subquery_with_import() {
+    let conn = test_connection();
+    conn.cypher("CREATE (:CallRsW {name: 'Carol'})").unwrap();
+    conn.cypher("MATCH (n:CallRsW {name: 'Carol'}) CALL { WITH n SET n.touched = true }")
+        .unwrap();
+
+    let results = conn
+        .cypher("MATCH (n:CallRsW) RETURN n.name, n.touched")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("n.name").unwrap(), "Carol");
+    assert_eq!(results[0].get::<bool>("n.touched").unwrap(), true);
+}
+
+#[test]
+fn test_call_subquery_union() {
+    let conn = test_connection();
+
+    let results = conn
+        .cypher("CALL { RETURN 1 AS n UNION RETURN 2 AS n }")
+        .unwrap();
+    assert_eq!(results.len(), 2);
+    let mut values: Vec<i64> = results.iter().map(|r| r.get::<i64>("n").unwrap()).collect();
+    values.sort();
+    assert_eq!(values, vec![1, 2]);
+}
+

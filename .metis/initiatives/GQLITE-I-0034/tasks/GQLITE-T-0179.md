@@ -4,14 +4,14 @@ level: task
 title: "CALL subquery integration tests and openCypher compliance"
 short_code: "GQLITE-T-0179"
 created_at: 2026-03-29T01:05:18.723369+00:00
-updated_at: 2026-03-29T01:05:18.723369+00:00
+updated_at: 2026-03-29T17:49:15.517702+00:00
 parent: GQLITE-I-0034
 blocked_by: [GQLITE-T-0176, GQLITE-T-0177, GQLITE-T-0178]
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -87,6 +87,8 @@ Build comprehensive integration tests for CALL subquery covering basic usage, WI
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] Functional tests cover all CALL variants listed above
 - [ ] Error cases produce clear, correct error messages
 - [ ] Python binding tests pass for CALL subquery
@@ -99,4 +101,6 @@ Build comprehensive integration tests for CALL subquery covering basic usage, WI
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-29: Complete
+
+Expanded 37_call_subquery.sql to 13 sections. Added 3 Python and 3 Rust binding tests. All pass: 926 unit, 44 functional files, 332 Python, 233 Rust.

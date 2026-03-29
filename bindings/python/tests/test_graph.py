@@ -1499,3 +1499,37 @@ def test_remove_return(g):
     assert len(result) == 1
     assert result[0]["n.name"] == "Dave"
     assert result[0]["n.temp"] is None
+
+
+# =============================================================================
+# CALL {} Subquery
+# =============================================================================
+
+def test_call_subquery_standalone(g):
+    """Test standalone CALL { MATCH ... RETURN }."""
+    g.connection.cypher('CREATE (:CallPy {name: "Alice"})')
+    g.connection.cypher('CREATE (:CallPy {name: "Bob"})')
+    result = g.query('CALL { MATCH (n:CallPy) RETURN n.name ORDER BY n.name }')
+    assert len(result) == 2
+    assert result[0]["n.name"] == "Alice"
+    assert result[1]["n.name"] == "Bob"
+
+
+def test_call_subquery_with_import(g):
+    """Test CALL with WITH variable import and SET."""
+    g.connection.cypher('CREATE (:CallPyW {name: "Carol"})')
+    g.connection.cypher(
+        'MATCH (n:CallPyW {name: "Carol"}) CALL { WITH n SET n.touched = true }'
+    )
+    result = g.query('MATCH (n:CallPyW) RETURN n.name, n.touched')
+    assert len(result) == 1
+    assert result[0]["n.name"] == "Carol"
+    assert result[0]["n.touched"] is True
+
+
+def test_call_subquery_union(g):
+    """Test CALL with UNION inside."""
+    result = g.query('CALL { RETURN 1 AS n UNION RETURN 2 AS n }')
+    assert len(result) == 2
+    values = sorted([r["n"] for r in result])
+    assert values == [1, 2]

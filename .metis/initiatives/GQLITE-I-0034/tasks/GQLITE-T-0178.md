@@ -4,14 +4,14 @@ level: task
 title: "UNION branch support inside CALL subquery"
 short_code: "GQLITE-T-0178"
 created_at: 2026-03-29T01:05:17.703934+00:00
-updated_at: 2026-03-29T17:48:05.245499+00:00
+updated_at: 2026-03-29T17:49:00.376956+00:00
 parent: GQLITE-I-0034
 blocked_by: [GQLITE-T-0175, GQLITE-T-0176]
 archived: false
 
 tags:
   - "#task"
-  - "#phase/active"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -41,6 +41,8 @@ Support UNION branches inside CALL subqueries so that multiple independent query
 - Transform: generate SQL for each branch and join them with SQL UNION (or UNION ALL depending on semantics)
 - Executor: execute each branch against the same outer-row context, combine result sets
 - For write-only branches (no RETURN), each branch executes its side effects independently
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

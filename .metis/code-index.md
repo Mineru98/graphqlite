@@ -1,6 +1,6 @@
 # Code Index
 
-> Generated: 2026-03-29T16:06:37Z | 55 files | JavaScript, Python, Rust
+> Generated: 2026-03-29T17:54:46Z | 55 files | JavaScript, Python, Rust
 
 ## Project Structure
 
@@ -515,6 +515,9 @@
 - pub `test_bulk_set_parameter_missing_error` function L1473-1483 — `def test_bulk_set_parameter_missing_error(g)` — PR #45 coverage: missing param for bulk SET should error.
 - pub `test_merge_on_match_set_function` function L1486-1492 — `def test_merge_on_match_set_function(g)` — PR #45 coverage: MERGE ON MATCH SET with function call.
 - pub `test_remove_return` function L1495-1501 — `def test_remove_return(g)` — Test REMOVE + RETURN in a single query.
+- pub `test_call_subquery_standalone` function L1508-1515 — `def test_call_subquery_standalone(g)` — Test standalone CALL { MATCH ...
+- pub `test_call_subquery_with_import` function L1518-1527 — `def test_call_subquery_with_import(g)` — Test CALL with WITH variable import and SET.
+- pub `test_call_subquery_union` function L1530-1535 — `def test_call_subquery_union(g)` — Test CALL with UNION inside.
 
 #### bindings/python/tests/test_manager.py
 
@@ -1267,6 +1270,9 @@
 -  `test_clotho_bug3_optional_match_with_where_filter` function L3539-3567 — `()` — Integration tests for GraphQLite Rust bindings.
 -  `test_clotho_bug5_undirected_match_bare` function L3570-3590 — `()` — Integration tests for GraphQLite Rust bindings.
 -  `test_clotho_pattern_predicate_in_where` function L3593-3608 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_standalone` function L3615-3626 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_with_import` function L3629-3641 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_union` function L3644-3654 — `()` — Integration tests for GraphQLite Rust bindings.
 
 ### docs/theme
 
