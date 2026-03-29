@@ -1703,22 +1703,62 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
             }
         }
 
-        /* Execute inner subquery clauses with outer variable bindings.
-         * Skip the leading WITH clause (it just imports variables).
-         * Execute remaining clauses (SET, MERGE, CREATE, DELETE, MATCH+RETURN). */
+        /* Build a scoped variable map: only include variables listed in the
+         * leading WITH clause (scope isolation per openCypher spec).
+         * If there is no leading WITH, no outer variables are accessible. */
+        variable_map *scoped_map = create_variable_map();
+        if (!scoped_map) {
+            free_variable_map(var_map);
+            set_result_error(result, "Failed to create scoped variable map");
+            sqlite3_finalize(outer_stmt);
+            cypher_transform_free_context(ctx);
+            return -1;
+        }
+
+        if (inner_query && inner_query->clauses && inner_query->clauses->count > 0 &&
+            inner_query->clauses->items[0]->type == AST_NODE_WITH) {
+            cypher_with *with = (cypher_with*)inner_query->clauses->items[0];
+            if (with->items) {
+                for (int wi = 0; wi < with->items->count; wi++) {
+                    cypher_return_item *item = (cypher_return_item*)with->items->items[wi];
+                    /* Simple identifier import: WITH a */
+                    if (item->expr && item->expr->type == AST_NODE_IDENTIFIER) {
+                        const char *name = ((cypher_identifier*)item->expr)->name;
+                        int node_id = get_variable_node_id(var_map, name);
+                        if (node_id >= 0) {
+                            const char *alias = item->alias ? item->alias : name;
+                            set_variable_node_id(scoped_map, alias, node_id);
+                            CYPHER_DEBUG("CALL WITH: imported '%s' as '%s' = node %d",
+                                         name, alias, node_id);
+                        }
+                    }
+                    /* WITH expressions (e.g., WITH a.name AS n) are not node IDs —
+                     * they would need value-level binding which is a future enhancement.
+                     * For now, property expressions are skipped with a debug note. */
+                    else if (item->expr) {
+                        CYPHER_DEBUG("CALL WITH: skipping non-identifier expression (type %s)",
+                                     ast_node_type_name(item->expr->type));
+                    }
+                }
+            }
+        }
+
+        /* Execute inner subquery clauses with scoped variable bindings.
+         * Skip the leading WITH clause (already processed above). */
         if (inner_query && inner_query->clauses) {
             for (int ci = 0; ci < inner_query->clauses->count; ci++) {
                 ast_node *inner_clause = inner_query->clauses->items[ci];
 
                 if (inner_clause->type == AST_NODE_WITH) {
-                    /* Skip WITH — it declares variable imports from outer scope */
+                    /* Already processed above for scope building */
                     continue;
                 }
 
                 if (inner_clause->type == AST_NODE_SET) {
                     rc = execute_set_operations(executor, (cypher_set*)inner_clause,
-                                                var_map, result);
+                                                scoped_map, result);
                     if (rc < 0) {
+                        free_variable_map(scoped_map);
                         free_variable_map(var_map);
                         sqlite3_finalize(outer_stmt);
                         cypher_transform_free_context(ctx);
@@ -1727,6 +1767,7 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                 } else if (inner_clause->type == AST_NODE_MERGE) {
                     rc = execute_merge_clause(executor, (cypher_merge*)inner_clause, result);
                     if (rc < 0) {
+                        free_variable_map(scoped_map);
                         free_variable_map(var_map);
                         sqlite3_finalize(outer_stmt);
                         cypher_transform_free_context(ctx);
@@ -1735,6 +1776,7 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                 } else if (inner_clause->type == AST_NODE_CREATE) {
                     rc = execute_create_clause(executor, (cypher_create*)inner_clause, result);
                     if (rc < 0) {
+                        free_variable_map(scoped_map);
                         free_variable_map(var_map);
                         sqlite3_finalize(outer_stmt);
                         cypher_transform_free_context(ctx);
@@ -1742,16 +1784,74 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                     }
                 } else if (inner_clause->type == AST_NODE_MATCH ||
                            inner_clause->type == AST_NODE_RETURN) {
-                    /* For MATCH/RETURN in inner query, fall back to full dispatch */
-                    /* (handled after the loop via post-CALL return path) */
+                    /* MATCH/RETURN in inner query — handled after the loop
+                     * via post-CALL return path */
                     continue;
                 } else {
                     CYPHER_DEBUG("CALL: skipping unsupported inner clause type %s",
                                 ast_node_type_name(inner_clause->type));
                 }
             }
+        } else if (inner_ast->type == AST_NODE_UNION) {
+            /* Inner query is a UNION — execute each branch with scoped bindings.
+             * Walk the UNION tree: left may be another UNION or a query,
+             * right is always a single query. */
+            ast_node *union_branches[32]; /* max 32 branches */
+            int branch_count = 0;
+
+            /* Flatten UNION tree into branch array */
+            ast_node *cur = inner_ast;
+            while (cur && cur->type == AST_NODE_UNION && branch_count < 31) {
+                cypher_union *u = (cypher_union*)cur;
+                union_branches[branch_count++] = u->right;
+                cur = u->left;
+            }
+            if (cur && branch_count < 32) {
+                union_branches[branch_count++] = cur;
+            }
+
+            /* Execute branches in reverse order (left-to-right) */
+            for (int bi = branch_count - 1; bi >= 0; bi--) {
+                ast_node *branch = union_branches[bi];
+                if (branch->type == AST_NODE_QUERY || branch->type == AST_NODE_SINGLE_QUERY) {
+                    cypher_query *bq = (cypher_query*)branch;
+                    /* Build scoped map for this branch's WITH */
+                    variable_map *branch_scope = create_variable_map();
+                    if (branch_scope && bq->clauses && bq->clauses->count > 0 &&
+                        bq->clauses->items[0]->type == AST_NODE_WITH) {
+                        cypher_with *with = (cypher_with*)bq->clauses->items[0];
+                        if (with->items) {
+                            for (int wi = 0; wi < with->items->count; wi++) {
+                                cypher_return_item *item = (cypher_return_item*)with->items->items[wi];
+                                if (item->expr && item->expr->type == AST_NODE_IDENTIFIER) {
+                                    const char *name = ((cypher_identifier*)item->expr)->name;
+                                    int node_id = get_variable_node_id(var_map, name);
+                                    if (node_id >= 0) {
+                                        const char *alias = item->alias ? item->alias : name;
+                                        set_variable_node_id(branch_scope, alias, node_id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    /* Execute branch clauses (skip WITH) */
+                    for (int ci = 0; ci < bq->clauses->count; ci++) {
+                        ast_node *bc = bq->clauses->items[ci];
+                        if (bc->type == AST_NODE_WITH) continue;
+                        if (bc->type == AST_NODE_SET) {
+                            execute_set_operations(executor, (cypher_set*)bc, branch_scope, result);
+                        } else if (bc->type == AST_NODE_MERGE) {
+                            execute_merge_clause(executor, (cypher_merge*)bc, result);
+                        } else if (bc->type == AST_NODE_CREATE) {
+                            execute_create_clause(executor, (cypher_create*)bc, result);
+                        }
+                    }
+                    free_variable_map(branch_scope);
+                }
+            }
         } else {
-            /* Inner query is a UNION — dispatch it directly */
+            /* Unknown inner type — try direct dispatch */
             cypher_result *inner_result = cypher_executor_execute_ast(executor, inner_ast);
             if (inner_result) {
                 result->nodes_created += inner_result->nodes_created;
@@ -1761,6 +1861,7 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
             }
         }
 
+        free_variable_map(scoped_map);
         free_variable_map(var_map);
     }
 

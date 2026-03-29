@@ -4,15 +4,15 @@ level: task
 title: "Fix functional test suite blocked at test 26 (CREATE...RETURN)"
 short_code: "GQLITE-T-0180"
 created_at: 2026-03-29T17:25:30.858263+00:00
-updated_at: 2026-03-29T17:25:30.858263+00:00
+updated_at: 2026-03-29T17:34:32.350528+00:00
 parent: 
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/backlog"
   - "#bug"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -46,6 +46,12 @@ The executor's `handle_create` pattern does not support a trailing RETURN clause
 2. **Implement CREATE+RETURN** (proper): Add a `handle_create_return` pattern in `query_dispatch.c` that executes CREATE then returns the created node
 
 Option 1 is the right fix for the test suite — the test is supposed to test parameterized queries, not CREATE+RETURN.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

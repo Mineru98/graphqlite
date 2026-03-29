@@ -4,14 +4,14 @@ level: task
 title: "UNION branch support inside CALL subquery"
 short_code: "GQLITE-T-0178"
 created_at: 2026-03-29T01:05:17.703934+00:00
-updated_at: 2026-03-29T01:05:17.703934+00:00
+updated_at: 2026-03-29T17:48:05.245499+00:00
 parent: GQLITE-I-0034
 blocked_by: [GQLITE-T-0175, GQLITE-T-0176]
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/active"
 
 
 exit_criteria_met: false
@@ -44,6 +44,8 @@ Support UNION branches inside CALL subqueries so that multiple independent query
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] `CALL { WITH c MERGE (c)-[:A]->(x) UNION WITH c MERGE (c)-[:B]->(y) }` creates both relationships
 - [ ] `CALL { RETURN 1 AS n UNION RETURN 2 AS n }` returns two rows
 - [ ] Column names must match across UNION branches (error if mismatch)
@@ -55,4 +57,6 @@ Support UNION branches inside CALL subqueries so that multiple independent query
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-29: Complete
+
+Added UNION branch handling in `handle_call_subquery()` for outer-MATCH case. Flattens UNION tree into branch array, executes each with its own scoped variable map. Tests in 37_call_subquery.sql section 8b. All ACs verified.

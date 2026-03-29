@@ -108,13 +108,33 @@ SELECT 'Test 7.2 - Nested CALL with inner MATCH:' as test_name;
 SELECT cypher('CALL { CALL { MATCH (n:CallPerson {name: "Alice"}) RETURN n.name } }') as result;
 
 -- =======================================================================
--- SECTION 8: Error cases
+-- SECTION 8: WITH scope isolation
 -- =======================================================================
-SELECT '=== Section 8: Error Cases ===' as section;
+SELECT '=== Section 8: WITH Scope Isolation ===' as section;
 
-SELECT 'Test 8.1 - CALL without braces (parse error expected):' as test_name;
--- This should produce a parse error - we test it doesn't crash
--- Using a subselect to catch the error without -bail stopping us
+SELECT 'Test 8.1 - WITH alias (WITH a AS x):' as test_name;
+SELECT cypher('MATCH (n:CallPerson {name: "Alice"}) CALL { WITH n AS x SET x.aliased = true }') as result;
+
+SELECT 'Test 8.2 - Verify alias SET:' as test_name;
+SELECT cypher('MATCH (n:CallPerson {name: "Alice"}) RETURN n.aliased') as result;
+
+-- =======================================================================
+-- SECTION 8b: UNION branches with outer variable binding
+-- =======================================================================
+SELECT '=== Section 8b: UNION with outer vars ===' as section;
+
+SELECT 'Test 8b.1 - UNION SET branches with outer var:' as test_name;
+SELECT cypher('MATCH (n:CallPerson {name: "Alice"}) CALL { WITH n SET n.u1 = true UNION WITH n SET n.u2 = true }') as result;
+
+SELECT 'Test 8b.2 - Verify both UNION branches applied:' as test_name;
+SELECT cypher('MATCH (n:CallPerson {name: "Alice"}) RETURN n.u1, n.u2') as result;
+
+SELECT 'Test 8b.3 - UNION MERGE with outer var:' as test_name;
+SELECT cypher('CREATE (c:CallOrg {name: "Org1"})') as setup;
+SELECT cypher('MATCH (c:CallOrg {name: "Org1"}) CALL { WITH c MERGE (c)-[:HAS]->(:CallUnit {name: "UnitA"}) UNION WITH c MERGE (c)-[:HAS]->(:CallUnit {name: "UnitB"}) }') as result;
+
+SELECT 'Test 8b.4 - Verify UNION MERGE created both:' as test_name;
+SELECT cypher('MATCH (c:CallOrg)-[:HAS]->(u:CallUnit) RETURN c.name, u.name ORDER BY u.name') as result;
 
 -- =======================================================================
 -- SECTION 9: CALL with ORDER BY/LIMIT in inner query
