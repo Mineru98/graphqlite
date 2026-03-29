@@ -6,7 +6,7 @@ short_code: "GQLITE-T-0177"
 created_at: 2026-03-29T01:05:16.452673+00:00
 updated_at: 2026-03-29T01:05:16.452673+00:00
 parent: GQLITE-I-0034
-blocked_by: []
+blocked_by: [GQLITE-T-0175, GQLITE-T-0176]
 archived: false
 
 tags:
@@ -35,11 +35,14 @@ Implement WITH-based variable import so that a CALL subquery can reference outer
 
 ## Implementation Notes
 
-- When a CALL subquery starts with `WITH var1, var2`, those identifiers must resolve to variables from the outer scope rather than being treated as new bindings
-- In the transform layer: map outer aliases to inner column references so the generated SQL correctly references the outer CTE columns
-- In the executor layer: pass matched variable IDs (node/edge IDs) from the outer result row into the inner execution context
-- Variables not listed in WITH must not be accessible inside the subquery (scope isolation)
-- WITH expressions (e.g., `WITH a, a.name AS n`) should also be supported
+**Scope**: This task covers advanced WITH import features beyond basic variable forwarding (which is handled as part of T-0175/T-0176). Specifically:
+
+- **WITH expressions**: `WITH a, a.name AS n` — derived expressions that compute values from outer variables
+- **WITH aliases**: `WITH a AS outerNode` — renaming outer variables in the inner scope
+- **Scope isolation enforcement**: variables not listed in WITH must not be accessible inside the subquery — emit a clear error referencing the missing WITH import
+- **Error messages**: referencing an outer variable not imported via WITH should produce an error like `Variable 'x' not in scope (did you forget to import it with WITH?)`
+- In the transform layer: map outer aliases and expressions to parameter bindings in the generated inner SQL
+- In the executor layer: evaluate WITH expressions against outer row data before passing to inner query
 
 ## Acceptance Criteria
 

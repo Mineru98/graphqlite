@@ -24,6 +24,7 @@ static struct {
     {"as", CYPHER_AS},
     {"asc", CYPHER_ASC},
     {"by", CYPHER_BY},
+    {"call", CYPHER_CALL},
     {"case", CYPHER_CASE},
     {"create", CYPHER_CREATE},
     {"csv", CYPHER_CSV},

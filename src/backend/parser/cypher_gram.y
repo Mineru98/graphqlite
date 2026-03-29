@@ -92,7 +92,7 @@ int cypher_yylex(CYPHER_YYSTYPE *yylval, CYPHER_YYLTYPE *yylloc, cypher_parser_c
 %token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ REGEX_MATCH
 
 /* Keywords */
-%token MATCH RETURN CREATE WHERE WITH SET DELETE REMOVE MERGE UNWIND DETACH FOREACH
+%token MATCH RETURN CREATE WHERE WITH SET DELETE REMOVE MERGE UNWIND DETACH FOREACH CALL
 %token OPTIONAL DISTINCT ORDER BY SKIP LIMIT AS ASC DESC
 %token AND OR XOR NOT IN IS NULL_P TRUE_P FALSE_P EXISTS
 %token ANY NONE SINGLE REDUCE
@@ -114,7 +114,7 @@ int cypher_yylex(CYPHER_YYSTYPE *yylval, CYPHER_YYLTYPE *yylloc, cypher_parser_c
 %type <delete> delete_clause
 %type <remove> remove_clause
 %type <with_clause> with_clause
-%type <node> unwind_clause foreach_clause load_csv_clause list_literal list_comprehension pattern_comprehension map_literal map_projection map_projection_item case_expression when_clause
+%type <node> unwind_clause foreach_clause call_clause load_csv_clause list_literal list_comprehension pattern_comprehension map_literal map_projection map_projection_item case_expression when_clause
 %type <list> map_projection_list foreach_update_list
 %type <list> when_clause_list on_create_clause on_match_clause
 
@@ -239,6 +239,7 @@ clause:
     | set_clause        { $$ = (ast_node*)$1; }
     | delete_clause     { $$ = (ast_node*)$1; }
     | remove_clause     { $$ = (ast_node*)$1; }
+    | call_clause       { $$ = $1; }
     ;
 
 /* MATCH clause */
@@ -307,6 +308,20 @@ foreach_clause:
         {
             $$ = (ast_node*)make_cypher_foreach($3, $5, $7, @1.first_line);
             free($3);
+        }
+    ;
+
+/* CALL {} subquery clause
+ * The inner query uses union_query which already handles UNION/UNION ALL chaining.
+ * Each UNION branch is stored in the AST via the existing cypher_union structure.
+ * The call_subquery node wraps the inner query (single or union chain) in a branches list.
+ */
+call_clause:
+    CALL '{' union_query '}'
+        {
+            ast_list *branches = ast_list_create();
+            ast_list_append(branches, $3);
+            $$ = (ast_node*)make_cypher_call_subquery(branches, @1.first_line);
         }
     ;
 

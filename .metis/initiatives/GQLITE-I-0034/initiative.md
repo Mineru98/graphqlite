@@ -81,17 +81,22 @@ The most practical approach is **(a) executor-level iteration**: the transform l
 
 ## Tasks (to be created during decompose)
 
-| # | Task | Layer | Effort |
-|---|------|-------|--------|
-| 1 | Grammar rules for CALL { } with UNION | Parser | 1-2 days |
-| 2 | AST node for CALL subquery | Parser | 0.5 days |
-| 3 | Transform: generate inner SQL from subquery | Transform | 2-3 days |
-| 4 | Executor: iterate outer rows, execute inner query per row | Executor | 2-3 days |
-| 5 | WITH variable import in subquery scope | Transform+Executor | 1-2 days |
-| 6 | UNION branch support inside CALL | All layers | 1-2 days |
-| 7 | Integration tests + openCypher compliance tests | Testing | 1 day |
+| # | Task | Layer | Effort | Blocked By |
+|---|------|-------|--------|------------|
+| 1 | Grammar rules for CALL { } with UNION (T-0173) | Parser | 1-2 days | — |
+| 2 | AST node for CALL subquery (T-0174) | Parser | 0.5 days | T-0173 |
+| 3 | Transform: generate inner SQL from subquery (T-0175) | Transform | 2-3 days | T-0174 |
+| 4 | Executor: iterate outer rows, execute inner query per row (T-0176) | Executor | 2-3 days | T-0175 |
+| 5 | WITH advanced expressions and scope isolation (T-0177) | Transform+Executor | 1-2 days | T-0175, T-0176 |
+| 6 | UNION branch support inside CALL (T-0178) | All layers | 1-2 days | T-0175, T-0176 |
+| 7 | Integration tests + openCypher compliance tests (T-0179) | Testing | 2 days | T-0176, T-0177, T-0178 |
+
+**Critical path**: T-0173 → T-0174 → T-0175 → T-0176 → T-0179
+**Parallel after T-0176**: T-0177 and T-0178 can run concurrently
+**Nested CALL** (`CALL { CALL { ... } }`) is covered in T-0175 (transform) and T-0176 (executor), tested in T-0179
 
 ## Dependencies
 
-- Grammar conflict resolution: adding CALL to the clause list may introduce new S/R conflicts with the GLR parser. Current `%expect 9` may need updating.
+- Grammar conflict resolution: adding CALL to the clause list may introduce new S/R conflicts with the GLR parser. Current baseline is `%expect 4` (S/R) and `%expect-rr 3` (R/R) — verify before and after.
+- **`CALL` is not currently a keyword** in the scanner or grammar — it must be added as a new token.
 - The MERGE+WITH pipeline handler (from #36 fix) provides a pattern for executor-level clause chaining that this feature can build on.

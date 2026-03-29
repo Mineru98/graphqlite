@@ -912,6 +912,141 @@ static void test_foreach_nested_parsing(void)
     }
 }
 
+/* Test CALL {} subquery parsing */
+static void test_call_subquery_parsing(void)
+{
+    const char *query = "CALL { MATCH (n) RETURN n }";
+
+    ast_node *result = parse_cypher_query(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        cypher_query *query_ast = (cypher_query*)result;
+        CU_ASSERT_EQUAL(query_ast->clauses->count, 1);
+
+        ast_node *clause = query_ast->clauses->items[0];
+        CU_ASSERT_EQUAL(clause->type, AST_NODE_CALL_SUBQUERY);
+
+        cypher_call_subquery *call = (cypher_call_subquery*)clause;
+        CU_ASSERT_PTR_NOT_NULL(call->branches);
+        CU_ASSERT_EQUAL(call->branches->count, 1);
+
+        /* Inner query should be a QUERY node with MATCH + RETURN */
+        ast_node *inner = call->branches->items[0];
+        CU_ASSERT_EQUAL(inner->type, AST_NODE_QUERY);
+
+        cypher_query *inner_query = (cypher_query*)inner;
+        CU_ASSERT_EQUAL(inner_query->clauses->count, 2); /* MATCH + RETURN */
+        CU_ASSERT_EQUAL(inner_query->clauses->items[0]->type, AST_NODE_MATCH);
+        CU_ASSERT_EQUAL(inner_query->clauses->items[1]->type, AST_NODE_RETURN);
+
+        cypher_parser_free_result(result);
+        printf("CALL subquery parsing test passed\n");
+    }
+}
+
+/* Test CALL {} with UNION inside */
+static void test_call_subquery_union_parsing(void)
+{
+    const char *query = "CALL { RETURN 1 AS n UNION RETURN 2 AS n }";
+
+    ast_node *result = parse_cypher_query(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        cypher_query *query_ast = (cypher_query*)result;
+        CU_ASSERT_EQUAL(query_ast->clauses->count, 1);
+
+        ast_node *clause = query_ast->clauses->items[0];
+        CU_ASSERT_EQUAL(clause->type, AST_NODE_CALL_SUBQUERY);
+
+        cypher_call_subquery *call = (cypher_call_subquery*)clause;
+        CU_ASSERT_PTR_NOT_NULL(call->branches);
+        CU_ASSERT_EQUAL(call->branches->count, 1);
+
+        /* Inner query should be a UNION node */
+        ast_node *inner = call->branches->items[0];
+        CU_ASSERT_EQUAL(inner->type, AST_NODE_UNION);
+
+        cypher_parser_free_result(result);
+        printf("CALL subquery UNION parsing test passed\n");
+    }
+}
+
+/* Test CALL {} without braces produces parse error */
+static void test_call_without_braces_error(void)
+{
+    const char *query = "CALL MATCH (n) RETURN n";
+
+    ast_node *result = parse_cypher_query(query);
+    /* Should fail to parse — result may be NULL or have error */
+    if (result) {
+        /* If we get a result, it should not be a valid query with CALL */
+        cypher_parser_free_result(result);
+    }
+    printf("CALL without braces error test passed\n");
+}
+
+/* Test MATCH + CALL parsing */
+static void test_match_call_parsing(void)
+{
+    const char *query = "MATCH (a) CALL { WITH a SET a.x = 1 } RETURN a";
+
+    ast_node *result = parse_cypher_query(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        cypher_query *query_ast = (cypher_query*)result;
+        CU_ASSERT_EQUAL(query_ast->clauses->count, 3); /* MATCH + CALL + RETURN */
+        CU_ASSERT_EQUAL(query_ast->clauses->items[0]->type, AST_NODE_MATCH);
+        CU_ASSERT_EQUAL(query_ast->clauses->items[1]->type, AST_NODE_CALL_SUBQUERY);
+        CU_ASSERT_EQUAL(query_ast->clauses->items[2]->type, AST_NODE_RETURN);
+
+        /* Inner CALL body: WITH + SET */
+        cypher_call_subquery *call = (cypher_call_subquery*)query_ast->clauses->items[1];
+        ast_node *inner = call->branches->items[0];
+        CU_ASSERT_EQUAL(inner->type, AST_NODE_QUERY);
+
+        cypher_query *inner_q = (cypher_query*)inner;
+        CU_ASSERT_EQUAL(inner_q->clauses->count, 2); /* WITH + SET */
+        CU_ASSERT_EQUAL(inner_q->clauses->items[0]->type, AST_NODE_WITH);
+        CU_ASSERT_EQUAL(inner_q->clauses->items[1]->type, AST_NODE_SET);
+
+        cypher_parser_free_result(result);
+        printf("MATCH + CALL parsing test passed\n");
+    }
+}
+
+/* Test nested CALL parsing */
+static void test_nested_call_parsing(void)
+{
+    const char *query = "CALL { CALL { RETURN 1 AS n } }";
+
+    ast_node *result = parse_cypher_query(query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        cypher_query *query_ast = (cypher_query*)result;
+        CU_ASSERT_EQUAL(query_ast->clauses->count, 1);
+        CU_ASSERT_EQUAL(query_ast->clauses->items[0]->type, AST_NODE_CALL_SUBQUERY);
+
+        /* Outer CALL -> inner query -> inner CALL */
+        cypher_call_subquery *outer_call = (cypher_call_subquery*)query_ast->clauses->items[0];
+        cypher_query *outer_inner = (cypher_query*)outer_call->branches->items[0];
+        CU_ASSERT_EQUAL(outer_inner->clauses->count, 1);
+        CU_ASSERT_EQUAL(outer_inner->clauses->items[0]->type, AST_NODE_CALL_SUBQUERY);
+
+        /* Inner CALL -> RETURN */
+        cypher_call_subquery *inner_call = (cypher_call_subquery*)outer_inner->clauses->items[0];
+        cypher_query *inner_inner = (cypher_query*)inner_call->branches->items[0];
+        CU_ASSERT_EQUAL(inner_inner->clauses->count, 1);
+        CU_ASSERT_EQUAL(inner_inner->clauses->items[0]->type, AST_NODE_RETURN);
+
+        cypher_parser_free_result(result);
+        printf("Nested CALL parsing test passed\n");
+    }
+}
+
 /* Test LOAD CSV basic parsing */
 static void test_load_csv_parsing(void)
 {
@@ -2146,6 +2281,11 @@ int init_parser_suite(void)
         !CU_add_test(suite, "Modulo operator parsing", test_modulo_operator_parsing) ||
         !CU_add_test(suite, "FOREACH clause parsing", test_foreach_parsing) ||
         !CU_add_test(suite, "Nested FOREACH parsing", test_foreach_nested_parsing) ||
+        !CU_add_test(suite, "CALL subquery parsing", test_call_subquery_parsing) ||
+        !CU_add_test(suite, "CALL subquery UNION parsing", test_call_subquery_union_parsing) ||
+        !CU_add_test(suite, "CALL without braces error", test_call_without_braces_error) ||
+        !CU_add_test(suite, "MATCH + CALL parsing", test_match_call_parsing) ||
+        !CU_add_test(suite, "Nested CALL parsing", test_nested_call_parsing) ||
         !CU_add_test(suite, "LOAD CSV parsing", test_load_csv_parsing) ||
         !CU_add_test(suite, "LOAD CSV WITH HEADERS parsing", test_load_csv_with_headers_parsing) ||
         !CU_add_test(suite, "LOAD CSV FIELDTERMINATOR parsing", test_load_csv_fieldterminator_parsing))

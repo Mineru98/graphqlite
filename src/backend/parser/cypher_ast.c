@@ -167,6 +167,16 @@ void ast_node_free(ast_node *node)
             }
             break;
 
+        case AST_NODE_CALL_SUBQUERY:
+            {
+                cypher_call_subquery *call = (cypher_call_subquery*)node;
+                if (call->branches) {
+                    ast_list_free(call->branches);
+                    call->branches = NULL;
+                }
+            }
+            break;
+
         case AST_NODE_LOAD_CSV:
             {
                 cypher_load_csv *load_csv = (cypher_load_csv*)node;
@@ -709,6 +719,17 @@ cypher_foreach* make_cypher_foreach(char *variable, ast_node *list_expr, ast_lis
     foreach->list_expr = list_expr;
     foreach->body = body;
     return foreach;
+}
+
+cypher_call_subquery* make_cypher_call_subquery(ast_list *branches, int location)
+{
+    cypher_call_subquery *call = (cypher_call_subquery*)ast_node_create(AST_NODE_CALL_SUBQUERY, location, sizeof(cypher_call_subquery));
+    if (!call) {
+        return NULL;
+    }
+
+    call->branches = branches;
+    return call;
 }
 
 cypher_load_csv* make_cypher_load_csv(char *file_path, char *variable, bool with_headers, char *fieldterminator, int location)
@@ -1337,6 +1358,7 @@ const char* ast_node_type_name(ast_node_type type)
         case AST_NODE_MERGE:          return "MERGE";
         case AST_NODE_UNWIND:         return "UNWIND";
         case AST_NODE_FOREACH:        return "FOREACH";
+        case AST_NODE_CALL_SUBQUERY:  return "CALL_SUBQUERY";
         case AST_NODE_LOAD_CSV:       return "LOAD_CSV";
         case AST_NODE_PATTERN:        return "PATTERN";
         case AST_NODE_PATH:           return "PATH";

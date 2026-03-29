@@ -4,14 +4,14 @@ level: task
 title: "AST node type and constructor for CALL subquery"
 short_code: "GQLITE-T-0174"
 created_at: 2026-03-29T01:05:12.532243+00:00
-updated_at: 2026-03-29T01:05:12.532243+00:00
+updated_at: 2026-03-29T16:46:44.271125+00:00
 parent: GQLITE-I-0034
-blocked_by: []
+blocked_by: [GQLITE-T-0173]
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -43,6 +43,10 @@ Define the AST node type and constructor for CALL subquery so the parser can bui
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
+## Acceptance Criteria
+
 - [ ] `AST_NODE_CALL_SUBQUERY` exists in the enum
 - [ ] `make_call_subquery()` creates a valid node with branch list
 - [ ] `ast_node_free()` frees CALL subquery nodes without leaks (verify with valgrind/ASAN)
@@ -54,4 +58,6 @@ Define the AST node type and constructor for CALL subquery so the parser can bui
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-03-29: Completed as part of T-0173
+
+All AST work was implemented alongside the grammar rules since grammar actions require the AST node. See T-0173 status updates for details. Implemented: `AST_NODE_CALL_SUBQUERY` enum, `cypher_call_subquery` struct with `ast_list *branches`, `make_cypher_call_subquery()` constructor, free logic in `ast_node_free()`, type name in `ast_node_type_name()`. AST freeing verified via debug output — no leaks.

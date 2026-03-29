@@ -6,7 +6,7 @@ short_code: "GQLITE-T-0179"
 created_at: 2026-03-29T01:05:18.723369+00:00
 updated_at: 2026-03-29T01:05:18.723369+00:00
 parent: GQLITE-I-0034
-blocked_by: []
+blocked_by: [GQLITE-T-0176, GQLITE-T-0177, GQLITE-T-0178]
 archived: false
 
 tags:
@@ -36,18 +36,53 @@ Build comprehensive integration tests for CALL subquery covering basic usage, WI
 
 ## Implementation Notes
 
-- Functional SQL tests should cover:
-  - Basic `CALL { MATCH (n) RETURN n }`
-  - WITH import: `MATCH (a) CALL { WITH a SET a.x = 1 }`
-  - UNION branches: `CALL { query1 UNION query2 }`
-  - Nested CALL: `CALL { CALL { ... } }`
-  - Write operations inside CALL (MERGE, CREATE, SET, DELETE)
-- Error case tests:
-  - `CALL` without braces (parse error)
-  - Empty `CALL { }` (parse error or empty result)
-  - Referencing outer variable not imported via WITH (scope error)
-  - UNION column name mismatch
-- Python and Rust binding tests should verify CALL works through the extension API
+### Functional SQL tests (new test file: `tests/functional/37_call_subquery.sql`)
+
+**Basic CALL:**
+- `CALL { MATCH (n) RETURN n }` — standalone subquery
+- `MATCH (a) CALL { WITH a SET a.x = 1 }` — write-only (no RETURN)
+- `MATCH (a) CALL { WITH a MATCH (a)-[r]->() RETURN count(r) AS cnt } RETURN a, cnt` — aggregation in inner query
+- `CALL { RETURN 1 AS n }` — literal-only subquery
+
+**Variable scoping:**
+- `MATCH (a) CALL { WITH a SET a.touched = true }` — basic WITH import
+- `MATCH (a) CALL { WITH a, a.name AS n RETURN n }` — WITH expressions
+- Outer variable not imported via WITH — must error
+- Inner variables do not leak to outer scope
+
+**UNION branches:**
+- `CALL { RETURN 1 AS n UNION RETURN 2 AS n }` — returns two rows
+- `CALL { WITH c MERGE (c)-[:A]->(x) UNION WITH c MERGE (c)-[:B]->(y) }` — write UNION
+- UNION column name mismatch — must error
+
+**Nested CALL:**
+- `CALL { CALL { RETURN 1 AS n } RETURN n }` — two levels deep
+- Variable scoping across nesting levels
+
+**Multiple CALL clauses:**
+- `MATCH (a) CALL { ... } CALL { ... } RETURN a` — sequential CALL blocks
+
+**ORDER BY / LIMIT in inner query:**
+- `CALL { MATCH (n) RETURN n ORDER BY n.name LIMIT 5 }`
+
+**Edge cases:**
+- Empty outer result set (zero rows) — subquery should not execute
+- Large outer result set (100+ rows) — verify no O(n²) blowup
+- CALL with no RETURN — write-only, no columns propagated
+
+### Error case tests
+- `CALL` without braces → parse error
+- Empty `CALL { }` → parse error or empty result
+- Referencing outer variable not imported via WITH → scope error with helpful message
+- UNION column name mismatch → error
+- CALL inside WHERE or expression position → parse error (CALL is a clause, not an expression)
+
+### Transaction semantics
+- Inner subquery failure mid-iteration: verify earlier rows' side effects are rolled back (atomic per outer CALL execution)
+
+### Binding tests
+- Python binding tests should verify CALL works through the extension API (at least 3 scenarios: basic, WITH import, UNION)
+- Rust binding tests should verify CALL works through the extension API (same 3 scenarios)
 - Verify behavior against openCypher spec sections 3 and 6.5
 
 ## Acceptance Criteria
@@ -60,7 +95,7 @@ Build comprehensive integration tests for CALL subquery covering basic usage, WI
 
 ## Effort Estimate
 
-1 day
+2 days (functional tests across 6+ categories, error cases, binding tests for Python and Rust, transaction semantics verification)
 
 ## Status Updates
 

@@ -6,7 +6,7 @@ short_code: "GQLITE-T-0178"
 created_at: 2026-03-29T01:05:17.703934+00:00
 updated_at: 2026-03-29T01:05:17.703934+00:00
 parent: GQLITE-I-0034
-blocked_by: []
+blocked_by: [GQLITE-T-0175, GQLITE-T-0176]
 archived: false
 
 tags:

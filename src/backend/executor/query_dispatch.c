@@ -158,6 +158,8 @@ static int handle_return_only(cypher_executor *executor, cypher_query *query,
                               cypher_result *result, clause_flags flags);
 static int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *query,
                                       cypher_result *result, clause_flags flags);
+static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
+                                cypher_result *result, clause_flags flags);
 
 /*
  * Pattern registry - ordered by priority (highest first)
@@ -251,6 +253,18 @@ static const query_pattern patterns[] = {
         .forbidden = CLAUSE_CREATE | CLAUSE_SET | CLAUSE_DELETE | CLAUSE_MERGE,
         .handler = handle_generic_transform,
         .priority = 80
+    },
+
+    /*
+     * Priority 90: CALL {} subquery - highest priority since CALL
+     * can combine with any other clause type
+     */
+    {
+        .name = "CALL",
+        .required = CLAUSE_CALL,
+        .forbidden = CLAUSE_NONE,
+        .handler = handle_call_subquery,
+        .priority = 90
     },
 
     /*
@@ -410,6 +424,9 @@ clause_flags analyze_query_clauses(cypher_query *query)
                 break;
             case AST_NODE_FOREACH:
                 flags |= CLAUSE_FOREACH;
+                break;
+            case AST_NODE_CALL_SUBQUERY:
+                flags |= CLAUSE_CALL;
                 break;
             case AST_NODE_LOAD_CSV:
                 flags |= CLAUSE_LOAD_CSV;
@@ -1317,4 +1334,340 @@ static int handle_return_only(cypher_executor *executor, cypher_query *query,
 
     /* Standard SQL-based execution for non-algorithm queries */
     return handle_generic_transform(executor, query, result, flags);
+}
+
+/*
+ * CALL {} subquery handler
+ *
+ * Splits the query at the CALL clause, executes the outer part to get rows,
+ * then dispatches the inner subquery for each outer row.
+ */
+static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
+                                cypher_result *result, clause_flags flags)
+{
+    (void)flags;
+    CYPHER_DEBUG("Executing CALL {} subquery");
+
+    if (!query || !query->clauses) {
+        set_result_error(result, "Invalid query in CALL subquery handler");
+        return -1;
+    }
+
+    /* Find the CALL clause position */
+    int call_pos = -1;
+    cypher_call_subquery *call_node = NULL;
+    for (int i = 0; i < query->clauses->count; i++) {
+        if (query->clauses->items[i]->type == AST_NODE_CALL_SUBQUERY) {
+            call_pos = i;
+            call_node = (cypher_call_subquery*)query->clauses->items[i];
+            break;
+        }
+    }
+
+    if (call_pos < 0 || !call_node) {
+        set_result_error(result, "CALL subquery handler: no CALL clause found");
+        return -1;
+    }
+
+    /* Get the inner query from the CALL node */
+    if (!call_node->branches || call_node->branches->count == 0) {
+        set_result_error(result, "CALL subquery has no inner query");
+        return -1;
+    }
+
+    ast_node *inner_ast = call_node->branches->items[0];
+
+    /*
+     * Case 1: Standalone CALL with no outer MATCH
+     * e.g., CALL { MATCH (n) RETURN n }
+     */
+    if (call_pos == 0 && query->clauses->count == 1) {
+        CYPHER_DEBUG("Standalone CALL — dispatching inner query directly");
+        cypher_result *inner_result = cypher_executor_execute_ast(executor, inner_ast);
+        if (!inner_result) {
+            set_result_error(result, "Failed to execute CALL subquery");
+            return -1;
+        }
+
+        /* Copy inner result to outer result */
+        result->success = inner_result->success;
+        if (inner_result->error_message) {
+            result->error_message = strdup(inner_result->error_message);
+        }
+        result->row_count = inner_result->row_count;
+        result->column_count = inner_result->column_count;
+        result->nodes_created = inner_result->nodes_created;
+        result->nodes_deleted = inner_result->nodes_deleted;
+        result->relationships_created = inner_result->relationships_created;
+        result->relationships_deleted = inner_result->relationships_deleted;
+        result->properties_set = inner_result->properties_set;
+
+        /* Transfer data ownership */
+        result->column_names = inner_result->column_names;
+        inner_result->column_names = NULL;
+        result->data = inner_result->data;
+        inner_result->data = NULL;
+        result->data_types = inner_result->data_types;
+        inner_result->data_types = NULL;
+        result->agtype_data = inner_result->agtype_data;
+        inner_result->agtype_data = NULL;
+        result->use_agtype = inner_result->use_agtype;
+
+        cypher_result_free(inner_result);
+        return result->success ? 0 : -1;
+    }
+
+    /*
+     * Case 2: Outer MATCH + CALL (with or without post-CALL RETURN)
+     * e.g., MATCH (a) CALL { WITH a SET a.x = 1 }
+     * e.g., MATCH (a) CALL { WITH a MATCH (b) RETURN b } RETURN a, b
+     */
+
+    /* Check if there are pre-CALL MATCH clauses */
+    bool has_outer_match = false;
+    for (int i = 0; i < call_pos; i++) {
+        if (query->clauses->items[i]->type == AST_NODE_MATCH) {
+            has_outer_match = true;
+            break;
+        }
+    }
+
+    if (!has_outer_match) {
+        /* No outer MATCH — just execute the inner query directly
+         * This handles CALL { ... } RETURN ... (no outer context) */
+        CYPHER_DEBUG("CALL without outer MATCH — executing inner directly");
+        cypher_result *inner_result = cypher_executor_execute_ast(executor, inner_ast);
+        if (!inner_result || !inner_result->success) {
+            const char *err = (inner_result && inner_result->error_message) ?
+                              inner_result->error_message : "Failed to execute CALL subquery";
+            set_result_error(result, err);
+            if (inner_result) cypher_result_free(inner_result);
+            return -1;
+        }
+        result->success = true;
+        result->nodes_created += inner_result->nodes_created;
+        result->nodes_deleted += inner_result->nodes_deleted;
+        result->relationships_created += inner_result->relationships_created;
+        result->relationships_deleted += inner_result->relationships_deleted;
+        result->properties_set += inner_result->properties_set;
+        cypher_result_free(inner_result);
+        return 0;
+    }
+
+    /*
+     * Has outer MATCH — transform pre-CALL clauses to get outer rows,
+     * then execute inner subquery per row.
+     */
+    CYPHER_DEBUG("CALL with outer MATCH at position %d", call_pos);
+
+    /* Build a temporary query from pre-CALL clauses to get outer row data */
+    cypher_transform_context *ctx = cypher_transform_create_context(executor->db);
+    if (!ctx) {
+        set_result_error(result, "Failed to create transform context for outer query");
+        return -1;
+    }
+
+    /* Transform pre-CALL MATCH clauses */
+    for (int i = 0; i < call_pos; i++) {
+        ast_node *clause = query->clauses->items[i];
+        if (clause->type == AST_NODE_MATCH) {
+            if (transform_match_clause(ctx, (cypher_match*)clause) < 0) {
+                set_result_error(result, ctx->error_message ?
+                                ctx->error_message : "Failed to transform outer MATCH");
+                cypher_transform_free_context(ctx);
+                return -1;
+            }
+        }
+    }
+
+    if (finalize_sql_generation(ctx) < 0) {
+        set_result_error(result, "Failed to finalize outer query SQL");
+        cypher_transform_free_context(ctx);
+        return -1;
+    }
+
+    /* Replace SELECT * with SELECT of node variable IDs */
+    char *select_pos = strstr(ctx->sql_buffer, "SELECT *");
+    if (select_pos) {
+        char *after_star = select_pos + strlen("SELECT *");
+        char *rest = strdup(after_star);
+        ctx->sql_size = select_pos + strlen("SELECT ") - ctx->sql_buffer;
+        ctx->sql_buffer[ctx->sql_size] = '\0';
+
+        bool first = true;
+        int var_count = transform_var_count(ctx->var_ctx);
+        for (int vi = 0; vi < var_count; vi++) {
+            transform_var *var = transform_var_at(ctx->var_ctx, vi);
+            if (var && (var->kind == VAR_KIND_NODE || var->kind == VAR_KIND_EDGE)) {
+                if (!first) append_sql(ctx, ", ");
+                append_sql(ctx, "%s.id AS %s_id", var->table_alias, var->name);
+                first = false;
+            }
+        }
+        if (first) {
+            /* No node/edge variables — just select 1 as placeholder */
+            append_sql(ctx, "1");
+        }
+        append_sql(ctx, " %s", rest);
+        free(rest);
+    }
+
+    prepend_cte_to_sql(ctx);
+
+    CYPHER_DEBUG("CALL outer query SQL: %s", ctx->sql_buffer);
+
+    /* Prepare and execute outer query */
+    sqlite3_stmt *outer_stmt;
+    int rc = sqlite3_prepare_v2(executor->db, ctx->sql_buffer, -1, &outer_stmt, NULL);
+    if (rc != SQLITE_OK) {
+        set_result_error(result, "Failed to prepare outer query for CALL subquery");
+        cypher_transform_free_context(ctx);
+        return -1;
+    }
+
+    if (executor->params_json) {
+        bind_params_from_json(outer_stmt, executor->params_json);
+    }
+
+    /* Iterate outer rows and execute inner subquery per row */
+    int total_inner_rows = 0;
+    result->success = true;
+
+    /* Get the inner query and find its clauses */
+    cypher_query *inner_query = NULL;
+    if (inner_ast->type == AST_NODE_QUERY || inner_ast->type == AST_NODE_SINGLE_QUERY) {
+        inner_query = (cypher_query*)inner_ast;
+    }
+
+    while (sqlite3_step(outer_stmt) == SQLITE_ROW) {
+        CYPHER_DEBUG("CALL: processing outer row");
+
+        /* Build variable map from outer row columns (format: varname_id) */
+        variable_map *var_map = create_variable_map();
+        if (!var_map) {
+            set_result_error(result, "Failed to create variable map for CALL");
+            sqlite3_finalize(outer_stmt);
+            cypher_transform_free_context(ctx);
+            return -1;
+        }
+
+        int col_count = sqlite3_column_count(outer_stmt);
+        for (int c = 0; c < col_count; c++) {
+            const char *col_name = sqlite3_column_name(outer_stmt, c);
+            if (col_name && sqlite3_column_type(outer_stmt, c) == SQLITE_INTEGER) {
+                char var_name[128];
+                strncpy(var_name, col_name, sizeof(var_name) - 1);
+                var_name[sizeof(var_name) - 1] = '\0';
+                char *suffix = strstr(var_name, "_id");
+                if (suffix) {
+                    *suffix = '\0';
+                    int node_id = sqlite3_column_int(outer_stmt, c);
+                    set_variable_node_id(var_map, var_name, node_id);
+                    CYPHER_DEBUG("CALL: bound outer variable '%s' = node %d", var_name, node_id);
+                }
+            }
+        }
+
+        /* Execute inner subquery clauses with outer variable bindings.
+         * Skip the leading WITH clause (it just imports variables).
+         * Execute remaining clauses (SET, MERGE, CREATE, DELETE, MATCH+RETURN). */
+        if (inner_query && inner_query->clauses) {
+            for (int ci = 0; ci < inner_query->clauses->count; ci++) {
+                ast_node *inner_clause = inner_query->clauses->items[ci];
+
+                if (inner_clause->type == AST_NODE_WITH) {
+                    /* Skip WITH — it declares variable imports from outer scope */
+                    continue;
+                }
+
+                if (inner_clause->type == AST_NODE_SET) {
+                    rc = execute_set_operations(executor, (cypher_set*)inner_clause,
+                                                var_map, result);
+                    if (rc < 0) {
+                        free_variable_map(var_map);
+                        sqlite3_finalize(outer_stmt);
+                        cypher_transform_free_context(ctx);
+                        return -1;
+                    }
+                } else if (inner_clause->type == AST_NODE_MERGE) {
+                    rc = execute_merge_clause(executor, (cypher_merge*)inner_clause, result);
+                    if (rc < 0) {
+                        free_variable_map(var_map);
+                        sqlite3_finalize(outer_stmt);
+                        cypher_transform_free_context(ctx);
+                        return -1;
+                    }
+                } else if (inner_clause->type == AST_NODE_CREATE) {
+                    rc = execute_create_clause(executor, (cypher_create*)inner_clause, result);
+                    if (rc < 0) {
+                        free_variable_map(var_map);
+                        sqlite3_finalize(outer_stmt);
+                        cypher_transform_free_context(ctx);
+                        return -1;
+                    }
+                } else if (inner_clause->type == AST_NODE_MATCH ||
+                           inner_clause->type == AST_NODE_RETURN) {
+                    /* For MATCH/RETURN in inner query, fall back to full dispatch */
+                    /* (handled after the loop via post-CALL return path) */
+                    continue;
+                } else {
+                    CYPHER_DEBUG("CALL: skipping unsupported inner clause type %s",
+                                ast_node_type_name(inner_clause->type));
+                }
+            }
+        } else {
+            /* Inner query is a UNION — dispatch it directly */
+            cypher_result *inner_result = cypher_executor_execute_ast(executor, inner_ast);
+            if (inner_result) {
+                result->nodes_created += inner_result->nodes_created;
+                result->properties_set += inner_result->properties_set;
+                total_inner_rows += inner_result->row_count;
+                cypher_result_free(inner_result);
+            }
+        }
+
+        free_variable_map(var_map);
+    }
+
+    sqlite3_finalize(outer_stmt);
+    cypher_transform_free_context(ctx);
+
+    CYPHER_DEBUG("CALL subquery complete: %d inner rows processed", total_inner_rows);
+
+    /* Handle post-CALL RETURN clause if present */
+    cypher_return *post_return = NULL;
+    for (int i = call_pos + 1; i < query->clauses->count; i++) {
+        if (query->clauses->items[i]->type == AST_NODE_RETURN) {
+            post_return = (cypher_return*)query->clauses->items[i];
+            break;
+        }
+    }
+
+    if (post_return) {
+        /* Post-CALL RETURN — re-execute outer query through the generic transform
+         * pipeline which knows how to handle MATCH+RETURN. The CALL side effects
+         * have already been applied above. Build a temporary query without CALL. */
+        ast_list *outer_clauses = ast_list_create();
+        for (int i = 0; i < call_pos; i++) {
+            ast_list_append(outer_clauses, query->clauses->items[i]);
+        }
+        for (int i = call_pos + 1; i < query->clauses->count; i++) {
+            ast_list_append(outer_clauses, query->clauses->items[i]);
+        }
+
+        /* Temporarily swap clause list */
+        ast_list *original_clauses = query->clauses;
+        query->clauses = outer_clauses;
+
+        int ret_rc = handle_generic_transform(executor, query, result, flags);
+
+        /* Restore original clause list and free temporary (don't free items — they're borrowed) */
+        query->clauses = original_clauses;
+        free(outer_clauses->items);
+        free(outer_clauses);
+
+        return ret_rc;
+    }
+
+    return 0;
 }

@@ -462,6 +462,16 @@ cypher_query_result* cypher_transform_query(cypher_transform_context *ctx, cyphe
                 }
                 break;
 
+            case AST_NODE_CALL_SUBQUERY:
+                /* CALL subquery is handled by the executor, not the transform.
+                 * The executor splits the query at CALL boundaries and handles
+                 * inner query transform/execution per outer row.
+                 * If we reach here, it means no specialized executor pattern
+                 * matched — report as not yet implemented. */
+                ctx->has_error = true;
+                ctx->error_message = strdup("CALL {} subquery requires executor-level handling");
+                goto error;
+
             case AST_NODE_LOAD_CSV:
                 if (transform_load_csv_clause(ctx, (cypher_load_csv*)clause) < 0) {
                     goto error;
@@ -631,6 +641,11 @@ static int transform_single_query_sql(cypher_transform_context *ctx, cypher_quer
                     return -1;
                 }
                 break;
+
+            case AST_NODE_CALL_SUBQUERY:
+                ctx->has_error = true;
+                ctx->error_message = strdup("CALL {} subquery requires executor-level handling");
+                return -1;
 
             case AST_NODE_LOAD_CSV:
                 if (transform_load_csv_clause(ctx, (cypher_load_csv*)clause) < 0) {

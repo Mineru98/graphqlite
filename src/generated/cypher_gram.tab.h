@@ -30,11 +30,8 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#ifndef YY_CYPHER_YY_BUILD_PARSER_CYPHER_GRAM_TAB_H_INCLUDED
-# define YY_CYPHER_YY_BUILD_PARSER_CYPHER_GRAM_TAB_H_INCLUDED
+#ifndef YY_CYPHER_YY_SRC_GENERATED_CYPHER_GRAM_TAB_H_INCLUDED
+# define YY_CYPHER_YY_SRC_GENERATED_CYPHER_GRAM_TAB_H_INCLUDED
 /* Debug traces.  */
 #ifndef CYPHER_YYDEBUG
 # if defined YYDEBUG
@@ -50,6 +47,13 @@
 #if CYPHER_YYDEBUG
 extern int cypher_yydebug;
 #endif
+/* "%code requires" blocks.  */
+#line 20 "src/backend/parser/cypher_gram.y"
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#line 57 "src/generated/cypher_gram.tab.h"
 
 /* Token kinds.  */
 #ifndef CYPHER_YYTOKENTYPE
@@ -85,51 +89,52 @@ extern int cypher_yydebug;
     CYPHER_UNWIND = 280,           /* UNWIND  */
     CYPHER_DETACH = 281,           /* DETACH  */
     CYPHER_FOREACH = 282,          /* FOREACH  */
-    CYPHER_OPTIONAL = 283,         /* OPTIONAL  */
-    CYPHER_DISTINCT = 284,         /* DISTINCT  */
-    CYPHER_ORDER = 285,            /* ORDER  */
-    CYPHER_BY = 286,               /* BY  */
-    CYPHER_SKIP = 287,             /* SKIP  */
-    CYPHER_LIMIT = 288,            /* LIMIT  */
-    CYPHER_AS = 289,               /* AS  */
-    CYPHER_ASC = 290,              /* ASC  */
-    CYPHER_DESC = 291,             /* DESC  */
-    CYPHER_AND = 292,              /* AND  */
-    CYPHER_OR = 293,               /* OR  */
-    CYPHER_XOR = 294,              /* XOR  */
-    CYPHER_NOT = 295,              /* NOT  */
-    CYPHER_IN = 296,               /* IN  */
-    CYPHER_IS = 297,               /* IS  */
-    CYPHER_NULL_P = 298,           /* NULL_P  */
-    CYPHER_TRUE_P = 299,           /* TRUE_P  */
-    CYPHER_FALSE_P = 300,          /* FALSE_P  */
-    CYPHER_EXISTS = 301,           /* EXISTS  */
-    CYPHER_ANY = 302,              /* ANY  */
-    CYPHER_NONE = 303,             /* NONE  */
-    CYPHER_SINGLE = 304,           /* SINGLE  */
-    CYPHER_REDUCE = 305,           /* REDUCE  */
-    CYPHER_UNION = 306,            /* UNION  */
-    CYPHER_ALL = 307,              /* ALL  */
-    CYPHER_CASE = 308,             /* CASE  */
-    CYPHER_WHEN = 309,             /* WHEN  */
-    CYPHER_THEN = 310,             /* THEN  */
-    CYPHER_ELSE = 311,             /* ELSE  */
-    CYPHER_END_P = 312,            /* END_P  */
-    CYPHER_ON = 313,               /* ON  */
-    CYPHER_SHORTESTPATH = 314,     /* SHORTESTPATH  */
-    CYPHER_ALLSHORTESTPATHS = 315, /* ALLSHORTESTPATHS  */
-    CYPHER_PATTERN = 316,          /* PATTERN  */
-    CYPHER_EXPLAIN = 317,          /* EXPLAIN  */
-    CYPHER_LOAD = 318,             /* LOAD  */
-    CYPHER_CSV = 319,              /* CSV  */
-    CYPHER_FROM = 320,             /* FROM  */
-    CYPHER_HEADERS = 321,          /* HEADERS  */
-    CYPHER_FIELDTERMINATOR = 322,  /* FIELDTERMINATOR  */
-    CYPHER_STARTS = 323,           /* STARTS  */
-    CYPHER_ENDS = 324,             /* ENDS  */
-    CYPHER_CONTAINS = 325,         /* CONTAINS  */
-    CYPHER_UNARY_MINUS = 326,      /* UNARY_MINUS  */
-    CYPHER_UNARY_PLUS = 327        /* UNARY_PLUS  */
+    CYPHER_CALL = 283,             /* CALL  */
+    CYPHER_OPTIONAL = 284,         /* OPTIONAL  */
+    CYPHER_DISTINCT = 285,         /* DISTINCT  */
+    CYPHER_ORDER = 286,            /* ORDER  */
+    CYPHER_BY = 287,               /* BY  */
+    CYPHER_SKIP = 288,             /* SKIP  */
+    CYPHER_LIMIT = 289,            /* LIMIT  */
+    CYPHER_AS = 290,               /* AS  */
+    CYPHER_ASC = 291,              /* ASC  */
+    CYPHER_DESC = 292,             /* DESC  */
+    CYPHER_AND = 293,              /* AND  */
+    CYPHER_OR = 294,               /* OR  */
+    CYPHER_XOR = 295,              /* XOR  */
+    CYPHER_NOT = 296,              /* NOT  */
+    CYPHER_IN = 297,               /* IN  */
+    CYPHER_IS = 298,               /* IS  */
+    CYPHER_NULL_P = 299,           /* NULL_P  */
+    CYPHER_TRUE_P = 300,           /* TRUE_P  */
+    CYPHER_FALSE_P = 301,          /* FALSE_P  */
+    CYPHER_EXISTS = 302,           /* EXISTS  */
+    CYPHER_ANY = 303,              /* ANY  */
+    CYPHER_NONE = 304,             /* NONE  */
+    CYPHER_SINGLE = 305,           /* SINGLE  */
+    CYPHER_REDUCE = 306,           /* REDUCE  */
+    CYPHER_UNION = 307,            /* UNION  */
+    CYPHER_ALL = 308,              /* ALL  */
+    CYPHER_CASE = 309,             /* CASE  */
+    CYPHER_WHEN = 310,             /* WHEN  */
+    CYPHER_THEN = 311,             /* THEN  */
+    CYPHER_ELSE = 312,             /* ELSE  */
+    CYPHER_END_P = 313,            /* END_P  */
+    CYPHER_ON = 314,               /* ON  */
+    CYPHER_SHORTESTPATH = 315,     /* SHORTESTPATH  */
+    CYPHER_ALLSHORTESTPATHS = 316, /* ALLSHORTESTPATHS  */
+    CYPHER_PATTERN = 317,          /* PATTERN  */
+    CYPHER_EXPLAIN = 318,          /* EXPLAIN  */
+    CYPHER_LOAD = 319,             /* LOAD  */
+    CYPHER_CSV = 320,              /* CSV  */
+    CYPHER_FROM = 321,             /* FROM  */
+    CYPHER_HEADERS = 322,          /* HEADERS  */
+    CYPHER_FIELDTERMINATOR = 323,  /* FIELDTERMINATOR  */
+    CYPHER_STARTS = 324,           /* STARTS  */
+    CYPHER_ENDS = 325,             /* ENDS  */
+    CYPHER_CONTAINS = 326,         /* CONTAINS  */
+    CYPHER_UNARY_MINUS = 327,      /* UNARY_MINUS  */
+    CYPHER_UNARY_PLUS = 328        /* UNARY_PLUS  */
   };
   typedef enum cypher_yytokentype cypher_yytoken_kind_t;
 #endif
@@ -138,7 +143,7 @@ extern int cypher_yydebug;
 #if ! defined CYPHER_YYSTYPE && ! defined CYPHER_YYSTYPE_IS_DECLARED
 union CYPHER_YYSTYPE
 {
-#line 39 "src/backend/parser/cypher_gram.y"
+#line 44 "src/backend/parser/cypher_gram.y"
 
     int64_t integer;
     double decimal;
@@ -180,7 +185,7 @@ union CYPHER_YYSTYPE
     cypher_map_pair *map_pair;
     cypher_list_comprehension *list_comprehension;
 
-#line 181 "build/parser/cypher_gram.tab.h"
+#line 189 "src/generated/cypher_gram.tab.h"
 
 };
 typedef union CYPHER_YYSTYPE CYPHER_YYSTYPE;
@@ -206,4 +211,4 @@ struct CYPHER_YYLTYPE
 
 int cypher_yyparse (cypher_parser_context *context);
 
-#endif /* !YY_CYPHER_YY_BUILD_PARSER_CYPHER_GRAM_TAB_H_INCLUDED  */
+#endif /* !YY_CYPHER_YY_SRC_GENERATED_CYPHER_GRAM_TAB_H_INCLUDED  */
