@@ -779,6 +779,77 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
                 set_bool_buf = set_pv.as_bool;
                 prop_value = &set_bool_buf;
             }
+        } else if (item->expr->type == AST_NODE_IDENTIFIER && g_foreach_ctx) {
+            /* Resolve a bare UNWIND/FOREACH variable (e.g., SET n.id = item) */
+            cypher_identifier *val_id = (cypher_identifier*)item->expr;
+            foreach_binding *binding = get_foreach_binding(g_foreach_ctx, val_id->name);
+            if (binding) {
+                switch (binding->literal_type) {
+                    case LITERAL_STRING:
+                        prop_type = PROP_TYPE_TEXT;
+                        prop_value = binding->value.string;
+                        break;
+                    case LITERAL_INTEGER:
+                        prop_type = PROP_TYPE_INTEGER;
+                        set_int_buf = binding->value.integer;
+                        prop_value = &set_int_buf;
+                        break;
+                    case LITERAL_DECIMAL:
+                        prop_type = PROP_TYPE_REAL;
+                        set_real_buf = binding->value.decimal;
+                        prop_value = &set_real_buf;
+                        break;
+                    case LITERAL_BOOLEAN:
+                        prop_type = PROP_TYPE_BOOLEAN;
+                        set_bool_buf = binding->value.boolean;
+                        prop_value = &set_bool_buf;
+                        break;
+                    default:
+                        break;
+                }
+            } else {
+                char error[256];
+                snprintf(error, sizeof(error), "Unbound variable in SET value: %s", val_id->name);
+                set_result_error(result, error);
+                property_value_free(&set_pv);
+                return -1;
+            }
+        } else if (item->expr->type == AST_NODE_PROPERTY && g_foreach_ctx) {
+            /* Resolve property access on UNWIND variable (e.g., SET n.id = item.id) */
+            cypher_property *val_prop = (cypher_property*)item->expr;
+            if (val_prop->expr && val_prop->expr->type == AST_NODE_IDENTIFIER) {
+                cypher_identifier *val_id = (cypher_identifier*)val_prop->expr;
+                foreach_binding *binding = get_foreach_binding(g_foreach_ctx, val_id->name);
+                if (binding && binding->literal_type == LITERAL_STRING && binding->value.string) {
+                    /* The binding value is a JSON string — extract the property */
+                    char json_path[256];
+                    snprintf(json_path, sizeof(json_path), "$.%s", val_prop->property_name);
+                    char sql[512];
+                    snprintf(sql, sizeof(sql), "SELECT json_extract(?, ?)");
+                    sqlite3_stmt *jstmt;
+                    if (sqlite3_prepare_v2(executor->db, sql, -1, &jstmt, NULL) == SQLITE_OK) {
+                        sqlite3_bind_text(jstmt, 1, binding->value.string, -1, SQLITE_STATIC);
+                        sqlite3_bind_text(jstmt, 2, json_path, -1, SQLITE_STATIC);
+                        if (sqlite3_step(jstmt) == SQLITE_ROW) {
+                            int col_type = sqlite3_column_type(jstmt, 0);
+                            if (col_type == SQLITE_TEXT) {
+                                prop_type = PROP_TYPE_TEXT;
+                                set_pv.as_str = strdup((const char*)sqlite3_column_text(jstmt, 0));
+                                prop_value = set_pv.as_str;
+                            } else if (col_type == SQLITE_INTEGER) {
+                                prop_type = PROP_TYPE_INTEGER;
+                                set_int_buf = sqlite3_column_int64(jstmt, 0);
+                                prop_value = &set_int_buf;
+                            } else if (col_type == SQLITE_FLOAT) {
+                                prop_type = PROP_TYPE_REAL;
+                                set_real_buf = sqlite3_column_double(jstmt, 0);
+                                prop_value = &set_real_buf;
+                            }
+                        }
+                        sqlite3_finalize(jstmt);
+                    }
+                }
+            }
         } else {
             set_result_error(result, "SET value must be a literal, map, list, parameter, or function call");
             property_value_free(&set_pv);

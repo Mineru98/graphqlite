@@ -160,4 +160,69 @@ SELECT cypher('MATCH (n:IntTest43 {id: "big"}) SET n.ts = timestamp()') as resul
 SELECT cypher('MATCH (n:IntTest43 {id: "big"}) RETURN n.ts') as result;
 -- BUG: Returns truncated value
 
+-- =======================================================================
+-- Issue #49: UNWIND $param only works for RETURN, not write paths
+-- https://github.com/colliery-io/graphqlite/issues/49
+-- =======================================================================
+SELECT '=== Issue #49: UNWIND $param write paths ===' as section;
+
+SELECT 'Test #49a - UNWIND $param + RETURN (control, should work):' as test_name;
+SELECT '  Expected: [{"item":1},{"item":2},{"item":3}]' as expected;
+SELECT cypher('UNWIND $items AS item RETURN item', '{"items": [1, 2, 3]}') as result;
+
+SELECT 'Test #49b - UNWIND $param + CREATE + SET:' as test_name;
+SELECT '  Expected: Two nodes with id/name properties' as expected;
+SELECT cypher('UNWIND $items AS item CREATE (n:Node49) SET n.id = item.id, n.name = item.name', '{"items": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}]}') as result;
+-- BUG: "UNWIND+CREATE currently only supports list literals"
+
+SELECT 'Test #49c - UNWIND $param + MERGE:' as test_name;
+SELECT '  Expected: Two nodes with id x and y' as expected;
+SELECT cypher('UNWIND $items AS item MERGE (n:Node49m {id: item.id})', '{"items": [{"id": "x"}, {"id": "y"}]}') as result;
+SELECT cypher('MATCH (n:Node49m) RETURN n.id ORDER BY n.id') as result;
+-- BUG: Creates 1 node with NULL id instead of 2 nodes
+
+SELECT 'Test #49d - UNWIND literal + SET:' as test_name;
+SELECT '  Expected: Two nodes with id a and b' as expected;
+SELECT cypher('UNWIND ["a", "b"] AS item CREATE (n:Node49s) SET n.id = item') as result;
+SELECT cypher('MATCH (n:Node49s) RETURN n.id ORDER BY n.id') as result;
+-- BUG: Creates 2 nodes but both have NULL id
+
+-- =======================================================================
+-- Issue #50: startNode(r)/endNode(r) return integer IDs, alias collision
+-- https://github.com/colliery-io/graphqlite/issues/50
+-- =======================================================================
+SELECT '=== Issue #50: startNode/endNode ===' as section;
+
+SELECT 'Setup #50:' as test_name;
+SELECT cypher('CREATE (a:Person50 {name: "Alice"})-[:KNOWS50]->(b:Person50 {name: "Bob"})') as result;
+
+SELECT 'Test #50a - bare startNode/endNode return integer IDs:' as test_name;
+SELECT '  Expected: Node objects, not integers' as expected;
+SELECT cypher('MATCH ()-[r:KNOWS50]->() RETURN startNode(r) AS sn, endNode(r) AS en') as result;
+-- BUG: Returns [{"sn":1,"en":2}] (raw integer IDs)
+
+SELECT 'Test #50b - both in same RETURN collide on alias:' as test_name;
+SELECT '  Expected: Two distinct columns: startNode(r).name=Alice, endNode(r).name=Bob' as expected;
+SELECT cypher('MATCH ()-[r:KNOWS50]->() RETURN startNode(r).name, endNode(r).name') as result;
+-- BUG: Returns [{"name":"Alice","name":"Bob"}] (duplicate JSON key)
+
+SELECT 'Test #50c - named variables (control, should work):' as test_name;
+SELECT cypher('MATCH (a:Person50)-[r:KNOWS50]->(b:Person50) RETURN a.name, b.name') as result;
+
+-- =======================================================================
+-- Issue #51: CALL subquery MERGE creates self-referencing relationships
+-- https://github.com/colliery-io/graphqlite/issues/51
+-- =======================================================================
+SELECT '=== Issue #51: CALL subquery MERGE scoping ===' as section;
+
+SELECT 'Setup #51:' as test_name;
+SELECT cypher('CREATE (c:Co51 {id: "acme"})') as result;
+SELECT cypher('CREATE (d:Dep51 {id: "eng"})') as result;
+
+SELECT 'Test #51a - CALL with inner MATCH + MERGE:' as test_name;
+SELECT '  Expected: Relationship from Co51 to Dep51' as expected;
+SELECT cypher('MATCH (c:Co51 {id: "acme"}) CALL { With c MATCH (d:Dep51 {id: "eng"}) MERGE (c)-[:HAS51]->(d) }') as result;
+SELECT cypher('MATCH (a)-[:HAS51]->(b) RETURN a.id, labels(a) AS al, b.id, labels(b) AS bl') as result;
+-- BUG: Returns b.id=acme, bl=Co51 (self-loop instead of linking to Dep51)
+
 SELECT '=== Issue Reproduction Tests Complete ===' as test_section;

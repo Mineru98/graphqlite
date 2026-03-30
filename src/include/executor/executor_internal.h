@@ -89,6 +89,8 @@ int execute_create_clause_with_varmap(cypher_executor *executor, cypher_create *
                                       cypher_result *result, variable_map **out_var_map);
 int execute_foreach_clause(cypher_executor *executor, cypher_foreach *foreach, cypher_result *result);
 int execute_merge_clause(cypher_executor *executor, cypher_merge *merge, cypher_result *result);
+int execute_merge_clause_with_vars(cypher_executor *executor, cypher_merge *merge,
+                                    cypher_result *result, variable_map *external_vars);
 int execute_merge_with_variables(cypher_executor *executor, cypher_merge *merge,
                                  variable_map *var_map, cypher_result *result);
 int execute_set_clause(cypher_executor *executor, cypher_set *set, cypher_result *result);

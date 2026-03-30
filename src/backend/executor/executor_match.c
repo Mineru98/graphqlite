@@ -217,6 +217,28 @@ int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_re
                 char full_name[256];
                 snprintf(full_name, sizeof(full_name), "%s.%s", id->name, prop->property_name);
                 result->column_names[i] = strdup(full_name);
+            } else if (prop->expr && prop->expr->type == AST_NODE_FUNCTION_CALL) {
+                /* Property on function call: startNode(r).name → "startNode(r).name" */
+                cypher_function_call *func = (cypher_function_call*)prop->expr;
+                if (func->function_name) {
+                    char full_name[256];
+                    size_t pos = 0;
+                    pos += snprintf(full_name + pos, sizeof(full_name) - pos, "%s(", func->function_name);
+                    if (func->args) {
+                        for (int j = 0; j < func->args->count && pos < sizeof(full_name) - 20; j++) {
+                            if (j > 0) pos += snprintf(full_name + pos, sizeof(full_name) - pos, ", ");
+                            ast_node *arg = func->args->items[j];
+                            if (arg && arg->type == AST_NODE_IDENTIFIER) {
+                                pos += snprintf(full_name + pos, sizeof(full_name) - pos, "%s",
+                                                ((cypher_identifier*)arg)->name);
+                            }
+                        }
+                    }
+                    snprintf(full_name + pos, sizeof(full_name) - pos, ").%s", prop->property_name);
+                    result->column_names[i] = strdup(full_name);
+                } else {
+                    result->column_names[i] = strdup(prop->property_name);
+                }
             } else {
                 result->column_names[i] = strdup(prop->property_name);
             }

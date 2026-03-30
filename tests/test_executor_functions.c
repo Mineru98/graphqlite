@@ -1679,6 +1679,87 @@ static void test_func_percentile_error(void)
     }
 }
 
+/* ============================================================
+ * Issue #50: startNode(r)/endNode(r) regression tests
+ * ============================================================ */
+
+/**
+ * Issue #50 Test a: startNode(r).name and endNode(r).name in the same RETURN
+ * should produce two distinct columns with correct values.
+ * BUG: Both alias to "name", causing JSON key collision.
+ */
+static void test_startnode_endnode_same_return(void)
+{
+    /* Setup: create relationship */
+    cypher_result *setup = cypher_executor_execute(executor,
+        "CREATE (a:Sn50 {name: \"Alice\"})-[:KNOWS50]->(b:Sn50 {name: \"Bob\"})");
+    CU_ASSERT_PTR_NOT_NULL(setup);
+    if (setup) {
+        CU_ASSERT_TRUE(setup->success);
+        cypher_result_free(setup);
+    }
+
+    /* Both startNode(r).name and endNode(r).name in same RETURN */
+    cypher_result *result = cypher_executor_execute(executor,
+        "MATCH ()-[r:KNOWS50]->() RETURN startNode(r).name, endNode(r).name");
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        if (!result->success) {
+            printf("\nIssue #50a startNode+endNode same RETURN: %s\n", result->error_message);
+        }
+        CU_ASSERT_TRUE(result->success);
+        if (result->success) {
+            CU_ASSERT_EQUAL(result->row_count, 1);
+            CU_ASSERT_EQUAL(result->column_count, 2);
+            if (result->column_count == 2) {
+                /* Column names must be distinct — alias collision bug gives
+                 * both columns the same name "name" */
+                CU_ASSERT_PTR_NOT_NULL(result->column_names[0]);
+                CU_ASSERT_PTR_NOT_NULL(result->column_names[1]);
+                if (result->column_names[0] && result->column_names[1]) {
+                    int names_differ = strcmp(result->column_names[0], result->column_names[1]) != 0;
+                    CU_ASSERT_TRUE(names_differ);
+                    if (!names_differ) {
+                        printf("\nIssue #50a: Both columns named '%s' — alias collision\n",
+                               result->column_names[0]);
+                    }
+                }
+                /* Values should be Alice and Bob */
+                if (result->data[0][0] && result->data[0][1]) {
+                    CU_ASSERT_STRING_EQUAL(result->data[0][0], "Alice");
+                    CU_ASSERT_STRING_EQUAL(result->data[0][1], "Bob");
+                }
+            }
+        }
+        cypher_result_free(result);
+    }
+}
+
+/**
+ * Issue #50 Test b: Bare startNode(r) currently returns raw integer ID.
+ * This is a known limitation — returning full node objects requires
+ * a join back to the nodes table, which is a feature enhancement.
+ * This test documents the current behavior.
+ */
+static void test_startnode_bare_returns_id(void)
+{
+    /* Uses data created by test_startnode_endnode_same_return */
+    cypher_result *result = cypher_executor_execute(executor,
+        "MATCH ()-[r:KNOWS50]->() RETURN startNode(r) AS sn");
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        CU_ASSERT_TRUE(result->success);
+        /* Currently returns source_id integer — verify it's at least a valid ID */
+        if (result->success && result->row_count > 0 && result->data[0][0]) {
+            int val = atoi(result->data[0][0]);
+            CU_ASSERT_TRUE(val > 0);
+        }
+        cypher_result_free(result);
+    }
+}
+
 /* Initialize the functions test suite */
 int init_executor_functions_suite(void)
 {
@@ -1828,7 +1909,11 @@ int init_executor_functions_suite(void)
 
         /* Missing coverage */
         !CU_add_test(suite, "coth()", test_func_coth) ||
-        !CU_add_test(suite, "percentile error handling", test_func_percentile_error))
+        !CU_add_test(suite, "percentile error handling", test_func_percentile_error) ||
+
+        /* Issue #50: startNode/endNode regression */
+        !CU_add_test(suite, "Issue #50: startNode+endNode same RETURN", test_startnode_endnode_same_return) ||
+        !CU_add_test(suite, "Issue #50: bare startNode returns ID", test_startnode_bare_returns_id))
     {
         return CU_get_error();
     }
