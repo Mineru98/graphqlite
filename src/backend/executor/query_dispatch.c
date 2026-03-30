@@ -1014,8 +1014,109 @@ static int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *q
     }
 
     if (!merge) {
-        set_result_error(result, "MERGE+WITH pipeline: no MERGE clause before WITH");
-        return -1;
+        /* No MERGE before WITH — this is a MATCH+WITH+...+MERGE pattern.
+         * Execute all MATCH clauses to resolve variables, then execute
+         * the post-WITH MERGE with those bindings. */
+        CYPHER_DEBUG("MERGE+WITH pipeline: MERGE is after WITH, using match-then-merge strategy");
+
+        /* Find the post-WITH MERGE */
+        cypher_merge *post_merge = NULL;
+        for (int i = with_pos + 1; i < query->clauses->count; i++) {
+            if (query->clauses->items[i]->type == AST_NODE_MERGE) {
+                post_merge = (cypher_merge*)query->clauses->items[i];
+                break;
+            }
+        }
+        if (!post_merge) {
+            set_result_error(result, "MERGE+WITH pipeline: no MERGE clause found");
+            return -1;
+        }
+
+        /* Execute all MATCH clauses (pre and post-WITH) to resolve variables */
+        variable_map *resolved_vars = create_variable_map();
+        if (!resolved_vars) {
+            set_result_error(result, "Failed to create variable map");
+            return -1;
+        }
+
+        for (int i = 0; i < query->clauses->count; i++) {
+            if (query->clauses->items[i]->type != AST_NODE_MATCH) continue;
+            cypher_match *m = (cypher_match*)query->clauses->items[i];
+
+            cypher_transform_context *mctx = cypher_transform_create_context(executor->db);
+            if (!mctx) continue;
+
+            if (transform_match_clause(mctx, m) == 0) {
+                /* Build SELECT alias.id AS varname_id FROM ... WHERE ... */
+                int vcount = transform_var_count(mctx->var_ctx);
+                const char *from_str = sql_builder_get_from(mctx->unified_builder);
+                const char *joins_str = sql_builder_get_joins(mctx->unified_builder);
+                const char *where_str = sql_builder_get_where(mctx->unified_builder);
+
+                char id_sql[4096];
+                size_t pos = 0;
+                pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, "SELECT ");
+                bool first_col = true;
+                for (int vi = 0; vi < vcount; vi++) {
+                    transform_var *tv = transform_var_at(mctx->var_ctx, vi);
+                    if (tv && tv->kind == VAR_KIND_NODE) {
+                        if (!first_col) pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, ", ");
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos,
+                                        "%s.id AS %s_id", tv->table_alias, tv->name);
+                        first_col = false;
+                    }
+                }
+                if (!first_col) {
+                    if (from_str && from_str[0])
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " FROM %s", from_str);
+                    if (joins_str && joins_str[0])
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " %s", joins_str);
+                    if (where_str && where_str[0])
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " WHERE %s", where_str);
+
+                    sqlite3_stmt *match_stmt;
+                    if (sqlite3_prepare_v2(executor->db, id_sql, -1, &match_stmt, NULL) == SQLITE_OK) {
+                        if (sqlite3_step(match_stmt) == SQLITE_ROW) {
+                            int mcols = sqlite3_column_count(match_stmt);
+                            for (int mc = 0; mc < mcols; mc++) {
+                                const char *cname = sqlite3_column_name(match_stmt, mc);
+                                if (cname && sqlite3_column_type(match_stmt, mc) == SQLITE_INTEGER) {
+                                    char var_name[128];
+                                    strncpy(var_name, cname, sizeof(var_name) - 1);
+                                    var_name[sizeof(var_name) - 1] = '\0';
+                                    char *suffix = strstr(var_name, "_id");
+                                    if (suffix) {
+                                        *suffix = '\0';
+                                        set_variable_node_id(resolved_vars, var_name,
+                                            sqlite3_column_int(match_stmt, mc));
+                                        CYPHER_DEBUG("WITH+MERGE: resolved '%s' = node %d",
+                                                     var_name, sqlite3_column_int(match_stmt, mc));
+                                    }
+                                }
+                            }
+                        }
+                        sqlite3_finalize(match_stmt);
+                    }
+                }
+            }
+            cypher_transform_free_context(mctx);
+        }
+
+        /* Execute MERGE with resolved variable bindings */
+        int rc = execute_merge_clause_with_vars(executor, post_merge, result, resolved_vars);
+
+        /* Execute any post-WITH SET clauses */
+        for (int i = with_pos + 1; i < query->clauses->count; i++) {
+            if (query->clauses->items[i]->type == AST_NODE_SET) {
+                execute_set_operations(executor, (cypher_set*)query->clauses->items[i],
+                                       resolved_vars, result);
+            }
+        }
+
+        free_variable_map(resolved_vars);
+        if (rc < 0) return -1;
+        result->success = true;
+        return 0;
     }
 
     /* Execute the MERGE clause (handles ON CREATE SET internally) */

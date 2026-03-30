@@ -74,12 +74,17 @@ SELECT cypher('MATCH (n:OptM {id: "hub"}) OPTIONAL MATCH (n)-[:LINK_A]->(a) OPTI
 
 -- =======================================================================
 -- SECTION 4: WITH + MATCH + MERGE (non-CALL)
--- Known limitation: MATCH ... WITH ... MATCH ... MERGE errors with
--- "MERGE+WITH pipeline: no MERGE clause before WITH". The pattern
--- dispatcher routes this to the MERGE+WITH handler which expects
--- MERGE before WITH, not after. Skipped from main harness.
 -- =======================================================================
-SELECT '=== Section 4: WITH + MATCH + MERGE (SKIPPED - known limitation) ===' as section;
+SELECT '=== Section 4: WITH + MATCH + MERGE ===' as section;
+
+SELECT 'Setup:' as test_name;
+SELECT cypher('CREATE (a:WMM {id: "src"})') as result;
+SELECT cypher('CREATE (b:WMM {id: "tgt"})') as result;
+
+SELECT 'Test 4.1 - WITH variable into MATCH + MERGE:' as test_name;
+SELECT '  Expected: Relationship from src to tgt' as expected;
+SELECT cypher('MATCH (a:WMM {id: "src"}) WITH a MATCH (b:WMM {id: "tgt"}) MERGE (a)-[:LINKED]->(b)') as result;
+SELECT cypher('MATCH (a)-[:LINKED]->(b) RETURN a.id, b.id') as result;
 
 -- =======================================================================
 -- SECTION 5: UNWIND + DELETE
@@ -138,11 +143,23 @@ SELECT cypher('MATCH (n:Func8) RETURN toUpper(n.first), toLower(n.last), size(n.
 
 -- =======================================================================
 -- SECTION 9: Functions in SET expressions
--- Known limitation: SET n.x = func(n.prop) fails because the function
--- evaluator generates SQL without a FROM clause, so n.prop can't resolve.
--- SET n.x = func("literal") works. Skipped from main harness.
 -- =======================================================================
-SELECT '=== Section 9: Functions in SET (SKIPPED - known limitation) ===' as section;
+SELECT '=== Section 9: Functions in SET ===' as section;
+
+SELECT 'Setup:' as test_name;
+SELECT cypher('CREATE (n:FnSet {name: "  Hello World  "})') as result;
+
+SELECT 'Test 9.1 - SET with trim():' as test_name;
+SELECT cypher('MATCH (n:FnSet) SET n.trimmed = trim(n.name)') as result;
+SELECT cypher('MATCH (n:FnSet) RETURN n.trimmed') as result;
+
+SELECT 'Test 9.2 - SET with toLower():' as test_name;
+SELECT cypher('MATCH (n:FnSet) SET n.lower = toLower(n.name)') as result;
+SELECT cypher('MATCH (n:FnSet) RETURN n.lower') as result;
+
+SELECT 'Test 9.3 - SET with multiple function calls:' as test_name;
+SELECT cypher('MATCH (n:FnSet) SET n.upper = toUpper(n.name), n.len = size(n.name)') as result;
+SELECT cypher('MATCH (n:FnSet) RETURN n.upper, n.len') as result;
 
 -- =======================================================================
 -- SECTION 10: UNWIND with nested property access in MERGE + ON CREATE SET
