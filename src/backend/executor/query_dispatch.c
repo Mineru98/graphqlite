@@ -910,7 +910,7 @@ static int merge_with_execute_return(cypher_executor *executor,
         variable_mapping *m = &var_map->mappings[i];
 
         char alias[64];
-        snprintf(alias, sizeof(alias), "%s_0", m->variable);
+        snprintf(alias, sizeof(alias), "_gql_var_%d", i);
         char where_cond[128];
         snprintf(where_cond, sizeof(where_cond), "%s.id = %d", alias, m->entity_id);
 
@@ -1073,7 +1073,7 @@ static int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *q
                     if (tv && tv->kind == VAR_KIND_NODE) {
                         if (!first_col) pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, ", ");
                         pos += snprintf(id_sql + pos, sizeof(id_sql) - pos,
-                                        "%s.id AS %s_id", tv->table_alias, tv->name);
+                                        "%s.id AS \"%s_id\"", tv->table_alias, tv->name);
                         first_col = false;
                     }
                 }
@@ -1277,7 +1277,7 @@ static int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *q
                 transform_var *var = transform_var_at(ctx->var_ctx, vi);
                 if (var && var->kind == VAR_KIND_NODE) {
                     if (!first) append_sql(ctx, ", ");
-                    append_sql(ctx, "%s.id AS %s_id", var->table_alias, var->name);
+                    append_sql(ctx, "%s.id AS \"%s_id\"", var->table_alias, var->name);
                     first = false;
                 }
             }
@@ -2098,7 +2098,7 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
             transform_var *var = transform_var_at(ctx->var_ctx, vi);
             if (var && (var->kind == VAR_KIND_NODE || var->kind == VAR_KIND_EDGE)) {
                 if (!first) append_sql(ctx, ", ");
-                append_sql(ctx, "%s.id AS %s_id", var->table_alias, var->name);
+                append_sql(ctx, "%s.id AS \"%s_id\"", var->table_alias, var->name);
                 first = false;
             }
         }
@@ -2272,7 +2272,7 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                 if (tv && tv->kind == VAR_KIND_NODE) {
                                     if (!first_col) pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, ", ");
                                     pos += snprintf(id_sql + pos, sizeof(id_sql) - pos,
-                                                    "%s.id AS %s_id", tv->table_alias, tv->name);
+                                                    "%s.id AS \"%s_id\"", tv->table_alias, tv->name);
                                     first_col = false;
                                 }
                             }

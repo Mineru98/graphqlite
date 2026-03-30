@@ -31,7 +31,7 @@ static int evaluate_function_with_context(
         variable_mapping *m = &var_map->mappings[i];
         if (m->type == VAR_MAP_TYPE_NODE) {
             char alias[64];
-            snprintf(alias, sizeof(alias), "%s_0", m->variable);
+            snprintf(alias, sizeof(alias), "_gql_var_%d", i);
             transform_var_register_node(ctx->var_ctx, m->variable, alias, NULL);
             transform_var_set_bound(ctx->var_ctx, m->variable, true);
 
@@ -421,11 +421,11 @@ int execute_match_set_query(cypher_executor *executor, cypher_match *match, cyph
             transform_var *var = transform_var_at(ctx->var_ctx, i);
             if (var && var->kind == VAR_KIND_NODE) {
                 if (!first) append_sql(ctx, ", ");
-                append_sql(ctx, "%s.id AS %s_id", var->table_alias, var->name);
+                append_sql(ctx, "%s.id AS \"%s_id\"", var->table_alias, var->name);
                 first = false;
             } else if (var && var->kind == VAR_KIND_EDGE) {
                 if (!first) append_sql(ctx, ", ");
-                append_sql(ctx, "%s.id AS %s_id", var->table_alias, var->name);
+                append_sql(ctx, "%s.id AS \"%s_id\"", var->table_alias, var->name);
                 first = false;
             }
         }
