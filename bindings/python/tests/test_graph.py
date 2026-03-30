@@ -1597,3 +1597,123 @@ def test_call_subquery_union(g):
     assert len(result) == 2
     values = sorted([r["n"] for r in result])
     assert values == [1, 2]
+
+
+# =============================================================================
+# Issue Regression Tests (#34b, #49, #50, #51, #55)
+# =============================================================================
+
+def test_issue_49_unwind_param_create_set(g):
+    """Issue #49: UNWIND $param + CREATE + SET should work."""
+    g.query(
+        'UNWIND $items AS item CREATE (n:Uw49Py) SET n.id = item.id, n.name = item.name',
+        {"items": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}]}
+    )
+    result = g.query('MATCH (n:Uw49Py) RETURN n.id, n.name ORDER BY n.id')
+    assert len(result) == 2
+    assert result[0]["n.id"] == "a"
+    assert result[0]["n.name"] == "Alpha"
+    assert result[1]["n.id"] == "b"
+    assert result[1]["n.name"] == "Beta"
+
+
+def test_issue_49_unwind_param_merge(g):
+    """Issue #49: UNWIND $param + MERGE should iterate per item."""
+    g.query(
+        'UNWIND $items AS item MERGE (n:Uw49MgPy {id: item.id})',
+        {"items": [{"id": "x"}, {"id": "y"}]}
+    )
+    result = g.query('MATCH (n:Uw49MgPy) RETURN n.id ORDER BY n.id')
+    assert len(result) == 2
+    assert result[0]["n.id"] == "x"
+    assert result[1]["n.id"] == "y"
+
+
+def test_issue_49_unwind_literal_set(g):
+    """Issue #49: UNWIND literal + SET should propagate item value."""
+    g.query('UNWIND ["a", "b"] AS item CREATE (n:Uw49LPy) SET n.id = item')
+    result = g.query('MATCH (n:Uw49LPy) RETURN n.id ORDER BY n.id')
+    assert len(result) == 2
+    assert result[0]["n.id"] == "a"
+    assert result[1]["n.id"] == "b"
+
+
+def test_issue_50_startnode_endnode_same_return(g):
+    """Issue #50: startNode(r).name and endNode(r).name in same RETURN should have distinct columns."""
+    g.connection.cypher('CREATE (a:Sn50Py {name: "Alice"})-[:K50Py]->(b:Sn50Py {name: "Bob"})')
+    result = g.query('MATCH ()-[r:K50Py]->() RETURN startNode(r).name, endNode(r).name')
+    assert len(result) == 1
+    row = result[0]
+    # Columns must be distinct — both values present
+    values = list(row.values())
+    assert "Alice" in values
+    assert "Bob" in values
+    assert len(row) == 2  # Two distinct keys, not one
+
+
+def test_issue_51_call_merge_scoping(g):
+    """Issue #51: CALL { WITH c MATCH (d) MERGE (c)-[:REL]->(d) } should link c to d, not self-loop."""
+    g.connection.cypher('CREATE (c:Co51Py {id: "acme"})')
+    g.connection.cypher('CREATE (d:Dep51Py {id: "eng"})')
+    g.connection.cypher(
+        'MATCH (c:Co51Py {id: "acme"}) '
+        'CALL { With c MATCH (d:Dep51Py {id: "eng"}) MERGE (c)-[:HAS51Py]->(d) }'
+    )
+    result = g.query('MATCH (a)-[:HAS51Py]->(b) RETURN a.id, b.id')
+    assert len(result) == 1
+    assert result[0]["a.id"] == "acme"
+    assert result[0]["b.id"] == "eng"  # NOT "acme" (self-loop)
+
+
+def test_issue_34b_optional_match_where_null_row(g):
+    """Issue #34b: OPTIONAL MATCH WHERE filter should preserve null rows."""
+    g.connection.cypher('CREATE (a:P34bPy {id: "alice"})')
+    g.connection.cypher('CREATE (r:Pet34bPy {id: "rex", name: "Rex"})')
+    g.connection.cypher(
+        'MATCH (a:P34bPy {id: "alice"}), (r:Pet34bPy {id: "rex"}) CREATE (a)-[:OWNS34bPy]->(r)'
+    )
+    result = g.query(
+        'MATCH (a:P34bPy {id: "alice"}) '
+        'OPTIONAL MATCH (a)-[:OWNS34bPy]->(r:Pet34bPy) WHERE r.name = "nonexistent" '
+        'RETURN a.id, r.id'
+    )
+    assert len(result) == 1
+    assert result[0]["a.id"] == "alice"
+    assert result[0]["r.id"] is None
+
+
+def test_with_match_merge(g):
+    """MATCH+WITH+MATCH+MERGE should work without errors."""
+    g.connection.cypher('CREATE (a:WmmPy {id: "src"})')
+    g.connection.cypher('CREATE (b:WmmPy {id: "tgt"})')
+    g.connection.cypher(
+        'MATCH (a:WmmPy {id: "src"}) WITH a '
+        'MATCH (b:WmmPy {id: "tgt"}) MERGE (a)-[:LinkPy]->(b)'
+    )
+    result = g.query('MATCH (a)-[:LinkPy]->(b) RETURN a.id, b.id')
+    assert len(result) == 1
+    assert result[0]["a.id"] == "src"
+    assert result[0]["b.id"] == "tgt"
+
+
+def test_functions_in_set(g):
+    """SET n.x = func(n.prop) should resolve node properties in function args."""
+    g.connection.cypher('CREATE (n:FnSetPy {name: "  Hello World  "})')
+    g.connection.cypher('MATCH (n:FnSetPy) SET n.trimmed = trim(n.name)')
+    result = g.query('MATCH (n:FnSetPy) RETURN n.trimmed')
+    assert len(result) == 1
+    assert result[0]["n.trimmed"] == "Hello World"
+
+
+def test_unwind_merge_on_create_set(g):
+    """Batch MERGE with ON CREATE SET from params."""
+    g.query(
+        'UNWIND $items AS item MERGE (n:BatchPy {id: item.id}) ON CREATE SET n.name = item.name',
+        {"items": [{"id": "b1", "name": "First"}, {"id": "b2", "name": "Second"}]}
+    )
+    result = g.query('MATCH (n:BatchPy) RETURN n.id, n.name ORDER BY n.id')
+    assert len(result) == 2
+    assert result[0]["n.id"] == "b1"
+    assert result[0]["n.name"] == "First"
+    assert result[1]["n.id"] == "b2"
+    assert result[1]["n.name"] == "Second"

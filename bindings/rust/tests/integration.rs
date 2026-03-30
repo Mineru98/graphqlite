@@ -3686,3 +3686,134 @@ fn test_call_subquery_union() {
     assert_eq!(values, vec![1, 2]);
 }
 
+// =============================================================================
+// Issue Regression Tests (#34b, #49, #50, #51, #55)
+// =============================================================================
+
+#[test]
+fn test_issue_49_unwind_param_create_set() {
+    let conn = test_connection();
+    let params = serde_json::json!({"items": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}]});
+    conn.cypher_with_params(
+        "UNWIND $items AS item CREATE (n:Uw49Rs) SET n.id = item.id, n.name = item.name",
+        &params,
+    ).unwrap();
+    let results = conn.cypher("MATCH (n:Uw49Rs) RETURN n.id, n.name ORDER BY n.id").unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].get::<String>("n.id").unwrap(), "a");
+    assert_eq!(results[0].get::<String>("n.name").unwrap(), "Alpha");
+    assert_eq!(results[1].get::<String>("n.id").unwrap(), "b");
+    assert_eq!(results[1].get::<String>("n.name").unwrap(), "Beta");
+}
+
+#[test]
+fn test_issue_49_unwind_param_merge() {
+    let conn = test_connection();
+    let params = serde_json::json!({"items": [{"id": "x"}, {"id": "y"}]});
+    conn.cypher_with_params(
+        "UNWIND $items AS item MERGE (n:Uw49MgRs {id: item.id})",
+        &params,
+    ).unwrap();
+    let results = conn.cypher("MATCH (n:Uw49MgRs) RETURN n.id ORDER BY n.id").unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].get::<String>("n.id").unwrap(), "x");
+    assert_eq!(results[1].get::<String>("n.id").unwrap(), "y");
+}
+
+#[test]
+fn test_issue_49_unwind_literal_set() {
+    let conn = test_connection();
+    conn.cypher("UNWIND ['a', 'b'] AS item CREATE (n:Uw49LRs) SET n.id = item").unwrap();
+    let results = conn.cypher("MATCH (n:Uw49LRs) RETURN n.id ORDER BY n.id").unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].get::<String>("n.id").unwrap(), "a");
+    assert_eq!(results[1].get::<String>("n.id").unwrap(), "b");
+}
+
+#[test]
+fn test_issue_50_startnode_endnode_same_return() {
+    let conn = test_connection();
+    conn.cypher("CREATE (a:Sn50Rs {name: 'Alice'})-[:K50Rs]->(b:Sn50Rs {name: 'Bob'})").unwrap();
+    let results = conn
+        .cypher("MATCH ()-[r:K50Rs]->() RETURN startNode(r).name, endNode(r).name")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    // Both columns must be present with distinct names
+    let row = &results[0];
+    let alice = row.get::<String>("startNode(r).name").unwrap();
+    let bob = row.get::<String>("endNode(r).name").unwrap();
+    assert_eq!(alice, "Alice");
+    assert_eq!(bob, "Bob");
+}
+
+#[test]
+fn test_issue_51_call_merge_scoping() {
+    let conn = test_connection();
+    conn.cypher("CREATE (c:Co51Rs {id: 'acme'})").unwrap();
+    conn.cypher("CREATE (d:Dep51Rs {id: 'eng'})").unwrap();
+    conn.cypher(
+        "MATCH (c:Co51Rs {id: 'acme'}) CALL { With c MATCH (d:Dep51Rs {id: 'eng'}) MERGE (c)-[:HAS51Rs]->(d) }"
+    ).unwrap();
+    let results = conn
+        .cypher("MATCH (a)-[:HAS51Rs]->(b) RETURN a.id, b.id")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("a.id").unwrap(), "acme");
+    assert_eq!(results[0].get::<String>("b.id").unwrap(), "eng"); // NOT "acme"
+}
+
+#[test]
+fn test_issue_34b_optional_match_where_null() {
+    let conn = test_connection();
+    conn.cypher("CREATE (a:P34bRs {id: 'alice'})").unwrap();
+    conn.cypher("CREATE (r:Pet34bRs {id: 'rex', name: 'Rex'})").unwrap();
+    conn.cypher("MATCH (a:P34bRs {id: 'alice'}), (r:Pet34bRs {id: 'rex'}) CREATE (a)-[:OWNS34bRs]->(r)").unwrap();
+    let results = conn
+        .cypher("MATCH (a:P34bRs {id: 'alice'}) OPTIONAL MATCH (a)-[:OWNS34bRs]->(r:Pet34bRs) WHERE r.name = 'nonexistent' RETURN a.id, r.id")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("a.id").unwrap(), "alice");
+    // r.id should be null
+    assert!(results[0].get::<String>("r.id").is_err() || results[0].get::<String>("r.id").unwrap_or_default().is_empty());
+}
+
+#[test]
+fn test_with_match_merge() {
+    let conn = test_connection();
+    conn.cypher("CREATE (a:WmmRs {id: 'src'})").unwrap();
+    conn.cypher("CREATE (b:WmmRs {id: 'tgt'})").unwrap();
+    conn.cypher("MATCH (a:WmmRs {id: 'src'}) WITH a MATCH (b:WmmRs {id: 'tgt'}) MERGE (a)-[:LinkRs]->(b)").unwrap();
+    let results = conn
+        .cypher("MATCH (a)-[:LinkRs]->(b) RETURN a.id, b.id")
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("a.id").unwrap(), "src");
+    assert_eq!(results[0].get::<String>("b.id").unwrap(), "tgt");
+}
+
+#[test]
+fn test_functions_in_set() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:FnSetRs {name: '  Hello World  '})").unwrap();
+    conn.cypher("MATCH (n:FnSetRs) SET n.trimmed = trim(n.name)").unwrap();
+    let results = conn.cypher("MATCH (n:FnSetRs) RETURN n.trimmed").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("n.trimmed").unwrap(), "Hello World");
+}
+
+#[test]
+fn test_unwind_merge_on_create_set() {
+    let conn = test_connection();
+    let params = serde_json::json!({"items": [{"id": "b1", "name": "First"}, {"id": "b2", "name": "Second"}]});
+    conn.cypher_with_params(
+        "UNWIND $items AS item MERGE (n:BatchRs {id: item.id}) ON CREATE SET n.name = item.name",
+        &params,
+    ).unwrap();
+    let results = conn.cypher("MATCH (n:BatchRs) RETURN n.id, n.name ORDER BY n.id").unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].get::<String>("n.id").unwrap(), "b1");
+    assert_eq!(results[0].get::<String>("n.name").unwrap(), "First");
+    assert_eq!(results[1].get::<String>("n.id").unwrap(), "b2");
+    assert_eq!(results[1].get::<String>("n.name").unwrap(), "Second");
+}
+
