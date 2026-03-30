@@ -771,7 +771,7 @@ int execute_match_create_query(cypher_executor *executor, cypher_match *match, c
             transform_var *var = transform_var_at(ctx->var_ctx, i);
             if (var && var->kind == VAR_KIND_NODE) {
                 if (!first) append_sql(ctx, ", ");
-                append_sql(ctx, "%s.id AS %s_id", var->table_alias, var->name);
+                append_sql(ctx, "%s.id AS \"%s_id\"", var->table_alias, var->name);
                 first = false;
             }
         }
