@@ -154,6 +154,8 @@ static int handle_match_only(cypher_executor *executor, cypher_query *query,
                              cypher_result *result, clause_flags flags);
 static int handle_unwind_create(cypher_executor *executor, cypher_query *query,
                                 cypher_result *result, clause_flags flags);
+static int handle_unwind_merge(cypher_executor *executor, cypher_query *query,
+                               cypher_result *result, clause_flags flags);
 static int handle_return_only(cypher_executor *executor, cypher_query *query,
                               cypher_result *result, clause_flags flags);
 static int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *query,
@@ -182,6 +184,13 @@ static const query_pattern patterns[] = {
         .required = CLAUSE_UNWIND | CLAUSE_CREATE,
         .forbidden = CLAUSE_RETURN | CLAUSE_MATCH,
         .handler = handle_unwind_create,
+        .priority = 100
+    },
+    {
+        .name = "UNWIND+MERGE",
+        .required = CLAUSE_UNWIND | CLAUSE_MERGE,
+        .forbidden = CLAUSE_RETURN | CLAUSE_MATCH,
+        .handler = handle_unwind_merge,
         .priority = 100
     },
     {
@@ -1016,8 +1025,109 @@ static int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *q
     }
 
     if (!merge) {
-        set_result_error(result, "MERGE+WITH pipeline: no MERGE clause before WITH");
-        return -1;
+        /* No MERGE before WITH — this is a MATCH+WITH+...+MERGE pattern.
+         * Execute all MATCH clauses to resolve variables, then execute
+         * the post-WITH MERGE with those bindings. */
+        CYPHER_DEBUG("MERGE+WITH pipeline: MERGE is after WITH, using match-then-merge strategy");
+
+        /* Find the post-WITH MERGE */
+        cypher_merge *post_merge = NULL;
+        for (int i = with_pos + 1; i < query->clauses->count; i++) {
+            if (query->clauses->items[i]->type == AST_NODE_MERGE) {
+                post_merge = (cypher_merge*)query->clauses->items[i];
+                break;
+            }
+        }
+        if (!post_merge) {
+            set_result_error(result, "MERGE+WITH pipeline: no MERGE clause found");
+            return -1;
+        }
+
+        /* Execute all MATCH clauses (pre and post-WITH) to resolve variables */
+        variable_map *resolved_vars = create_variable_map();
+        if (!resolved_vars) {
+            set_result_error(result, "Failed to create variable map");
+            return -1;
+        }
+
+        for (int i = 0; i < query->clauses->count; i++) {
+            if (query->clauses->items[i]->type != AST_NODE_MATCH) continue;
+            cypher_match *m = (cypher_match*)query->clauses->items[i];
+
+            cypher_transform_context *mctx = cypher_transform_create_context(executor->db);
+            if (!mctx) continue;
+
+            if (transform_match_clause(mctx, m) == 0) {
+                /* Build SELECT alias.id AS varname_id FROM ... WHERE ... */
+                int vcount = transform_var_count(mctx->var_ctx);
+                const char *from_str = sql_builder_get_from(mctx->unified_builder);
+                const char *joins_str = sql_builder_get_joins(mctx->unified_builder);
+                const char *where_str = sql_builder_get_where(mctx->unified_builder);
+
+                char id_sql[4096];
+                size_t pos = 0;
+                pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, "SELECT ");
+                bool first_col = true;
+                for (int vi = 0; vi < vcount; vi++) {
+                    transform_var *tv = transform_var_at(mctx->var_ctx, vi);
+                    if (tv && tv->kind == VAR_KIND_NODE) {
+                        if (!first_col) pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, ", ");
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos,
+                                        "%s.id AS %s_id", tv->table_alias, tv->name);
+                        first_col = false;
+                    }
+                }
+                if (!first_col) {
+                    if (from_str && from_str[0])
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " FROM %s", from_str);
+                    if (joins_str && joins_str[0])
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " %s", joins_str);
+                    if (where_str && where_str[0])
+                        pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " WHERE %s", where_str);
+
+                    sqlite3_stmt *match_stmt;
+                    if (sqlite3_prepare_v2(executor->db, id_sql, -1, &match_stmt, NULL) == SQLITE_OK) {
+                        if (sqlite3_step(match_stmt) == SQLITE_ROW) {
+                            int mcols = sqlite3_column_count(match_stmt);
+                            for (int mc = 0; mc < mcols; mc++) {
+                                const char *cname = sqlite3_column_name(match_stmt, mc);
+                                if (cname && sqlite3_column_type(match_stmt, mc) == SQLITE_INTEGER) {
+                                    char var_name[128];
+                                    strncpy(var_name, cname, sizeof(var_name) - 1);
+                                    var_name[sizeof(var_name) - 1] = '\0';
+                                    char *suffix = strstr(var_name, "_id");
+                                    if (suffix) {
+                                        *suffix = '\0';
+                                        set_variable_node_id(resolved_vars, var_name,
+                                            sqlite3_column_int(match_stmt, mc));
+                                        CYPHER_DEBUG("WITH+MERGE: resolved '%s' = node %d",
+                                                     var_name, sqlite3_column_int(match_stmt, mc));
+                                    }
+                                }
+                            }
+                        }
+                        sqlite3_finalize(match_stmt);
+                    }
+                }
+            }
+            cypher_transform_free_context(mctx);
+        }
+
+        /* Execute MERGE with resolved variable bindings */
+        int rc = execute_merge_clause_with_vars(executor, post_merge, result, resolved_vars);
+
+        /* Execute any post-WITH SET clauses */
+        for (int i = with_pos + 1; i < query->clauses->count; i++) {
+            if (query->clauses->items[i]->type == AST_NODE_SET) {
+                execute_set_operations(executor, (cypher_set*)query->clauses->items[i],
+                                       resolved_vars, result);
+            }
+        }
+
+        free_variable_map(resolved_vars);
+        if (rc < 0) return -1;
+        result->success = true;
+        return 0;
     }
 
     /* Execute the MERGE clause (handles ON CREATE SET internally) */
@@ -1306,9 +1416,78 @@ static int handle_unwind_create(cypher_executor *executor, cypher_query *query,
 
     CYPHER_DEBUG("Executing UNWIND+CREATE via pattern dispatch");
 
-    /* For now, only handle list literals in UNWIND */
+    /* Find optional SET clause */
+    cypher_set *set = find_set_clause(query);
+
+    /* Handle parameterized UNWIND: iterate via json_each */
+    if (unwind->expr->type == AST_NODE_PARAMETER) {
+        cypher_parameter *param = (cypher_parameter*)unwind->expr;
+        if (!executor->params_json) {
+            set_result_error(result, "UNWIND $param requires parameters");
+            return -1;
+        }
+
+        /* Query: SELECT value FROM json_each(json_extract(:params, '$.paramname')) */
+        char sql[512];
+        snprintf(sql, sizeof(sql),
+                 "SELECT value FROM json_each(json_extract(?, '$.%s'))", param->name);
+        sqlite3_stmt *stmt;
+        if (sqlite3_prepare_v2(executor->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+            set_result_error(result, "Failed to prepare UNWIND parameter query");
+            return -1;
+        }
+        sqlite3_bind_text(stmt, 1, executor->params_json, -1, SQLITE_STATIC);
+
+        foreach_context *ctx = create_foreach_context();
+        if (!ctx) {
+            sqlite3_finalize(stmt);
+            set_result_error(result, "Failed to create foreach context");
+            return -1;
+        }
+        foreach_context *prev_ctx = g_foreach_ctx;
+        g_foreach_ctx = ctx;
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            int col_type = sqlite3_column_type(stmt, 0);
+            if (col_type == SQLITE_TEXT) {
+                set_foreach_binding_string(ctx, unwind->alias,
+                    (const char*)sqlite3_column_text(stmt, 0));
+            } else if (col_type == SQLITE_INTEGER) {
+                set_foreach_binding_int(ctx, unwind->alias,
+                    sqlite3_column_int64(stmt, 0));
+            }
+
+            /* Execute CREATE, capturing the variable map */
+            variable_map *create_vars = NULL;
+            if (execute_create_clause_with_varmap(executor, create, result, &create_vars) < 0) {
+                g_foreach_ctx = prev_ctx;
+                free_foreach_context(ctx);
+                sqlite3_finalize(stmt);
+                return -1;
+            }
+
+            /* Execute SET if present, using variable map from CREATE */
+            if (set && create_vars) {
+                if (execute_set_operations(executor, set, create_vars, result) < 0) {
+                    CYPHER_DEBUG("UNWIND+CREATE+SET: SET failed");
+                }
+                free_variable_map(create_vars);
+            } else if (create_vars) {
+                free_variable_map(create_vars);
+            }
+        }
+
+        g_foreach_ctx = prev_ctx;
+        free_foreach_context(ctx);
+        sqlite3_finalize(stmt);
+
+        result->success = true;
+        return 0;
+    }
+
+    /* Handle list literal UNWIND */
     if (unwind->expr->type != AST_NODE_LIST) {
-        set_result_error(result, "UNWIND+CREATE currently only supports list literals");
+        set_result_error(result, "UNWIND+CREATE requires a list literal or parameter");
         return -1;
     }
 
@@ -1358,11 +1537,22 @@ static int handle_unwind_create(cypher_executor *executor, cypher_query *query,
 
         CYPHER_DEBUG("UNWIND+CREATE iteration %d, variable=%s", i, unwind->alias);
 
-        /* Execute CREATE for this iteration */
-        if (execute_create_clause(executor, create, result) < 0) {
+        /* Execute CREATE, capturing the variable map */
+        variable_map *create_vars = NULL;
+        if (execute_create_clause_with_varmap(executor, create, result, &create_vars) < 0) {
             g_foreach_ctx = prev_ctx;
             free_foreach_context(ctx);
             return -1;
+        }
+
+        /* Execute SET if present, using variable map from CREATE */
+        if (set && create_vars) {
+            if (execute_set_operations(executor, set, create_vars, result) < 0) {
+                CYPHER_DEBUG("UNWIND+CREATE+SET: SET failed");
+            }
+            free_variable_map(create_vars);
+        } else if (create_vars) {
+            free_variable_map(create_vars);
         }
     }
 
@@ -1372,6 +1562,119 @@ static int handle_unwind_create(cypher_executor *executor, cypher_query *query,
 
     result->success = true;
     return 0;
+}
+
+/*
+ * UNWIND+MERGE handler - iterates over list/parameter and merges nodes per item
+ */
+static int handle_unwind_merge(cypher_executor *executor, cypher_query *query,
+                               cypher_result *result, clause_flags flags)
+{
+    (void)flags;
+    cypher_unwind *unwind = find_unwind_clause(query);
+    cypher_merge *merge = NULL;
+    for (int i = 0; i < query->clauses->count; i++) {
+        if (query->clauses->items[i]->type == AST_NODE_MERGE) {
+            merge = (cypher_merge*)query->clauses->items[i];
+            break;
+        }
+    }
+
+    if (!unwind || !merge) {
+        set_result_error(result, "UNWIND+MERGE: missing clause");
+        return -1;
+    }
+
+    CYPHER_DEBUG("Executing UNWIND+MERGE via pattern dispatch");
+
+    /* Handle parameterized UNWIND */
+    if (unwind->expr->type == AST_NODE_PARAMETER) {
+        cypher_parameter *param = (cypher_parameter*)unwind->expr;
+        if (!executor->params_json) {
+            set_result_error(result, "UNWIND $param requires parameters");
+            return -1;
+        }
+
+        char sql[512];
+        snprintf(sql, sizeof(sql),
+                 "SELECT value FROM json_each(json_extract(?, '$.%s'))", param->name);
+        sqlite3_stmt *stmt;
+        if (sqlite3_prepare_v2(executor->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+            set_result_error(result, "Failed to prepare UNWIND parameter query");
+            return -1;
+        }
+        sqlite3_bind_text(stmt, 1, executor->params_json, -1, SQLITE_STATIC);
+
+        foreach_context *ctx = create_foreach_context();
+        if (!ctx) { sqlite3_finalize(stmt); set_result_error(result, "Failed to create foreach context"); return -1; }
+        foreach_context *prev_ctx = g_foreach_ctx;
+        g_foreach_ctx = ctx;
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            int col_type = sqlite3_column_type(stmt, 0);
+            if (col_type == SQLITE_TEXT) {
+                set_foreach_binding_string(ctx, unwind->alias,
+                    (const char*)sqlite3_column_text(stmt, 0));
+            } else if (col_type == SQLITE_INTEGER) {
+                set_foreach_binding_int(ctx, unwind->alias, sqlite3_column_int64(stmt, 0));
+            }
+
+            if (execute_merge_clause(executor, merge, result) < 0) {
+                g_foreach_ctx = prev_ctx;
+                free_foreach_context(ctx);
+                sqlite3_finalize(stmt);
+                return -1;
+            }
+        }
+
+        g_foreach_ctx = prev_ctx;
+        free_foreach_context(ctx);
+        sqlite3_finalize(stmt);
+        result->success = true;
+        return 0;
+    }
+
+    /* Handle list literal UNWIND */
+    if (unwind->expr->type == AST_NODE_LIST) {
+        cypher_list *list = (cypher_list *)unwind->expr;
+        if (!list->items || list->items->count == 0) {
+            result->success = true;
+            return 0;
+        }
+
+        foreach_context *ctx = create_foreach_context();
+        if (!ctx) { set_result_error(result, "Failed to create foreach context"); return -1; }
+        foreach_context *prev_ctx = g_foreach_ctx;
+        g_foreach_ctx = ctx;
+
+        for (int i = 0; i < list->items->count; i++) {
+            ast_node *item = list->items->items[i];
+            if (item->type == AST_NODE_LITERAL) {
+                cypher_literal *lit = (cypher_literal *)item;
+                switch (lit->literal_type) {
+                    case LITERAL_INTEGER: set_foreach_binding_int(ctx, unwind->alias, lit->value.integer); break;
+                    case LITERAL_STRING: set_foreach_binding_string(ctx, unwind->alias, lit->value.string); break;
+                    default: continue;
+                }
+            } else {
+                continue;
+            }
+
+            if (execute_merge_clause(executor, merge, result) < 0) {
+                g_foreach_ctx = prev_ctx;
+                free_foreach_context(ctx);
+                return -1;
+            }
+        }
+
+        g_foreach_ctx = prev_ctx;
+        free_foreach_context(ctx);
+        result->success = true;
+        return 0;
+    }
+
+    set_result_error(result, "UNWIND+MERGE requires list literal or parameter");
+    return -1;
 }
 
 /*
@@ -1925,7 +2228,8 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                         return -1;
                     }
                 } else if (inner_clause->type == AST_NODE_MERGE) {
-                    rc = execute_merge_clause(executor, (cypher_merge*)inner_clause, result);
+                    rc = execute_merge_clause_with_vars(executor,
+                            (cypher_merge*)inner_clause, result, scoped_map);
                     if (rc < 0) {
                         free_variable_map(scoped_map);
                         free_variable_map(var_map);
@@ -1942,9 +2246,84 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                         cypher_transform_free_context(ctx);
                         return -1;
                     }
-                } else if (inner_clause->type == AST_NODE_MATCH ||
-                           inner_clause->type == AST_NODE_RETURN) {
-                    /* MATCH/RETURN in inner query — handled after the loop
+                } else if (inner_clause->type == AST_NODE_MATCH) {
+                    /* Execute inner MATCH to resolve variables into scoped_map.
+                     * This is needed so subsequent MERGE/SET can use inner variables. */
+                    cypher_match *inner_match = (cypher_match*)inner_clause;
+                    cypher_transform_context *match_ctx = cypher_transform_create_context(executor->db);
+                    if (match_ctx) {
+                        if (transform_match_clause(match_ctx, inner_match) == 0) {
+                            /* Replace SELECT * with explicit node variable ID selections */
+                            sql_builder *sb = match_ctx->unified_builder;
+                            int vcount = transform_var_count(match_ctx->var_ctx);
+                            sql_builder *id_builder = sql_builder_create();
+                            /* Copy FROM/WHERE from match builder, add explicit SELECT */
+                            const char *from_str = sql_builder_get_from(sb);
+                            const char *joins_str = sql_builder_get_joins(sb);
+                            const char *where_str = sql_builder_get_where(sb);
+
+                            /* Build SQL manually: SELECT alias.id AS varname_id FROM ... WHERE ... */
+                            char id_sql[4096];
+                            size_t pos = 0;
+                            pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, "SELECT ");
+                            bool first_col = true;
+                            for (int vi = 0; vi < vcount; vi++) {
+                                transform_var *tv = transform_var_at(match_ctx->var_ctx, vi);
+                                if (tv && tv->kind == VAR_KIND_NODE) {
+                                    if (!first_col) pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, ", ");
+                                    pos += snprintf(id_sql + pos, sizeof(id_sql) - pos,
+                                                    "%s.id AS %s_id", tv->table_alias, tv->name);
+                                    first_col = false;
+                                }
+                            }
+                            if (first_col) {
+                                /* No node variables — skip */
+                                sql_builder_free(id_builder);
+                                cypher_transform_free_context(match_ctx);
+                                continue;
+                            }
+                            if (from_str && from_str[0]) {
+                                pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " FROM %s", from_str);
+                            }
+                            if (joins_str && joins_str[0]) {
+                                pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " %s", joins_str);
+                            }
+                            if (where_str && where_str[0]) {
+                                pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " WHERE %s", where_str);
+                            }
+
+                            sql_builder_free(id_builder);
+
+                            CYPHER_DEBUG("CALL inner MATCH SQL: %s", id_sql);
+                            sqlite3_stmt *match_stmt;
+                            if (sqlite3_prepare_v2(executor->db, id_sql, -1, &match_stmt, NULL) == SQLITE_OK) {
+                                if (sqlite3_step(match_stmt) == SQLITE_ROW) {
+                                    int mcols = sqlite3_column_count(match_stmt);
+                                    for (int mc = 0; mc < mcols; mc++) {
+                                        const char *cname = sqlite3_column_name(match_stmt, mc);
+                                        if (cname && sqlite3_column_type(match_stmt, mc) == SQLITE_INTEGER) {
+                                            int node_id = sqlite3_column_int(match_stmt, mc);
+                                            /* Column name is "varname_id" — extract var name */
+                                            char var_name[128];
+                                            strncpy(var_name, cname, sizeof(var_name) - 1);
+                                            var_name[sizeof(var_name) - 1] = '\0';
+                                            char *suffix = strstr(var_name, "_id");
+                                            if (suffix) {
+                                                *suffix = '\0';
+                                                set_variable_node_id(scoped_map, var_name, node_id);
+                                                CYPHER_DEBUG("CALL MATCH: resolved '%s' = node %d",
+                                                             var_name, node_id);
+                                            }
+                                        }
+                                    }
+                                }
+                                sqlite3_finalize(match_stmt);
+                            }
+                        }
+                        cypher_transform_free_context(match_ctx);
+                    }
+                } else if (inner_clause->type == AST_NODE_RETURN) {
+                    /* RETURN in inner query — handled after the loop
                      * via post-CALL return path */
                     continue;
                 } else {

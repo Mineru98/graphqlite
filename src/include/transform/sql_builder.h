@@ -204,6 +204,12 @@ void sql_join(sql_builder *b, sql_join_type type, const char *table,
 void sql_join_raw(sql_builder *b, const char *raw_join_sql);
 
 /*
+ * Append an AND condition to the last LEFT JOIN's ON clause.
+ * Used for OPTIONAL MATCH WHERE conditions that must not filter out NULL rows.
+ */
+void sql_join_append_on(sql_builder *b, const char *condition);
+
+/*
  * Add a WHERE condition.
  * Multiple conditions are joined with AND.
  */

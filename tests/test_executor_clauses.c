@@ -733,6 +733,68 @@ static void test_group_by_aggregation(void)
     }
 }
 
+/* ============================================================
+ * Issue #51: CALL subquery MERGE scoping regression test
+ * ============================================================ */
+
+/**
+ * Issue #51: CALL { WITH c MATCH (d:Label) MERGE (c)-[:REL]->(d) }
+ * should create a relationship from c to d, not a self-loop on c.
+ * BUG: Inner MATCH variable d resolves to outer variable c.
+ */
+static void test_call_subquery_merge_scoping(void)
+{
+    /* Setup: create two distinct nodes */
+    cypher_result *r1 = cypher_executor_execute(executor,
+        "CREATE (c:Co51 {id: \"acme\"})");
+    CU_ASSERT_PTR_NOT_NULL(r1);
+    if (r1) { CU_ASSERT_TRUE(r1->success); cypher_result_free(r1); }
+
+    cypher_result *r2 = cypher_executor_execute(executor,
+        "CREATE (d:Dep51 {id: \"eng\"})");
+    CU_ASSERT_PTR_NOT_NULL(r2);
+    if (r2) { CU_ASSERT_TRUE(r2->success); cypher_result_free(r2); }
+
+    /* CALL with inner MATCH + MERGE */
+    cypher_result *r3 = cypher_executor_execute(executor,
+        "MATCH (c:Co51 {id: \"acme\"}) "
+        "CALL { With c MATCH (d:Dep51 {id: \"eng\"}) MERGE (c)-[:HAS51]->(d) }");
+    CU_ASSERT_PTR_NOT_NULL(r3);
+    if (r3) {
+        if (!r3->success) {
+            printf("\nIssue #51 CALL MERGE: %s\n", r3->error_message);
+        }
+        CU_ASSERT_TRUE(r3->success);
+        cypher_result_free(r3);
+    }
+
+    /* Verify: relationship should go from Co51 to Dep51, not Co51 to Co51 */
+    cypher_result *verify = cypher_executor_execute(executor,
+        "MATCH (a)-[:HAS51]->(b) RETURN a.id, labels(a) AS al, b.id, labels(b) AS bl");
+    CU_ASSERT_PTR_NOT_NULL(verify);
+    if (verify) {
+        CU_ASSERT_TRUE(verify->success);
+        if (verify->success && verify->row_count > 0) {
+            CU_ASSERT_EQUAL(verify->row_count, 1);
+            CU_ASSERT_TRUE(verify->column_count >= 3);
+            /* a should be Co51 "acme", b should be Dep51 "eng" */
+            CU_ASSERT_PTR_NOT_NULL(verify->data[0][0]);
+            CU_ASSERT_PTR_NOT_NULL(verify->data[0][2]);
+            if (verify->data[0][0]) {
+                CU_ASSERT_STRING_EQUAL(verify->data[0][0], "acme");
+            }
+            if (verify->data[0][2]) {
+                /* This is the key assertion - b.id must be "eng", not "acme" */
+                CU_ASSERT_STRING_EQUAL(verify->data[0][2], "eng");
+                if (strcmp(verify->data[0][2], "acme") == 0) {
+                    printf("\nIssue #51: MERGE created self-loop (b.id=acme) instead of linking to Dep51 (b.id=eng)\n");
+                }
+            }
+        }
+        cypher_result_free(verify);
+    }
+}
+
 /* Initialize the clauses test suite */
 int init_executor_clauses_suite(void)
 {
@@ -785,7 +847,10 @@ int init_executor_clauses_suite(void)
         !CU_add_test(suite, "AVG aggregation", test_avg_aggregation) ||
         !CU_add_test(suite, "MIN/MAX aggregation", test_min_max_aggregation) ||
         !CU_add_test(suite, "COLLECT aggregation", test_collect_aggregation) ||
-        !CU_add_test(suite, "GROUP BY aggregation", test_group_by_aggregation))
+        !CU_add_test(suite, "GROUP BY aggregation", test_group_by_aggregation) ||
+
+        /* Issue #51: CALL subquery MERGE scoping */
+        !CU_add_test(suite, "Issue #51: CALL MERGE inner var scoping", test_call_subquery_merge_scoping))
     {
         return CU_get_error();
     }

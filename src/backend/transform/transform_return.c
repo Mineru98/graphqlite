@@ -239,6 +239,25 @@ int transform_return_clause(cypher_transform_context *ctx, cypher_return *ret)
                     cypher_identifier *id = (cypher_identifier*)prop->expr;
                     snprintf(auto_alias, sizeof(auto_alias), "\"%s.%s\"", id->name, prop->property_name);
                     alias = auto_alias;
+                } else if (prop->expr && prop->expr->type == AST_NODE_FUNCTION_CALL) {
+                    /* Property access on function call: startNode(r).name → "startNode(r).name" */
+                    cypher_function_call *func = (cypher_function_call*)prop->expr;
+                    if (func->function_name) {
+                        size_t pos = 0;
+                        pos += snprintf(auto_alias + pos, sizeof(auto_alias) - pos, "\"%s(", func->function_name);
+                        if (func->args) {
+                            for (int j = 0; j < func->args->count && pos < sizeof(auto_alias) - 20; j++) {
+                                if (j > 0) pos += snprintf(auto_alias + pos, sizeof(auto_alias) - pos, ", ");
+                                ast_node *arg = func->args->items[j];
+                                if (arg && arg->type == AST_NODE_IDENTIFIER) {
+                                    pos += snprintf(auto_alias + pos, sizeof(auto_alias) - pos, "%s",
+                                                    ((cypher_identifier*)arg)->name);
+                                }
+                            }
+                        }
+                        snprintf(auto_alias + pos, sizeof(auto_alias) - pos, ").%s\"", prop->property_name);
+                        alias = auto_alias;
+                    }
                 }
             } else if (!alias && item->expr->type == AST_NODE_FUNCTION_CALL) {
                 /* Generate function name as column alias: funcname(arg1, arg2, ...) */

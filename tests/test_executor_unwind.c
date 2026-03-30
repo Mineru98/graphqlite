@@ -271,6 +271,128 @@ static void test_unwind_range_with_step_regression(void)
     }
 }
 
+/* ============================================================
+ * Issue #49: UNWIND $param write path regression tests
+ * ============================================================ */
+
+/**
+ * Issue #49 Test a: UNWIND $param + CREATE + SET should create nodes
+ * with properties from parameter objects.
+ * BUG: Errors with "UNWIND+CREATE currently only supports list literals"
+ */
+static void test_unwind_param_create_set(void)
+{
+    const char *query =
+        "UNWIND $items AS item CREATE (n:Uw49Node) SET n.id = item.id, n.name = item.name";
+    const char *params = "{\"items\": [{\"id\": \"a\", \"name\": \"Alpha\"}, {\"id\": \"b\", \"name\": \"Beta\"}]}";
+
+    cypher_result *result = cypher_executor_execute_params(executor, query, params);
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        if (!result->success) {
+            printf("\nIssue #49a UNWIND $param+CREATE+SET: %s\n", result->error_message);
+        }
+        CU_ASSERT_TRUE(result->success);
+        cypher_result_free(result);
+    }
+
+    /* Verify: should have 2 nodes with correct properties */
+    cypher_result *verify = cypher_executor_execute(executor,
+        "MATCH (n:Uw49Node) RETURN n.id ORDER BY n.id");
+    CU_ASSERT_PTR_NOT_NULL(verify);
+    if (verify) {
+        CU_ASSERT_TRUE(verify->success);
+        CU_ASSERT_EQUAL(verify->row_count, 2);
+        if (verify->row_count == 2 && verify->data[0][0] && verify->data[1][0]) {
+            CU_ASSERT_STRING_EQUAL(verify->data[0][0], "a");
+            CU_ASSERT_STRING_EQUAL(verify->data[1][0], "b");
+        }
+        cypher_result_free(verify);
+    }
+}
+
+/**
+ * Issue #49 Test b: UNWIND $param + MERGE should iterate all items
+ * and resolve item.id per-item.
+ * BUG: Creates 1 node with NULL id instead of 2 nodes with correct ids
+ */
+static void test_unwind_param_merge(void)
+{
+    const char *query =
+        "UNWIND $items AS item MERGE (n:Uw49Merge {id: item.id})";
+    const char *params = "{\"items\": [{\"id\": \"x\"}, {\"id\": \"y\"}]}";
+
+    cypher_result *result = cypher_executor_execute_params(executor, query, params);
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        if (!result->success) {
+            printf("\nIssue #49b UNWIND $param+MERGE: %s\n", result->error_message);
+        }
+        CU_ASSERT_TRUE(result->success);
+        cypher_result_free(result);
+    }
+
+    /* Verify: should have 2 nodes with ids x and y */
+    cypher_result *verify = cypher_executor_execute(executor,
+        "MATCH (n:Uw49Merge) RETURN n.id ORDER BY n.id");
+    CU_ASSERT_PTR_NOT_NULL(verify);
+    if (verify) {
+        CU_ASSERT_TRUE(verify->success);
+        CU_ASSERT_EQUAL(verify->row_count, 2);
+        if (verify->row_count >= 1) {
+            /* The id values must not be NULL — that's the bug */
+            CU_ASSERT_PTR_NOT_NULL(verify->data[0][0]);
+        }
+        if (verify->row_count == 2 && verify->data[0][0] && verify->data[1][0]) {
+            CU_ASSERT_STRING_EQUAL(verify->data[0][0], "x");
+            CU_ASSERT_STRING_EQUAL(verify->data[1][0], "y");
+        }
+        cypher_result_free(verify);
+    }
+}
+
+/**
+ * Issue #49 Test c: UNWIND literal + SET should propagate bound item value.
+ * BUG: Creates 2 nodes but both have NULL id
+ */
+static void test_unwind_literal_set_binding(void)
+{
+    const char *query =
+        "UNWIND [\"a\", \"b\"] AS item CREATE (n:Uw49Set) SET n.id = item";
+
+    cypher_result *result = cypher_executor_execute(executor, query);
+    CU_ASSERT_PTR_NOT_NULL(result);
+
+    if (result) {
+        if (!result->success) {
+            printf("\nIssue #49c UNWIND literal+SET: %s\n", result->error_message);
+        }
+        CU_ASSERT_TRUE(result->success);
+        cypher_result_free(result);
+    }
+
+    /* Verify: should have 2 nodes with ids "a" and "b" */
+    cypher_result *verify = cypher_executor_execute(executor,
+        "MATCH (n:Uw49Set) RETURN n.id ORDER BY n.id");
+    CU_ASSERT_PTR_NOT_NULL(verify);
+    if (verify) {
+        CU_ASSERT_TRUE(verify->success);
+        CU_ASSERT_EQUAL(verify->row_count, 2);
+        if (verify->row_count == 2) {
+            /* The values must not be NULL — that's the bug */
+            CU_ASSERT_PTR_NOT_NULL(verify->data[0][0]);
+            CU_ASSERT_PTR_NOT_NULL(verify->data[1][0]);
+            if (verify->data[0][0] && verify->data[1][0]) {
+                CU_ASSERT_STRING_EQUAL(verify->data[0][0], "a");
+                CU_ASSERT_STRING_EQUAL(verify->data[1][0], "b");
+            }
+        }
+        cypher_result_free(verify);
+    }
+}
+
 /* Initialize the UNWIND executor test suite */
 int init_executor_unwind_suite(void)
 {
@@ -289,7 +411,12 @@ int init_executor_unwind_suite(void)
         !CU_add_test(suite, "UNWIND single element", test_unwind_single_element) ||
         !CU_add_test(suite, "UNWIND mixed types", test_unwind_mixed_types) ||
         !CU_add_test(suite, "UNWIND range() function regression", test_unwind_range_function_regression) ||
-        !CU_add_test(suite, "UNWIND range() with step regression", test_unwind_range_with_step_regression)) {
+        !CU_add_test(suite, "UNWIND range() with step regression", test_unwind_range_with_step_regression) ||
+
+        /* Issue #49: UNWIND $param write paths */
+        !CU_add_test(suite, "Issue #49: UNWIND $param+CREATE+SET", test_unwind_param_create_set) ||
+        !CU_add_test(suite, "Issue #49: UNWIND $param+MERGE", test_unwind_param_merge) ||
+        !CU_add_test(suite, "Issue #49: UNWIND literal+SET binding", test_unwind_literal_set_binding)) {
         return CU_get_error();
     }
 

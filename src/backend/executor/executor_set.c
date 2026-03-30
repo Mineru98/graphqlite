@@ -11,6 +11,112 @@
 #include "executor/cypher_executor.h"
 #include "parser/cypher_debug.h"
 #include "transform/transform_variables.h"
+#include "transform/sql_builder.h"
+
+/* Evaluate a function call that references node/edge properties.
+ * Uses the var_map to build a FROM clause so property lookups resolve.
+ * Returns 0 on success, -1 on error, -2 for NULL result. */
+static int evaluate_function_with_context(
+    cypher_executor *executor,
+    cypher_function_call *func_call,
+    variable_map *var_map,
+    property_type *out_type,
+    property_value *out_value)
+{
+    cypher_transform_context *ctx = cypher_transform_create_context(executor->db);
+    if (!ctx) return -1;
+
+    /* Register variables from var_map so property lookups can resolve */
+    for (int i = 0; i < var_map->count; i++) {
+        variable_mapping *m = &var_map->mappings[i];
+        if (m->type == VAR_MAP_TYPE_NODE) {
+            char alias[64];
+            snprintf(alias, sizeof(alias), "%s_0", m->variable);
+            transform_var_register_node(ctx->var_ctx, m->variable, alias, NULL);
+            transform_var_set_bound(ctx->var_ctx, m->variable, true);
+
+            /* Add FROM/WHERE for this node */
+            char where_cond[128];
+            snprintf(where_cond, sizeof(where_cond), "%s.id = %d", alias, m->entity_id);
+            if (i == 0) {
+                sql_from(ctx->unified_builder, "nodes", alias);
+            } else {
+                sql_join(ctx->unified_builder, SQL_JOIN_CROSS, "nodes", alias, NULL);
+            }
+            sql_where(ctx->unified_builder, where_cond);
+        }
+    }
+
+    /* Transform the function expression */
+    append_sql(ctx, "SELECT ");
+    if (transform_expression(ctx, (ast_node*)func_call) < 0) {
+        cypher_transform_free_context(ctx);
+        return -1;
+    }
+
+    /* Build full SQL: SELECT func(...) FROM nodes AS n_0 WHERE n_0.id = X */
+    const char *from_str = sql_builder_get_from(ctx->unified_builder);
+    const char *joins_str = sql_builder_get_joins(ctx->unified_builder);
+    const char *where_str = sql_builder_get_where(ctx->unified_builder);
+
+    char full_sql[8192];
+    size_t pos = 0;
+    pos += snprintf(full_sql + pos, sizeof(full_sql) - pos, "%s", ctx->sql_buffer);
+    if (from_str && from_str[0])
+        pos += snprintf(full_sql + pos, sizeof(full_sql) - pos, " FROM %s", from_str);
+    if (joins_str && joins_str[0])
+        pos += snprintf(full_sql + pos, sizeof(full_sql) - pos, " %s", joins_str);
+    if (where_str && where_str[0])
+        pos += snprintf(full_sql + pos, sizeof(full_sql) - pos, " WHERE %s", where_str);
+
+    CYPHER_DEBUG("evaluate_function_with_context SQL: %s", full_sql);
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(executor->db, full_sql, -1, &stmt, NULL);
+    cypher_transform_free_context(ctx);
+    if (rc != SQLITE_OK) return -1;
+
+    if (executor->params_json) {
+        if (bind_params_from_json(stmt, executor->params_json) < 0) {
+            sqlite3_finalize(stmt);
+            return -1;
+        }
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return -2;
+    }
+
+    int col_type = sqlite3_column_type(stmt, 0);
+    switch (col_type) {
+        case SQLITE_INTEGER:
+            *out_type = PROP_TYPE_INTEGER;
+            out_value->as_int = sqlite3_column_int64(stmt, 0);
+            break;
+        case SQLITE_FLOAT:
+            *out_type = PROP_TYPE_REAL;
+            out_value->as_real = sqlite3_column_double(stmt, 0);
+            break;
+        case SQLITE_TEXT: {
+            const char *text = (const char*)sqlite3_column_text(stmt, 0);
+            *out_type = PROP_TYPE_TEXT;
+            out_value->as_str = text ? strdup(text) : strdup("");
+            out_value->as_str_len = text ? strlen(text) : 0;
+            break;
+        }
+        case SQLITE_NULL:
+            sqlite3_finalize(stmt);
+            return -2;
+        default:
+            sqlite3_finalize(stmt);
+            return -1;
+    }
+
+    sqlite3_finalize(stmt);
+    return 0;
+}
 
 /* Evaluate a function call by transforming to SQL and executing via SQLite.
  * Returns 0 on success, -1 on error, -2 for NULL result. */
@@ -753,8 +859,28 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
             }
         } else if (item->expr->type == AST_NODE_FUNCTION_CALL) {
             cypher_function_call *func = (cypher_function_call*)item->expr;
-            int rc = evaluate_function_call_via_sqlite(
-                executor, func, &prop_type, &set_pv);
+
+            /* Check if function args reference node properties (e.g., trim(n.name)).
+             * If so, build SQL with FROM clause so properties can resolve. */
+            bool has_prop_arg = false;
+            if (func->args) {
+                for (int fa = 0; fa < func->args->count; fa++) {
+                    if (func->args->items[fa] && func->args->items[fa]->type == AST_NODE_PROPERTY) {
+                        has_prop_arg = true;
+                        break;
+                    }
+                }
+            }
+
+            int rc;
+            if (has_prop_arg && var_map) {
+                /* Build SQL with FROM clause for property resolution */
+                rc = evaluate_function_with_context(executor, func, var_map,
+                                                     &prop_type, &set_pv);
+            } else {
+                rc = evaluate_function_call_via_sqlite(executor, func, &prop_type, &set_pv);
+            }
+
             if (rc == -2) {
                 /* NULL result — skip property */
                 property_value_free(&set_pv);
@@ -778,6 +904,77 @@ int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_
             } else if (prop_type == PROP_TYPE_BOOLEAN) {
                 set_bool_buf = set_pv.as_bool;
                 prop_value = &set_bool_buf;
+            }
+        } else if (item->expr->type == AST_NODE_IDENTIFIER && g_foreach_ctx) {
+            /* Resolve a bare UNWIND/FOREACH variable (e.g., SET n.id = item) */
+            cypher_identifier *val_id = (cypher_identifier*)item->expr;
+            foreach_binding *binding = get_foreach_binding(g_foreach_ctx, val_id->name);
+            if (binding) {
+                switch (binding->literal_type) {
+                    case LITERAL_STRING:
+                        prop_type = PROP_TYPE_TEXT;
+                        prop_value = binding->value.string;
+                        break;
+                    case LITERAL_INTEGER:
+                        prop_type = PROP_TYPE_INTEGER;
+                        set_int_buf = binding->value.integer;
+                        prop_value = &set_int_buf;
+                        break;
+                    case LITERAL_DECIMAL:
+                        prop_type = PROP_TYPE_REAL;
+                        set_real_buf = binding->value.decimal;
+                        prop_value = &set_real_buf;
+                        break;
+                    case LITERAL_BOOLEAN:
+                        prop_type = PROP_TYPE_BOOLEAN;
+                        set_bool_buf = binding->value.boolean;
+                        prop_value = &set_bool_buf;
+                        break;
+                    default:
+                        break;
+                }
+            } else {
+                char error[256];
+                snprintf(error, sizeof(error), "Unbound variable in SET value: %s", val_id->name);
+                set_result_error(result, error);
+                property_value_free(&set_pv);
+                return -1;
+            }
+        } else if (item->expr->type == AST_NODE_PROPERTY && g_foreach_ctx) {
+            /* Resolve property access on UNWIND variable (e.g., SET n.id = item.id) */
+            cypher_property *val_prop = (cypher_property*)item->expr;
+            if (val_prop->expr && val_prop->expr->type == AST_NODE_IDENTIFIER) {
+                cypher_identifier *val_id = (cypher_identifier*)val_prop->expr;
+                foreach_binding *binding = get_foreach_binding(g_foreach_ctx, val_id->name);
+                if (binding && binding->literal_type == LITERAL_STRING && binding->value.string) {
+                    /* The binding value is a JSON string — extract the property */
+                    char json_path[256];
+                    snprintf(json_path, sizeof(json_path), "$.%s", val_prop->property_name);
+                    char sql[512];
+                    snprintf(sql, sizeof(sql), "SELECT json_extract(?, ?)");
+                    sqlite3_stmt *jstmt;
+                    if (sqlite3_prepare_v2(executor->db, sql, -1, &jstmt, NULL) == SQLITE_OK) {
+                        sqlite3_bind_text(jstmt, 1, binding->value.string, -1, SQLITE_STATIC);
+                        sqlite3_bind_text(jstmt, 2, json_path, -1, SQLITE_STATIC);
+                        if (sqlite3_step(jstmt) == SQLITE_ROW) {
+                            int col_type = sqlite3_column_type(jstmt, 0);
+                            if (col_type == SQLITE_TEXT) {
+                                prop_type = PROP_TYPE_TEXT;
+                                set_pv.as_str = strdup((const char*)sqlite3_column_text(jstmt, 0));
+                                prop_value = set_pv.as_str;
+                            } else if (col_type == SQLITE_INTEGER) {
+                                prop_type = PROP_TYPE_INTEGER;
+                                set_int_buf = sqlite3_column_int64(jstmt, 0);
+                                prop_value = &set_int_buf;
+                            } else if (col_type == SQLITE_FLOAT) {
+                                prop_type = PROP_TYPE_REAL;
+                                set_real_buf = sqlite3_column_double(jstmt, 0);
+                                prop_value = &set_real_buf;
+                            }
+                        }
+                        sqlite3_finalize(jstmt);
+                    }
+                }
             }
         } else {
             set_result_error(result, "SET value must be a literal, map, list, parameter, or function call");
