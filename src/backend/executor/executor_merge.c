@@ -661,16 +661,17 @@ int execute_merge_clause(cypher_executor *executor, cypher_merge *merge, cypher_
                     }
                 }
 
-                /* Apply ON CREATE SET if edge was created */
-                if (edge_was_created && merge->on_create && merge->on_create->count > 0) {
-                    CYPHER_DEBUG("Applying ON CREATE SET for edge %d", edge_id);
-                    /* Note: Currently ON CREATE/ON MATCH SET for relationships would need
-                       relationship variable support in var_map - for now, handled via node SET */
+                /* Store edge variable mapping */
+                if (rel_pattern->variable) {
+                    set_variable_edge_id(var_map, rel_pattern->variable, edge_id);
                 }
 
-                /* Apply ON MATCH SET if edge was matched */
+                /* ON CREATE/ON MATCH SET for edges not yet implemented */
+                if (edge_was_created && merge->on_create && merge->on_create->count > 0) {
+                    CYPHER_DEBUG("ON CREATE SET for edge %d: not yet implemented for relationship variables", edge_id);
+                }
                 if (!edge_was_created && merge->on_match && merge->on_match->count > 0) {
-                    CYPHER_DEBUG("Applying ON MATCH SET for edge %d", edge_id);
+                    CYPHER_DEBUG("ON MATCH SET for edge %d: not yet implemented for relationship variables", edge_id);
                 }
 
                 /* Also apply ON CREATE/MATCH for target node if it was created/matched */
@@ -815,6 +816,9 @@ int execute_merge_with_variables(cypher_executor *executor, cypher_merge *merge,
                     int edge_id = cypher_schema_create_edge(executor->schema_mgr, source_id, target_node_id, rel_type);
                     if (edge_id >= 0) {
                         result->relationships_created++;
+                        if (rel->variable) {
+                            set_variable_edge_id(var_map, rel->variable, edge_id);
+                        }
                     }
                 }
 
@@ -1253,6 +1257,11 @@ int execute_match_merge_query(cypher_executor *executor, cypher_match *match, cy
                             }
                         }
                     }
+                }
+
+                /* Store edge variable mapping */
+                if (rel_pattern->variable) {
+                    set_variable_edge_id(var_map, rel_pattern->variable, edge_id);
                 }
 
                 previous_node_id = target_node_id;
