@@ -1,9 +1,12 @@
 -- ========================================================================
--- Test 11: Issue Reproduction Tests
+-- Test 11: Issue Reproduction Tests (HISTORICAL)
 -- ========================================================================
--- PURPOSE: Reproduce confirmed bugs from GitHub issues.
---          Each test should FAIL against current code and PASS once fixed.
--- COVERS:  Issues #34, #36, #37, #39, #40, #41, #42, #43
+-- NOTE: All issues in this file have been FIXED and promoted to
+--       39_issue_regression_tests.sql (which runs in the main harness).
+--       This file is retained for historical reference only.
+--       It is excluded from the test runner (filename contains
+--       "expected_failures").
+-- COVERS:  Issues #34, #36, #37, #39, #40, #41, #42, #43, #49, #50, #51
 -- ========================================================================
 
 .load ./build/graphqlite

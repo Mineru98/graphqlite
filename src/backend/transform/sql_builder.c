@@ -371,6 +371,12 @@ void sql_join_raw(sql_builder *b, const char *raw_join_sql)
     dbuf_append(&b->joins, raw_join_sql);
 }
 
+void sql_join_append_on(sql_builder *b, const char *condition)
+{
+    if (!b || !condition) return;
+    dbuf_appendf(&b->joins, " AND %s", condition);
+}
+
 /*
  * Add a JOIN clause.
  */

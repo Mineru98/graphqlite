@@ -399,9 +399,15 @@ handle_where_clause:
             return -1;
         }
 
-        /* Add the expression to unified builder's WHERE clause */
+        /* Add the expression to the appropriate clause.
+         * For OPTIONAL MATCH, append to the last LEFT JOIN's ON clause
+         * rather than the outer WHERE, so NULL rows are preserved (issue #34b). */
         if (ctx->sql_size > 0) {
-            sql_where(ctx->unified_builder, ctx->sql_buffer);
+            if (match->optional) {
+                sql_join_append_on(ctx->unified_builder, ctx->sql_buffer);
+            } else {
+                sql_where(ctx->unified_builder, ctx->sql_buffer);
+            }
         }
 
         /* Restore sql_buffer */
