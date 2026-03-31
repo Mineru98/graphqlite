@@ -1717,3 +1717,55 @@ def test_unwind_merge_on_create_set(g):
     assert result[0]["n.name"] == "First"
     assert result[1]["n.id"] == "b2"
     assert result[1]["n.name"] == "Second"
+
+
+# =============================================================================
+# Spec compliance regression tests (Bugs A-E)
+# =============================================================================
+
+def test_count_skips_nulls_from_optional_match(g):
+    """COUNT(r) where r is null from OPTIONAL MATCH should return 0."""
+    g.query("CREATE (a:CntNull {id: 'x'})")
+    g.query("CREATE (p:CntPet {id: 'p'})")
+    g.query("MATCH (a:CntNull), (p:CntPet) CREATE (a)-[:OWNS]->(p)")
+    result = g.query("MATCH (a:CntNull) OPTIONAL MATCH (a)-->(r:Ghost) RETURN a.id AS aid, COUNT(r) AS cnt")
+    assert len(result) == 1
+    assert int(result[0]["cnt"]) == 0
+
+
+def test_edge_variable_through_with(g):
+    """Relationship variables should pass through WITH for type() and property access."""
+    g.query("CREATE (:EWA {id: 'a'})-[:EREL {weight: 7}]->(:EWB {id: 'b'})")
+    result = g.query("MATCH (a:EWA)-[r:EREL]->(b:EWB) WITH a, b, r RETURN type(r) AS t, r.weight AS w")
+    assert len(result) == 1
+    assert result[0]["t"] == "EREL"
+    assert int(result[0]["w"]) == 7
+
+
+def test_function_call_in_create_property_map(g):
+    """Functions like toUpper() should be evaluated in CREATE property maps."""
+    g.query("CREATE (n:FnCreate {upper: toUpper('hello'), lower: toLower('WORLD')})")
+    result = g.query("MATCH (n:FnCreate) RETURN n.upper AS u, n.lower AS l")
+    assert len(result) == 1
+    assert result[0]["u"] == "HELLO"
+    assert result[0]["l"] == "world"
+
+
+def test_call_subquery_exports_inner_return(g):
+    """Variables returned from CALL subquery should be visible in outer scope."""
+    g.query("CREATE (:CallExp {id: 'ce1'})")
+    result = g.query("MATCH (a:CallExp) CALL { WITH a RETURN a.id AS inner_id } RETURN a.id AS outer_id, inner_id")
+    assert len(result) == 1
+    assert result[0]["outer_id"] == "ce1"
+    assert result[0]["inner_id"] == "ce1"
+
+
+def test_call_subquery_processes_all_inner_match_rows(g):
+    """CALL subquery should iterate all inner MATCH rows, not just the first."""
+    g.query("CREATE (:CallCo {id: 'co'})")
+    g.query("CREATE (:CallDep {id: 'd1'})")
+    g.query("CREATE (:CallDep {id: 'd2'})")
+    g.query("CREATE (:CallDep {id: 'd3'})")
+    g.query("MATCH (c:CallCo) CALL { WITH c MATCH (d:CallDep) MERGE (c)-[:CHAS]->(d) }")
+    result = g.query("MATCH (:CallCo)-[:CHAS]->(d:CallDep) RETURN d.id ORDER BY d.id")
+    assert len(result) == 3

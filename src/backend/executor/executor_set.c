@@ -120,7 +120,7 @@ static int evaluate_function_with_context(
 
 /* Evaluate a function call by transforming to SQL and executing via SQLite.
  * Returns 0 on success, -1 on error, -2 for NULL result. */
-static int evaluate_function_call_via_sqlite(
+int evaluate_function_call_via_sqlite(
     cypher_executor *executor,
     cypher_function_call *func_call,
     property_type *out_type,

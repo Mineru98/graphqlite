@@ -3817,3 +3817,62 @@ fn test_unwind_merge_on_create_set() {
     assert_eq!(results[1].get::<String>("n.name").unwrap(), "Second");
 }
 
+// =============================================================================
+// Spec compliance regression tests (Bugs A-E)
+// =============================================================================
+
+#[test]
+fn test_count_skips_nulls_from_optional_match() {
+    let conn = test_connection();
+    conn.cypher("CREATE (a:CntNullRs {id: 'x'})").unwrap();
+    conn.cypher("CREATE (p:CntPetRs {id: 'p'})").unwrap();
+    conn.cypher("MATCH (a:CntNullRs), (p:CntPetRs) CREATE (a)-[:OWNS_RS]->(p)").unwrap();
+    let results = conn.cypher("MATCH (a:CntNullRs) OPTIONAL MATCH (a)-->(r:GhostRs) RETURN a.id AS aid, COUNT(r) AS cnt").unwrap();
+    assert_eq!(results.len(), 1);
+    // COUNT in grouped aggregation returns "0" (string) due to pre-existing
+    // type coercion in the RETURN pipeline. Using String here, not i64.
+    assert_eq!(results[0].get::<String>("cnt").unwrap(), "0");
+}
+
+#[test]
+fn test_edge_variable_through_with() {
+    let conn = test_connection();
+    conn.cypher("CREATE (:EWARs {id: 'a'})-[:ERELRs {weight: 7}]->(:EWBRs {id: 'b'})").unwrap();
+    let results = conn.cypher("MATCH (a:EWARs)-[r:ERELRs]->(b:EWBRs) WITH a, b, r RETURN type(r) AS t, r.weight AS w").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("t").unwrap(), "ERELRs");
+    assert_eq!(results[0].get::<i64>("w").unwrap(), 7);
+}
+
+#[test]
+fn test_function_call_in_create_property_map() {
+    let conn = test_connection();
+    conn.cypher("CREATE (n:FnCreateRs {upper: toUpper('hello'), lower: toLower('WORLD')})").unwrap();
+    let results = conn.cypher("MATCH (n:FnCreateRs) RETURN n.upper, n.lower").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("n.upper").unwrap(), "HELLO");
+    assert_eq!(results[0].get::<String>("n.lower").unwrap(), "world");
+}
+
+#[test]
+fn test_call_subquery_exports_inner_return() {
+    let conn = test_connection();
+    conn.cypher("CREATE (:CallExpRs {id: 'ce1'})").unwrap();
+    let results = conn.cypher("MATCH (a:CallExpRs) CALL { WITH a RETURN a.id AS inner_id } RETURN a.id AS outer_id, inner_id").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].get::<String>("outer_id").unwrap(), "ce1");
+    assert_eq!(results[0].get::<String>("inner_id").unwrap(), "ce1");
+}
+
+#[test]
+fn test_call_subquery_processes_all_inner_match_rows() {
+    let conn = test_connection();
+    conn.cypher("CREATE (:CallCoRs {id: 'co'})").unwrap();
+    conn.cypher("CREATE (:CallDepRs {id: 'd1'})").unwrap();
+    conn.cypher("CREATE (:CallDepRs {id: 'd2'})").unwrap();
+    conn.cypher("CREATE (:CallDepRs {id: 'd3'})").unwrap();
+    conn.cypher("MATCH (c:CallCoRs) CALL { WITH c MATCH (d:CallDepRs) MERGE (c)-[:CHASRs]->(d) }").unwrap();
+    let results = conn.cypher("MATCH (:CallCoRs)-[:CHASRs]->(d:CallDepRs) RETURN d.id ORDER BY d.id").unwrap();
+    assert_eq!(results.len(), 3);
+}
+

@@ -38,13 +38,30 @@ int transform_count_function(cypher_transform_context *ctx, cypher_function_call
 
     /* COUNT(expression) case */
     if (func_call->args->count == 1 && func_call->args->items[0] != NULL) {
+        ast_node *arg = func_call->args->items[0];
+
         if (func_call->distinct) {
             append_sql(ctx, "COUNT(DISTINCT ");
         } else {
             append_sql(ctx, "COUNT(");
         }
 
-        if (transform_expression(ctx, func_call->args->items[0]) < 0) {
+        /* For bare node/edge identifiers, use alias.id instead of the full
+         * json_object expression. json_object() never returns NULL even when
+         * the underlying row is NULL (from LEFT JOIN / OPTIONAL MATCH),
+         * which causes COUNT to include null rows. */
+        if (arg->type == AST_NODE_IDENTIFIER) {
+            cypher_identifier *id = (cypher_identifier*)arg;
+            const char *alias = transform_var_get_alias(ctx->var_ctx, id->name);
+            if (alias) {
+                bool skip = transform_var_is_projected(ctx->var_ctx, id->name) ||
+                            transform_var_alias_is_id(ctx->var_ctx, id->name);
+                append_sql(ctx, "%s%s)", alias, skip ? "" : ".id");
+                return 0;
+            }
+        }
+
+        if (transform_expression(ctx, arg) < 0) {
             return -1;
         }
 
@@ -276,9 +293,9 @@ int transform_type_function(cypher_transform_context *ctx, cypher_function_call 
     }
 
     /* Generate SQL to extract the relationship type from the edges table */
-    /* The relationship alias should point to the edges table with an 'id' column */
-    /* We extract the 'type' column which contains the relationship type */
-    append_sql(ctx, "(SELECT type FROM edges WHERE id = %s.id)", alias);
+    bool skip_id = transform_var_is_projected(ctx->var_ctx, id->name) ||
+                   transform_var_alias_is_id(ctx->var_ctx, id->name);
+    append_sql(ctx, "(SELECT type FROM edges WHERE id = %s%s)", alias, skip_id ? "" : ".id");
 
     return 0;
 }

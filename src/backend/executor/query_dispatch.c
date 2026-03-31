@@ -2137,6 +2137,32 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
         inner_query = (cypher_query*)inner_ast;
     }
 
+    /* Check for inner RETURN clause and post-CALL RETURN to enable result accumulation */
+    cypher_return *inner_return_clause = NULL;
+    bool has_post_call_return = false;
+    if (inner_query && inner_query->clauses) {
+        for (int ci = 0; ci < inner_query->clauses->count; ci++) {
+            if (inner_query->clauses->items[ci]->type == AST_NODE_RETURN) {
+                inner_return_clause = (cypher_return*)inner_query->clauses->items[ci];
+                break;
+            }
+        }
+    }
+    for (int i = call_pos + 1; i < query->clauses->count; i++) {
+        if (query->clauses->items[i]->type == AST_NODE_RETURN) {
+            has_post_call_return = true;
+            break;
+        }
+    }
+
+    /* Accumulator for combined outer+inner results */
+    bool accumulating = (inner_return_clause != NULL && has_post_call_return);
+    int accum_capacity = 16;
+    int accum_count = 0;
+    char ***accum_rows = accumulating ? calloc(accum_capacity, sizeof(char**)) : NULL;
+    int accum_col_count = 0;
+    char **accum_col_names = NULL;
+
     while (sqlite3_step(outer_stmt) == SQLITE_ROW) {
         CYPHER_DEBUG("CALL: processing outer row");
 
@@ -2248,21 +2274,17 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                     }
                 } else if (inner_clause->type == AST_NODE_MATCH) {
                     /* Execute inner MATCH to resolve variables into scoped_map.
-                     * This is needed so subsequent MERGE/SET can use inner variables. */
+                     * Iterate ALL rows and execute subsequent clauses for each. */
                     cypher_match *inner_match = (cypher_match*)inner_clause;
                     cypher_transform_context *match_ctx = cypher_transform_create_context(executor->db);
                     if (match_ctx) {
                         if (transform_match_clause(match_ctx, inner_match) == 0) {
-                            /* Replace SELECT * with explicit node variable ID selections */
                             sql_builder *sb = match_ctx->unified_builder;
                             int vcount = transform_var_count(match_ctx->var_ctx);
-                            sql_builder *id_builder = sql_builder_create();
-                            /* Copy FROM/WHERE from match builder, add explicit SELECT */
                             const char *from_str = sql_builder_get_from(sb);
                             const char *joins_str = sql_builder_get_joins(sb);
                             const char *where_str = sql_builder_get_where(sb);
 
-                            /* Build SQL manually: SELECT alias.id AS varname_id FROM ... WHERE ... */
                             char id_sql[4096];
                             size_t pos = 0;
                             pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, "SELECT ");
@@ -2277,8 +2299,6 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                 }
                             }
                             if (first_col) {
-                                /* No node variables — skip */
-                                sql_builder_free(id_builder);
                                 cypher_transform_free_context(match_ctx);
                                 continue;
                             }
@@ -2292,18 +2312,18 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                 pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " WHERE %s", where_str);
                             }
 
-                            sql_builder_free(id_builder);
-
                             CYPHER_DEBUG("CALL inner MATCH SQL: %s", id_sql);
                             sqlite3_stmt *match_stmt;
                             if (sqlite3_prepare_v2(executor->db, id_sql, -1, &match_stmt, NULL) == SQLITE_OK) {
-                                if (sqlite3_step(match_stmt) == SQLITE_ROW) {
+                                if (executor->params_json) {
+                                    bind_params_from_json(match_stmt, executor->params_json);
+                                }
+                                while (sqlite3_step(match_stmt) == SQLITE_ROW) {
                                     int mcols = sqlite3_column_count(match_stmt);
                                     for (int mc = 0; mc < mcols; mc++) {
                                         const char *cname = sqlite3_column_name(match_stmt, mc);
                                         if (cname && sqlite3_column_type(match_stmt, mc) == SQLITE_INTEGER) {
                                             int node_id = sqlite3_column_int(match_stmt, mc);
-                                            /* Column name is "varname_id" — extract var name */
                                             char var_name[128];
                                             strncpy(var_name, cname, sizeof(var_name) - 1);
                                             var_name[sizeof(var_name) - 1] = '\0';
@@ -2316,12 +2336,29 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                             }
                                         }
                                     }
+                                    /* Execute all post-MATCH clauses for this row */
+                                    for (int cj = ci + 1; cj < inner_query->clauses->count; cj++) {
+                                        ast_node *post_clause = inner_query->clauses->items[cj];
+                                        if (post_clause->type == AST_NODE_SET) {
+                                            rc = execute_set_operations(executor, (cypher_set*)post_clause,
+                                                                       scoped_map, result);
+                                        } else if (post_clause->type == AST_NODE_MERGE) {
+                                            rc = execute_merge_clause_with_vars(executor,
+                                                    (cypher_merge*)post_clause, result, scoped_map);
+                                        } else if (post_clause->type == AST_NODE_CREATE) {
+                                            rc = execute_create_clause(executor, (cypher_create*)post_clause, result);
+                                        }
+                                        if (rc < 0) break;
+                                    }
+                                    if (rc < 0) break;
                                 }
                                 sqlite3_finalize(match_stmt);
                             }
                         }
                         cypher_transform_free_context(match_ctx);
                     }
+                    /* All post-MATCH clauses handled inside the while loop */
+                    break;
                 } else if (inner_clause->type == AST_NODE_RETURN) {
                     /* RETURN in inner query — handled after the loop
                      * via post-CALL return path */
@@ -2400,6 +2437,239 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
             }
         }
 
+        /* Execute inner RETURN and accumulate results if needed */
+        if (accumulating && inner_return_clause && inner_return_clause->items) {
+            cypher_return *post_ret = NULL;
+            for (int i = call_pos + 1; i < query->clauses->count; i++) {
+                if (query->clauses->items[i]->type == AST_NODE_RETURN) {
+                    post_ret = (cypher_return*)query->clauses->items[i];
+                    break;
+                }
+            }
+
+            if (post_ret && post_ret->items) {
+                /* Evaluate inner RETURN items by building a single SQL query
+                 * that resolves all expressions against the scoped variables. */
+                char inner_sql[4096];
+                size_t ipos = 0;
+                ipos += snprintf(inner_sql + ipos, sizeof(inner_sql) - ipos, "SELECT ");
+
+                cypher_transform_context *ret_ctx = cypher_transform_create_context(executor->db);
+                if (ret_ctx) {
+                    /* Register scoped_map variables with unique aliases */
+                    for (int si = 0; si < scoped_map->count; si++) {
+                        variable_mapping *m = &scoped_map->mappings[si];
+                        char var_alias[64];
+                        snprintf(var_alias, sizeof(var_alias), "_cv_%d", si);
+                        if (m->type == VAR_MAP_TYPE_NODE) {
+                            transform_var_register_node(ret_ctx->var_ctx, m->variable, var_alias, NULL);
+                        } else {
+                            transform_var_register_edge(ret_ctx->var_ctx, m->variable, var_alias, NULL);
+                        }
+                        transform_var_set_bound(ret_ctx->var_ctx, m->variable, true);
+                    }
+
+                    /* Build SELECT expressions for inner RETURN items */
+                    bool inner_ok = true;
+                    for (int ri = 0; ri < inner_return_clause->items->count; ri++) {
+                        cypher_return_item *ret_item = (cypher_return_item*)inner_return_clause->items->items[ri];
+                        if (ri > 0) ipos += snprintf(inner_sql + ipos, sizeof(inner_sql) - ipos, ", ");
+
+                        char *saved_buf = ret_ctx->sql_buffer;
+                        int saved_size = ret_ctx->sql_size;
+                        int saved_cap = ret_ctx->sql_capacity;
+                        char temp_buf[2048] = {0};
+                        ret_ctx->sql_buffer = temp_buf;
+                        ret_ctx->sql_size = 0;
+                        ret_ctx->sql_capacity = sizeof(temp_buf);
+
+                        if (transform_expression(ret_ctx, ret_item->expr) == 0 && ret_ctx->sql_size > 0) {
+                            const char *col_name = ret_item->alias ? ret_item->alias : temp_buf;
+                            ipos += snprintf(inner_sql + ipos, sizeof(inner_sql) - ipos, "%s AS \"%s\"",
+                                             temp_buf, col_name);
+                        } else {
+                            inner_ok = false;
+                        }
+
+                        ret_ctx->sql_buffer = saved_buf;
+                        ret_ctx->sql_size = saved_size;
+                        ret_ctx->sql_capacity = saved_cap;
+                    }
+
+                    /* Build FROM/WHERE to pin variables to exact entity IDs */
+                    if (inner_ok && scoped_map->count > 0) {
+                        for (int si = 0; si < scoped_map->count; si++) {
+                            variable_mapping *m = &scoped_map->mappings[si];
+                            char var_alias[64];
+                            snprintf(var_alias, sizeof(var_alias), "_cv_%d", si);
+                            const char *table = m->type == VAR_MAP_TYPE_NODE ? "nodes" : "edges";
+                            if (si == 0) {
+                                ipos += snprintf(inner_sql + ipos, sizeof(inner_sql) - ipos,
+                                                 " FROM %s AS %s WHERE %s.id = %d",
+                                                 table, var_alias, var_alias, m->entity_id);
+                            } else {
+                                ipos += snprintf(inner_sql + ipos, sizeof(inner_sql) - ipos,
+                                                 " JOIN %s AS %s ON %s.id = %d",
+                                                 table, var_alias, var_alias, m->entity_id);
+                            }
+                        }
+                    }
+
+                    cypher_transform_free_context(ret_ctx);
+
+                    /* Store inner RETURN name→value pairs */
+                    int inner_col_count = 0;
+                    char **inner_col_names_local = NULL;
+                    char **inner_col_values = NULL;
+
+                    if (inner_ok) {
+                        CYPHER_DEBUG("CALL inner RETURN SQL: %s", inner_sql);
+                        sqlite3_stmt *inner_stmt;
+                        if (sqlite3_prepare_v2(executor->db, inner_sql, -1, &inner_stmt, NULL) == SQLITE_OK) {
+                            if (executor->params_json) {
+                                bind_params_from_json(inner_stmt, executor->params_json);
+                            }
+                            if (sqlite3_step(inner_stmt) == SQLITE_ROW) {
+                                inner_col_count = sqlite3_column_count(inner_stmt);
+                                inner_col_values = calloc(inner_col_count, sizeof(char*));
+                                inner_col_names_local = calloc(inner_col_count, sizeof(char*));
+                                for (int ic = 0; ic < inner_col_count; ic++) {
+                                    const char *cn = sqlite3_column_name(inner_stmt, ic);
+                                    const char *cv = (const char*)sqlite3_column_text(inner_stmt, ic);
+                                    inner_col_names_local[ic] = cn ? strdup(cn) : strdup("");
+                                    inner_col_values[ic] = cv ? strdup(cv) : NULL;
+                                }
+                            }
+                            sqlite3_finalize(inner_stmt);
+                        }
+                    }
+
+                    /* Build combined row for post-CALL RETURN */
+                    if (inner_col_values) {
+                        int total_cols = post_ret->items->count;
+
+                        if (accum_col_names == NULL) {
+                            accum_col_count = total_cols;
+                            accum_col_names = calloc(total_cols, sizeof(char*));
+                            for (int pi = 0; pi < total_cols; pi++) {
+                                cypher_return_item *item = (cypher_return_item*)post_ret->items->items[pi];
+                                if (item->alias) {
+                                    accum_col_names[pi] = strdup(item->alias);
+                                } else if (item->expr->type == AST_NODE_IDENTIFIER) {
+                                    accum_col_names[pi] = strdup(((cypher_identifier*)item->expr)->name);
+                                } else if (item->expr->type == AST_NODE_PROPERTY) {
+                                    cypher_property *p = (cypher_property*)item->expr;
+                                    cypher_identifier *base = (cypher_identifier*)p->expr;
+                                    char col_buf[256];
+                                    snprintf(col_buf, sizeof(col_buf), "%s.%s", base->name, p->property_name);
+                                    accum_col_names[pi] = strdup(col_buf);
+                                } else {
+                                    accum_col_names[pi] = strdup("?column?");
+                                }
+                            }
+                        }
+
+                        char **row = calloc(total_cols, sizeof(char*));
+                        for (int pi = 0; pi < total_cols; pi++) {
+                            cypher_return_item *item = (cypher_return_item*)post_ret->items->items[pi];
+                            bool resolved = false;
+
+                            /* Check inner RETURN columns first */
+                            if (item->expr->type == AST_NODE_IDENTIFIER) {
+                                const char *ref = ((cypher_identifier*)item->expr)->name;
+                                for (int ic = 0; ic < inner_col_count; ic++) {
+                                    if (inner_col_names_local[ic] && strcmp(inner_col_names_local[ic], ref) == 0) {
+                                        row[pi] = inner_col_values[ic] ? strdup(inner_col_values[ic]) : NULL;
+                                        resolved = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            /* Evaluate outer expressions via SQL */
+                            if (!resolved) {
+                                cypher_transform_context *eval_ctx = cypher_transform_create_context(executor->db);
+                                if (eval_ctx) {
+                                    for (int si = 0; si < var_map->count; si++) {
+                                        variable_mapping *m = &var_map->mappings[si];
+                                        char va[64];
+                                        snprintf(va, sizeof(va), "_ov_%d", si);
+                                        if (m->type == VAR_MAP_TYPE_NODE)
+                                            transform_var_register_node(eval_ctx->var_ctx, m->variable, va, NULL);
+                                        else
+                                            transform_var_register_edge(eval_ctx->var_ctx, m->variable, va, NULL);
+                                        transform_var_set_bound(eval_ctx->var_ctx, m->variable, true);
+                                    }
+
+                                    char eval_sql[2048];
+                                    size_t epos = 0;
+                                    epos += snprintf(eval_sql + epos, sizeof(eval_sql) - epos, "SELECT ");
+
+                                    char *sb = eval_ctx->sql_buffer;
+                                    int ss = eval_ctx->sql_size;
+                                    int sc = eval_ctx->sql_capacity;
+                                    char tb[1024] = {0};
+                                    eval_ctx->sql_buffer = tb;
+                                    eval_ctx->sql_size = 0;
+                                    eval_ctx->sql_capacity = sizeof(tb);
+
+                                    if (transform_expression(eval_ctx, item->expr) == 0 && eval_ctx->sql_size > 0) {
+                                        epos += snprintf(eval_sql + epos, sizeof(eval_sql) - epos, "%s", tb);
+                                        eval_ctx->sql_buffer = sb;
+                                        eval_ctx->sql_size = ss;
+                                        eval_ctx->sql_capacity = sc;
+
+                                        for (int si = 0; si < var_map->count; si++) {
+                                            variable_mapping *m = &var_map->mappings[si];
+                                            char va[64];
+                                            snprintf(va, sizeof(va), "_ov_%d", si);
+                                            const char *tbl = m->type == VAR_MAP_TYPE_NODE ? "nodes" : "edges";
+                                            if (si == 0)
+                                                epos += snprintf(eval_sql + epos, sizeof(eval_sql) - epos,
+                                                                 " FROM %s AS %s WHERE %s.id = %d", tbl, va, va, m->entity_id);
+                                            else
+                                                epos += snprintf(eval_sql + epos, sizeof(eval_sql) - epos,
+                                                                 " JOIN %s AS %s ON %s.id = %d", tbl, va, va, m->entity_id);
+                                        }
+
+                                        sqlite3_stmt *ev;
+                                        if (sqlite3_prepare_v2(executor->db, eval_sql, -1, &ev, NULL) == SQLITE_OK) {
+                                            if (executor->params_json) {
+                                                bind_params_from_json(ev, executor->params_json);
+                                            }
+                                            if (sqlite3_step(ev) == SQLITE_ROW) {
+                                                const char *val = (const char*)sqlite3_column_text(ev, 0);
+                                                row[pi] = val ? strdup(val) : NULL;
+                                            }
+                                            sqlite3_finalize(ev);
+                                        }
+                                    } else {
+                                        eval_ctx->sql_buffer = sb;
+                                        eval_ctx->sql_size = ss;
+                                        eval_ctx->sql_capacity = sc;
+                                    }
+                                    cypher_transform_free_context(eval_ctx);
+                                }
+                            }
+                        }
+
+                        if (accum_count >= accum_capacity) {
+                            accum_capacity *= 2;
+                            accum_rows = realloc(accum_rows, accum_capacity * sizeof(char**));
+                        }
+                        accum_rows[accum_count++] = row;
+
+                        for (int ic = 0; ic < inner_col_count; ic++) {
+                            free(inner_col_names_local[ic]);
+                            free(inner_col_values[ic]);
+                        }
+                        free(inner_col_names_local);
+                        free(inner_col_values);
+                    }
+                }
+            }
+        }
+
         free_variable_map(scoped_map);
         free_variable_map(var_map);
     }
@@ -2416,6 +2686,31 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
             post_return = (cypher_return*)query->clauses->items[i];
             break;
         }
+    }
+
+    /* If we accumulated inner+outer results, use them directly */
+    if (accumulating && accum_count > 0 && accum_col_names) {
+        result->column_count = accum_col_count;
+        result->column_names = accum_col_names;
+        result->row_count = accum_count;
+        result->data = accum_rows;
+        result->success = true;
+        return 0;
+    }
+
+    /* Clean up accumulator if unused */
+    if (accum_rows) {
+        for (int i = 0; i < accum_count; i++) {
+            if (accum_rows[i]) {
+                for (int j = 0; j < accum_col_count; j++) free(accum_rows[i][j]);
+                free(accum_rows[i]);
+            }
+        }
+        free(accum_rows);
+    }
+    if (accum_col_names) {
+        for (int i = 0; i < accum_col_count; i++) free(accum_col_names[i]);
+        free(accum_col_names);
     }
 
     if (post_return) {

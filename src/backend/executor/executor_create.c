@@ -172,6 +172,36 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                                 continue;
                                         }
                                     }
+                                } else if (pair->value->type == AST_NODE_FUNCTION_CALL) {
+                                    cypher_function_call *func = (cypher_function_call*)pair->value;
+                                    property_value func_pv;
+                                    property_value_init(&func_pv);
+                                    int rc = evaluate_function_call_via_sqlite(executor, func, &prop_type, &func_pv);
+                                    if (rc == -2) {
+                                        property_value_free(&func_pv);
+                                        continue;
+                                    } else if (rc == 0) {
+                                        static int64_t func_int_buf;
+                                        static double func_real_buf;
+                                        static int func_bool_buf;
+                                        if (prop_type == PROP_TYPE_TEXT || prop_type == PROP_TYPE_JSON) {
+                                            if (cypher_schema_set_node_property(executor->schema_mgr, node_id, pair->key, prop_type, func_pv.as_str) == 0) {
+                                                result->properties_set++;
+                                            }
+                                            property_value_free(&func_pv);
+                                            continue;
+                                        } else if (prop_type == PROP_TYPE_INTEGER) {
+                                            func_int_buf = func_pv.as_int;
+                                            prop_value = &func_int_buf;
+                                        } else if (prop_type == PROP_TYPE_REAL) {
+                                            func_real_buf = func_pv.as_real;
+                                            prop_value = &func_real_buf;
+                                        } else if (prop_type == PROP_TYPE_BOOLEAN) {
+                                            func_bool_buf = func_pv.as_bool;
+                                            prop_value = &func_bool_buf;
+                                        }
+                                    }
+                                    property_value_free(&func_pv);
                                 }
 
                                 if (prop_value) {
@@ -318,6 +348,36 @@ int execute_path_pattern_with_variables(cypher_executor *executor, cypher_path *
                                         property_value_free(&pv2);
                                         continue;
                                     }
+                                } else if (pair->value->type == AST_NODE_FUNCTION_CALL) {
+                                    cypher_function_call *func = (cypher_function_call*)pair->value;
+                                    property_value func_pv2;
+                                    property_value_init(&func_pv2);
+                                    int rc = evaluate_function_call_via_sqlite(executor, func, &prop_type, &func_pv2);
+                                    if (rc == -2) {
+                                        property_value_free(&func_pv2);
+                                        continue;
+                                    } else if (rc == 0) {
+                                        static int64_t func_int_buf2;
+                                        static double func_real_buf2;
+                                        static int func_bool_buf2;
+                                        if (prop_type == PROP_TYPE_TEXT || prop_type == PROP_TYPE_JSON) {
+                                            if (cypher_schema_set_node_property(executor->schema_mgr, target_node_id, pair->key, prop_type, func_pv2.as_str) == 0) {
+                                                result->properties_set++;
+                                            }
+                                            property_value_free(&func_pv2);
+                                            continue;
+                                        } else if (prop_type == PROP_TYPE_INTEGER) {
+                                            func_int_buf2 = func_pv2.as_int;
+                                            prop_value = &func_int_buf2;
+                                        } else if (prop_type == PROP_TYPE_REAL) {
+                                            func_real_buf2 = func_pv2.as_real;
+                                            prop_value = &func_real_buf2;
+                                        } else if (prop_type == PROP_TYPE_BOOLEAN) {
+                                            func_bool_buf2 = func_pv2.as_bool;
+                                            prop_value = &func_bool_buf2;
+                                        }
+                                    }
+                                    property_value_free(&func_pv2);
                                 }
 
                                 if (prop_value) {

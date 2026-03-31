@@ -96,6 +96,11 @@ int execute_merge_with_variables(cypher_executor *executor, cypher_merge *merge,
 int execute_set_clause(cypher_executor *executor, cypher_set *set, cypher_result *result);
 int execute_match_clause(cypher_executor *executor, cypher_match *match, cypher_result *result);
 
+/* Function evaluation via SQLite (defined in executor_set.c) */
+int evaluate_function_call_via_sqlite(cypher_executor *executor,
+    cypher_function_call *func_call,
+    property_type *out_type, property_value *out_value);
+
 /* SET operations with variable map */
 int execute_set_operations(cypher_executor *executor, cypher_set *set, variable_map *var_map, cypher_result *result);
 int execute_set_items(cypher_executor *executor, ast_list *items, variable_map *var_map, cypher_result *result);
