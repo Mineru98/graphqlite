@@ -3829,6 +3829,8 @@ fn test_count_skips_nulls_from_optional_match() {
     conn.cypher("MATCH (a:CntNullRs), (p:CntPetRs) CREATE (a)-[:OWNS_RS]->(p)").unwrap();
     let results = conn.cypher("MATCH (a:CntNullRs) OPTIONAL MATCH (a)-->(r:GhostRs) RETURN a.id AS aid, COUNT(r) AS cnt").unwrap();
     assert_eq!(results.len(), 1);
+    // COUNT in grouped aggregation returns "0" (string) due to pre-existing
+    // type coercion in the RETURN pipeline. Using String here, not i64.
     assert_eq!(results[0].get::<String>("cnt").unwrap(), "0");
 }
 

@@ -2281,7 +2281,6 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                         if (transform_match_clause(match_ctx, inner_match) == 0) {
                             sql_builder *sb = match_ctx->unified_builder;
                             int vcount = transform_var_count(match_ctx->var_ctx);
-                            sql_builder *id_builder = sql_builder_create();
                             const char *from_str = sql_builder_get_from(sb);
                             const char *joins_str = sql_builder_get_joins(sb);
                             const char *where_str = sql_builder_get_where(sb);
@@ -2300,7 +2299,6 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                 }
                             }
                             if (first_col) {
-                                sql_builder_free(id_builder);
                                 cypher_transform_free_context(match_ctx);
                                 continue;
                             }
@@ -2314,11 +2312,12 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                 pos += snprintf(id_sql + pos, sizeof(id_sql) - pos, " WHERE %s", where_str);
                             }
 
-                            sql_builder_free(id_builder);
-
                             CYPHER_DEBUG("CALL inner MATCH SQL: %s", id_sql);
                             sqlite3_stmt *match_stmt;
                             if (sqlite3_prepare_v2(executor->db, id_sql, -1, &match_stmt, NULL) == SQLITE_OK) {
+                                if (executor->params_json) {
+                                    bind_params_from_json(match_stmt, executor->params_json);
+                                }
                                 while (sqlite3_step(match_stmt) == SQLITE_ROW) {
                                     int mcols = sqlite3_column_count(match_stmt);
                                     for (int mc = 0; mc < mcols; mc++) {
@@ -2341,15 +2340,17 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                     for (int cj = ci + 1; cj < inner_query->clauses->count; cj++) {
                                         ast_node *post_clause = inner_query->clauses->items[cj];
                                         if (post_clause->type == AST_NODE_SET) {
-                                            execute_set_operations(executor, (cypher_set*)post_clause,
-                                                                   scoped_map, result);
+                                            rc = execute_set_operations(executor, (cypher_set*)post_clause,
+                                                                       scoped_map, result);
                                         } else if (post_clause->type == AST_NODE_MERGE) {
-                                            execute_merge_clause_with_vars(executor,
+                                            rc = execute_merge_clause_with_vars(executor,
                                                     (cypher_merge*)post_clause, result, scoped_map);
                                         } else if (post_clause->type == AST_NODE_CREATE) {
-                                            execute_create_clause(executor, (cypher_create*)post_clause, result);
+                                            rc = execute_create_clause(executor, (cypher_create*)post_clause, result);
                                         }
+                                        if (rc < 0) break;
                                     }
+                                    if (rc < 0) break;
                                 }
                                 sqlite3_finalize(match_stmt);
                             }
@@ -2525,6 +2526,9 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                         CYPHER_DEBUG("CALL inner RETURN SQL: %s", inner_sql);
                         sqlite3_stmt *inner_stmt;
                         if (sqlite3_prepare_v2(executor->db, inner_sql, -1, &inner_stmt, NULL) == SQLITE_OK) {
+                            if (executor->params_json) {
+                                bind_params_from_json(inner_stmt, executor->params_json);
+                            }
                             if (sqlite3_step(inner_stmt) == SQLITE_ROW) {
                                 inner_col_count = sqlite3_column_count(inner_stmt);
                                 inner_col_values = calloc(inner_col_count, sizeof(char*));
@@ -2630,6 +2634,9 @@ static int handle_call_subquery(cypher_executor *executor, cypher_query *query,
 
                                         sqlite3_stmt *ev;
                                         if (sqlite3_prepare_v2(executor->db, eval_sql, -1, &ev, NULL) == SQLITE_OK) {
+                                            if (executor->params_json) {
+                                                bind_params_from_json(ev, executor->params_json);
+                                            }
                                             if (sqlite3_step(ev) == SQLITE_ROW) {
                                                 const char *val = (const char*)sqlite3_column_text(ev, 0);
                                                 row[pi] = val ? strdup(val) : NULL;
