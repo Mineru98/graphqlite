@@ -432,38 +432,39 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
 
     if (is_edge) {
         /* Edge property access - use edge_props_* tables */
+        const char *id_suffix = skip_id_suffix ? "" : ".id";
         if (ctx->in_comparison) {
             append_sql(ctx, "(SELECT COALESCE(");
-            append_sql(ctx, "(SELECT ept.value FROM %sedge_props_text ept JOIN %sproperty_keys pk ON ept.key_id = pk.id WHERE ept.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT ept.value FROM %sedge_props_text ept JOIN %sproperty_keys pk ON ept.key_id = pk.id WHERE ept.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT epi.value FROM %sedge_props_int epi JOIN %sproperty_keys pk ON epi.key_id = pk.id WHERE epi.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT epi.value FROM %sedge_props_int epi JOIN %sproperty_keys pk ON epi.key_id = pk.id WHERE epi.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT epr.value FROM %sedge_props_real epr JOIN %sproperty_keys pk ON epr.key_id = pk.id WHERE epr.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT epr.value FROM %sedge_props_real epr JOIN %sproperty_keys pk ON epr.key_id = pk.id WHERE epr.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT CAST(epb.value AS INTEGER) FROM %sedge_props_bool epb JOIN %sproperty_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT CAST(epb.value AS INTEGER) FROM %sedge_props_bool epb JOIN %sproperty_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT epj.value FROM %sedge_props_json epj JOIN %sproperty_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT epj.value FROM %sedge_props_json epj JOIN %sproperty_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, ")))");
         } else {
             append_sql(ctx, "(SELECT COALESCE(");
-            append_sql(ctx, "(SELECT ept.value FROM %sedge_props_text ept JOIN %sproperty_keys pk ON ept.key_id = pk.id WHERE ept.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT ept.value FROM %sedge_props_text ept JOIN %sproperty_keys pk ON ept.key_id = pk.id WHERE ept.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT CAST(epi.value AS TEXT) FROM %sedge_props_int epi JOIN %sproperty_keys pk ON epi.key_id = pk.id WHERE epi.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT CAST(epi.value AS TEXT) FROM %sedge_props_int epi JOIN %sproperty_keys pk ON epi.key_id = pk.id WHERE epi.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT CAST(epr.value AS TEXT) FROM %sedge_props_real epr JOIN %sproperty_keys pk ON epr.key_id = pk.id WHERE epr.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT CAST(epr.value AS TEXT) FROM %sedge_props_real epr JOIN %sproperty_keys pk ON epr.key_id = pk.id WHERE epr.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT CASE WHEN epb.value THEN 'true' ELSE 'false' END FROM %sedge_props_bool epb JOIN %sproperty_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT CASE WHEN epb.value THEN 'true' ELSE 'false' END FROM %sedge_props_bool epb JOIN %sproperty_keys pk ON epb.key_id = pk.id WHERE epb.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT epj.value FROM %sedge_props_json epj JOIN %sproperty_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = %s.id AND pk.key = ", gprefix, gprefix, alias);
+            append_sql(ctx, "(SELECT epj.value FROM %sedge_props_json epj JOIN %sproperty_keys pk ON epj.key_id = pk.id WHERE epj.edge_id = %s%s AND pk.key = ", gprefix, gprefix, alias, id_suffix);
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, ")))");
         }
