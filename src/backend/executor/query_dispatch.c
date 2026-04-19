@@ -214,7 +214,7 @@ static const query_pattern patterns[] = {
     {
         .name = "MATCH+SET",
         .required = CLAUSE_MATCH | CLAUSE_SET,
-        .forbidden = CLAUSE_WITH,
+        .forbidden = CLAUSE_WITH | CLAUSE_MERGE | CLAUSE_CREATE,
         .handler = handle_match_set,
         .priority = 90
     },
@@ -285,7 +285,7 @@ static const query_pattern patterns[] = {
         .name = "MATCH+RETURN",
         .required = CLAUSE_MATCH | CLAUSE_RETURN,
         .forbidden = CLAUSE_OPTIONAL | CLAUSE_MULTI_MATCH | CLAUSE_CREATE |
-                     CLAUSE_SET | CLAUSE_DELETE | CLAUSE_MERGE,
+                     CLAUSE_SET | CLAUSE_DELETE | CLAUSE_MERGE | CLAUSE_UNWIND,
         .handler = handle_match_return,
         .priority = 70
     },
@@ -672,8 +672,37 @@ static int handle_match_set(cypher_executor *executor, cypher_query *query,
     cypher_match *match = find_match_clause(query);
     cypher_set *set = find_set_clause(query);
 
-    CYPHER_DEBUG("Executing MATCH+SET via pattern dispatch");
-    int rc = execute_match_set_query(executor, match, set, result);
+    int match_count = 0;
+    for (int i = 0; i < query->clauses->count; i++) {
+        if (query->clauses->items[i]->type == AST_NODE_MATCH) match_count++;
+    }
+
+    CYPHER_DEBUG("Executing MATCH+SET via pattern dispatch (match_count=%d)", match_count);
+
+    int rc;
+    if (match_count > 1) {
+        /* Multi-MATCH + SET: union bindings across every MATCH clause
+         * (first-row-each semantics, consistent with multi-MATCH+CREATE),
+         * then apply SET once. Resolves the GQLITE-T-0198 follow-up. */
+        variable_map *ms_vars = create_variable_map();
+        if (!ms_vars) {
+            set_result_error(result, "Failed to create variable map");
+            return -1;
+        }
+        for (int i = 0; i < query->clauses->count; i++) {
+            ast_node *clause = query->clauses->items[i];
+            if (!clause || clause->type != AST_NODE_MATCH) continue;
+            if (bind_match_clause_into_varmap(executor, (cypher_match*)clause, ms_vars, result) < 0) {
+                free_variable_map(ms_vars);
+                return -1;
+            }
+        }
+        rc = execute_set_operations(executor, set, ms_vars, result);
+        free_variable_map(ms_vars);
+    } else {
+        rc = execute_match_set_query(executor, match, set, result);
+    }
+
     if (rc >= 0) {
         result->success = true;
         if (flags & CLAUSE_RETURN) {
@@ -781,16 +810,32 @@ static int handle_match_merge(cypher_executor *executor, cypher_query *query,
 {
     cypher_match *match = find_match_clause(query);
     cypher_merge *merge = find_merge_clause(query);
+    cypher_set *set = find_set_clause(query);
 
     CYPHER_DEBUG("Executing MATCH+MERGE via pattern dispatch");
-    int rc = execute_match_merge_query(executor, match, merge, result);
-    if (rc >= 0) {
-        result->success = true;
-        if (flags & CLAUSE_RETURN) {
-            cypher_return *ret = find_return_clause(query);
-            if (ret) {
-                rc = execute_match_return_query(executor, match, ret, result);
-            }
+
+    /* Capture the MATCH+MERGE var_map when a trailing SET needs it. */
+    variable_map *mm_vars = NULL;
+    int rc = execute_match_merge_query_with_varmap(executor, match, merge, result, set ? &mm_vars : NULL);
+    if (rc < 0) {
+        if (mm_vars) free_variable_map(mm_vars);
+        return rc;
+    }
+
+    if (set && mm_vars) {
+        rc = execute_set_operations(executor, set, mm_vars, result);
+        if (rc < 0) {
+            free_variable_map(mm_vars);
+            return rc;
+        }
+    }
+    if (mm_vars) free_variable_map(mm_vars);
+
+    result->success = true;
+    if (flags & CLAUSE_RETURN) {
+        cypher_return *ret = find_return_clause(query);
+        if (ret) {
+            rc = execute_match_return_query(executor, match, ret, result);
         }
     }
     return rc;
@@ -800,14 +845,31 @@ static int handle_match_create(cypher_executor *executor, cypher_query *query,
                                cypher_result *result, clause_flags flags)
 {
     (void)flags;
-    cypher_match *match = find_match_clause(query);
     cypher_create *create = find_create_clause(query);
+    cypher_set *set = find_set_clause(query);
 
     CYPHER_DEBUG("Executing MATCH+CREATE via pattern dispatch");
-    int rc = execute_match_create_query(executor, match, create, result);
-    if (rc >= 0) {
-        result->success = true;
+
+    /* Always take the multi-MATCH path — it handles 1+ MATCH clauses and
+     * optionally returns the post-CREATE var_map so a trailing SET can
+     * thread its scope. Single-MATCH queries behave identically to the
+     * legacy execute_match_create_query path. */
+    variable_map *mc_vars = NULL;
+    int rc = execute_multi_match_create_query_with_varmap(executor, query, create, result,
+                                                          set ? &mc_vars : NULL);
+    if (rc < 0) {
+        if (mc_vars) free_variable_map(mc_vars);
+        return rc;
     }
+    if (set && mc_vars) {
+        rc = execute_set_operations(executor, set, mc_vars, result);
+        if (rc < 0) {
+            free_variable_map(mc_vars);
+            return rc;
+        }
+    }
+    if (mc_vars) free_variable_map(mc_vars);
+    if (rc >= 0) result->success = true;
     return rc;
 }
 
@@ -847,12 +909,29 @@ static int handle_create(cypher_executor *executor, cypher_query *query,
 {
     (void)flags;
     cypher_create *create = find_create_clause(query);
+    cypher_set *set = find_set_clause(query);
 
     CYPHER_DEBUG("Executing CREATE via pattern dispatch");
-    int rc = execute_create_clause(executor, create, result);
-    if (rc >= 0) {
-        result->success = true;
+
+    /* If no trailing SET, keep the fast path. */
+    if (!set) {
+        int rc = execute_create_clause(executor, create, result);
+        if (rc >= 0) result->success = true;
+        return rc;
     }
+
+    /* CREATE + SET: execute CREATE via the varmap variant, thread bindings
+     * into execute_set_operations. Keeps the dispatch table flat instead of
+     * adding a dedicated CREATE+SET entry. */
+    variable_map *create_vars = NULL;
+    int rc = execute_create_clause_with_varmap(executor, create, result, &create_vars);
+    if (rc < 0) {
+        if (create_vars) free_variable_map(create_vars);
+        return rc;
+    }
+    rc = execute_set_operations(executor, set, create_vars, result);
+    free_variable_map(create_vars);
+    if (rc >= 0) result->success = true;
     return rc;
 }
 
@@ -861,12 +940,27 @@ static int handle_merge(cypher_executor *executor, cypher_query *query,
 {
     (void)flags;
     cypher_merge *merge = find_merge_clause(query);
+    cypher_set *set = find_set_clause(query);
 
     CYPHER_DEBUG("Executing MERGE via pattern dispatch");
-    int rc = execute_merge_clause(executor, merge, result);
-    if (rc >= 0) {
-        result->success = true;
+
+    if (!set) {
+        int rc = execute_merge_clause(executor, merge, result);
+        if (rc >= 0) result->success = true;
+        return rc;
     }
+
+    /* MERGE + trailing SET: thread MERGE's var_map into execute_set_operations.
+     * ON CREATE / ON MATCH SET already run inside execute_merge_clause. */
+    variable_map *merge_vars = NULL;
+    int rc = execute_merge_clause_with_varmap(executor, merge, result, &merge_vars);
+    if (rc < 0) {
+        if (merge_vars) free_variable_map(merge_vars);
+        return rc;
+    }
+    rc = execute_set_operations(executor, set, merge_vars, result);
+    free_variable_map(merge_vars);
+    if (rc >= 0) result->success = true;
     return rc;
 }
 

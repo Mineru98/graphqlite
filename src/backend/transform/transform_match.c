@@ -164,32 +164,67 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
                             /* Skip if key is NULL (already handled in JOIN) */
                             if (!pair->key) continue;
                             if (pair->value && pair->value->type == AST_NODE_LITERAL) {
+                                /* Emit a per-property EXISTS subquery keyed by the pair's key
+                                 * instead of reusing the first-pair join's _prop_<alias>.value.
+                                 * Fixes GQLITE-T-0191: {k1:v1, k2:v2, ...} previously generated
+                                 * `_prop_<alias>.value = v1 AND _prop_<alias>.value = v2 ...`
+                                 * which is impossible. */
+                                cypher_literal *lit = (cypher_literal*)pair->value;
                                 dynamic_buffer cond;
                                 dbuf_init(&cond);
 
-                                cypher_literal *lit = (cypher_literal*)pair->value;
-                                /* Property value constraint - _prop_<alias> was added in generate_node_match */
-                                switch (lit->literal_type) {
-                                    case LITERAL_STRING: {
-                                        /* Escape single quotes in string */
-                                        char *escaped = escape_sql_string(lit->value.string);
-                                        dbuf_appendf(&cond, "_prop_%s.value = '%s'", alias, escaped ? escaped : lit->value.string);
-                                        free(escaped);
-                                        break;
+                                if (lit->literal_type == LITERAL_NULL) {
+                                    /* Key should not exist on the node (in any scalar table). */
+                                    dbuf_appendf(&cond,
+                                        "NOT EXISTS(SELECT 1 FROM node_props_text npt "
+                                        "JOIN property_keys pk ON npt.key_id = pk.id "
+                                        "WHERE npt.node_id = %s.id AND pk.key = '%s') AND "
+                                        "NOT EXISTS(SELECT 1 FROM node_props_int npi "
+                                        "JOIN property_keys pk ON npi.key_id = pk.id "
+                                        "WHERE npi.node_id = %s.id AND pk.key = '%s') AND "
+                                        "NOT EXISTS(SELECT 1 FROM node_props_real npr "
+                                        "JOIN property_keys pk ON npr.key_id = pk.id "
+                                        "WHERE npr.node_id = %s.id AND pk.key = '%s') AND "
+                                        "NOT EXISTS(SELECT 1 FROM node_props_bool npb "
+                                        "JOIN property_keys pk ON npb.key_id = pk.id "
+                                        "WHERE npb.node_id = %s.id AND pk.key = '%s')",
+                                        alias, pair->key, alias, pair->key,
+                                        alias, pair->key, alias, pair->key);
+                                } else {
+                                    const char *prop_table = "node_props_text";
+                                    char value_sql[128];
+                                    switch (lit->literal_type) {
+                                        case LITERAL_STRING: {
+                                            prop_table = "node_props_text";
+                                            char *escaped = escape_sql_string(lit->value.string);
+                                            snprintf(value_sql, sizeof(value_sql), "'%s'",
+                                                     escaped ? escaped : lit->value.string);
+                                            free(escaped);
+                                            break;
+                                        }
+                                        case LITERAL_INTEGER:
+                                            prop_table = "node_props_int";
+                                            snprintf(value_sql, sizeof(value_sql), "%lld",
+                                                     (long long)lit->value.integer);
+                                            break;
+                                        case LITERAL_DECIMAL:
+                                            prop_table = "node_props_real";
+                                            snprintf(value_sql, sizeof(value_sql), "%f", lit->value.decimal);
+                                            break;
+                                        case LITERAL_BOOLEAN:
+                                            prop_table = "node_props_bool";
+                                            snprintf(value_sql, sizeof(value_sql), "%d",
+                                                     lit->value.boolean ? 1 : 0);
+                                            break;
+                                        default:
+                                            value_sql[0] = '\0';
+                                            break;
                                     }
-                                    case LITERAL_INTEGER:
-                                        dbuf_appendf(&cond, "_prop_%s.value = %lld", alias, (long long)lit->value.integer);
-                                        break;
-                                    case LITERAL_DECIMAL:
-                                        dbuf_appendf(&cond, "_prop_%s.value = %f", alias, lit->value.decimal);
-                                        break;
-                                    case LITERAL_BOOLEAN:
-                                        dbuf_appendf(&cond, "_prop_%s.value = %d", alias, lit->value.boolean ? 1 : 0);
-                                        break;
-                                    case LITERAL_NULL:
-                                        /* NULL check - property should not exist */
-                                        dbuf_appendf(&cond, "_prop_%s.node_id IS NULL", alias);
-                                        break;
+                                    dbuf_appendf(&cond,
+                                        "EXISTS(SELECT 1 FROM %s t "
+                                        "JOIN property_keys pk ON pk.id = t.key_id "
+                                        "WHERE t.node_id = %s.id AND pk.key = '%s' AND t.value = %s)",
+                                        prop_table, alias, pair->key, value_sql);
                                 }
 
                                 if (!dbuf_is_empty(&cond)) {
@@ -230,6 +265,46 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
 
                                 sql_where(ctx->unified_builder, dbuf_get(&cond));
                                 dbuf_free(&cond);
+                            } else if (pair->value && pair->value->type == AST_NODE_PROPERTY) {
+                                /* Handle property access RHS like `item.id` where
+                                 * `item` is an UNWIND-projected variable (GQLITE-T-0185).
+                                 * Resolve the base through var_ctx to its SQL alias
+                                 * (e.g. `_unwind_0.value`), then emit
+                                 * json_extract(<alias>, '$.<field>') as the comparison RHS. */
+                                cypher_property *prop = (cypher_property*)pair->value;
+                                if (prop->expr && prop->expr->type == AST_NODE_IDENTIFIER && prop->property_name) {
+                                    cypher_identifier *base_id = (cypher_identifier*)prop->expr;
+                                    const char *base_alias = transform_var_get_alias(ctx->var_ctx, base_id->name);
+                                    if (base_alias) {
+                                        dynamic_buffer cond;
+                                        dbuf_init(&cond);
+                                        dbuf_appendf(&cond,
+                                            "("
+                                            "EXISTS(SELECT 1 FROM node_props_text npt "
+                                            "JOIN property_keys pk ON npt.key_id = pk.id "
+                                            "WHERE npt.node_id = %s.id AND pk.key = '%s' "
+                                            "AND npt.value = json_extract(%s, '$.%s')) OR "
+                                            "EXISTS(SELECT 1 FROM node_props_int npi "
+                                            "JOIN property_keys pk ON npi.key_id = pk.id "
+                                            "WHERE npi.node_id = %s.id AND pk.key = '%s' "
+                                            "AND npi.value = json_extract(%s, '$.%s')) OR "
+                                            "EXISTS(SELECT 1 FROM node_props_real npr "
+                                            "JOIN property_keys pk ON npr.key_id = pk.id "
+                                            "WHERE npr.node_id = %s.id AND pk.key = '%s' "
+                                            "AND npr.value = json_extract(%s, '$.%s')) OR "
+                                            "EXISTS(SELECT 1 FROM node_props_bool npb "
+                                            "JOIN property_keys pk ON npb.key_id = pk.id "
+                                            "WHERE npb.node_id = %s.id AND pk.key = '%s' "
+                                            "AND npb.value = json_extract(%s, '$.%s'))"
+                                            ")",
+                                            alias, pair->key, base_alias, prop->property_name,
+                                            alias, pair->key, base_alias, prop->property_name,
+                                            alias, pair->key, base_alias, prop->property_name,
+                                            alias, pair->key, base_alias, prop->property_name);
+                                        sql_where(ctx->unified_builder, dbuf_get(&cond));
+                                        dbuf_free(&cond);
+                                    }
+                                }
                             }
                         }
                     }

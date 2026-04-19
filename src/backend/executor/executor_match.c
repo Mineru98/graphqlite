@@ -725,12 +725,158 @@ agtype_value* build_path_from_ids(cypher_executor *executor, cypher_transform_co
 
 
 /* Execute MATCH+CREATE query combination */
+/* Helper: run a single MATCH clause and accumulate its node bindings into var_map.
+ * Used by the multi-MATCH path (GQLITE-T-0197) so that
+ * MATCH (a) MATCH (b) CREATE|MERGE|SET ... sees bindings from every MATCH,
+ * not just the first. Returns 0 on success, -1 on error (result carries msg). */
+int bind_match_clause_into_varmap(cypher_executor *executor, cypher_match *match,
+                                  variable_map *var_map, cypher_result *result)
+{
+    if (!executor || !match || !var_map || !result) return -1;
+
+    cypher_transform_context *ctx = cypher_transform_create_context(executor->db);
+    if (!ctx) {
+        set_result_error(result, "Failed to create transform context");
+        return -1;
+    }
+
+    if (transform_match_clause(ctx, match) < 0) {
+        set_result_error(result, "Failed to transform MATCH clause");
+        cypher_transform_free_context(ctx);
+        return -1;
+    }
+
+    if (finalize_sql_generation(ctx) < 0) {
+        set_result_error(result, "Failed to finalize SQL generation");
+        cypher_transform_free_context(ctx);
+        return -1;
+    }
+
+    /* Replace SELECT * with explicit node-id selection for each MATCH variable. */
+    char *select_pos = strstr(ctx->sql_buffer, "SELECT *");
+    if (select_pos) {
+        char *after_star = select_pos + strlen("SELECT *");
+        char *temp = strdup(after_star);
+        ctx->sql_size = select_pos + strlen("SELECT ") - ctx->sql_buffer;
+        ctx->sql_buffer[ctx->sql_size] = '\0';
+        bool first = true;
+        int var_count = transform_var_count(ctx->var_ctx);
+        for (int i = 0; i < var_count; i++) {
+            transform_var *var = transform_var_at(ctx->var_ctx, i);
+            if (var && var->kind == VAR_KIND_NODE) {
+                if (!first) append_sql(ctx, ", ");
+                append_sql(ctx, "%s.id AS \"%s_id\"", var->table_alias, var->name);
+                first = false;
+            }
+        }
+        append_sql(ctx, " %s", temp);
+        free(temp);
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(executor->db, ctx->sql_buffer, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        char error[512];
+        snprintf(error, sizeof(error), "MATCH SQL prepare failed: %s", sqlite3_errmsg(executor->db));
+        set_result_error(result, error);
+        cypher_transform_free_context(ctx);
+        return -1;
+    }
+    if (executor->params_json) {
+        if (bind_params_from_json(stmt, executor->params_json) < 0) {
+            set_result_error(result, "Failed to bind query parameters");
+            sqlite3_finalize(stmt);
+            cypher_transform_free_context(ctx);
+            return -1;
+        }
+    }
+
+    /* Take the first matched row. Last-wins for same-name variable rebinds. */
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        int col = 0;
+        int var_count2 = transform_var_count(ctx->var_ctx);
+        for (int i = 0; i < var_count2; i++) {
+            transform_var *var = transform_var_at(ctx->var_ctx, i);
+            if (var && var->kind == VAR_KIND_NODE) {
+                int64_t node_id = sqlite3_column_int64(stmt, col);
+                set_variable_node_id(var_map, var->name, (int)node_id);
+                CYPHER_DEBUG("multi-MATCH bound '%s' -> node %lld", var->name, (long long)node_id);
+                col++;
+            }
+        }
+    }
+    sqlite3_finalize(stmt);
+    cypher_transform_free_context(ctx);
+    return 0;
+}
+
+/* Multi-MATCH variant: iterate every AST_NODE_MATCH clause in the query,
+ * accumulate bindings, then run CREATE. Resolves GQLITE-T-0190 for the
+ * MATCH ... MATCH ... CREATE shape (single MATCH routed through the legacy
+ * execute_match_create_query still works since it takes the first MATCH). */
+int execute_multi_match_create_query(cypher_executor *executor, cypher_query *query,
+                                     cypher_create *create, cypher_result *result)
+{
+    return execute_multi_match_create_query_with_varmap(executor, query, create, result, NULL);
+}
+
+/* Same as execute_multi_match_create_query but optionally returns the
+ * accumulated var_map (MATCH bindings + CREATE-introduced node vars)
+ * so callers can thread it into a trailing SET. */
+int execute_multi_match_create_query_with_varmap(cypher_executor *executor, cypher_query *query,
+                                                 cypher_create *create, cypher_result *result,
+                                                 variable_map **out_var_map)
+{
+    if (!executor || !query || !create || !result) {
+        if (out_var_map) *out_var_map = NULL;
+        return -1;
+    }
+    if (out_var_map) *out_var_map = NULL;
+
+    variable_map *var_map = create_variable_map();
+    if (!var_map) {
+        set_result_error(result, "Failed to create variable map");
+        return -1;
+    }
+
+    for (int i = 0; i < query->clauses->count; i++) {
+        ast_node *clause = query->clauses->items[i];
+        if (!clause || clause->type != AST_NODE_MATCH) continue;
+        if (bind_match_clause_into_varmap(executor, (cypher_match*)clause, var_map, result) < 0) {
+            free_variable_map(var_map);
+            return -1;
+        }
+    }
+
+    if (!create->pattern) {
+        set_result_error(result, "No pattern in CREATE clause");
+        free_variable_map(var_map);
+        return -1;
+    }
+    for (int i = 0; i < create->pattern->count; i++) {
+        ast_node *pattern = create->pattern->items[i];
+        if (pattern->type == AST_NODE_PATH) {
+            if (execute_path_pattern_with_variables(executor, (cypher_path*)pattern, result, var_map) < 0) {
+                free_variable_map(var_map);
+                return -1;
+            }
+        }
+    }
+
+    if (out_var_map) {
+        *out_var_map = var_map;
+    } else {
+        free_variable_map(var_map);
+    }
+    return 0;
+}
+
 int execute_match_create_query(cypher_executor *executor, cypher_match *match, cypher_create *create, cypher_result *result)
 {
     if (!executor || !match || !create || !result) {
         return -1;
     }
-    
+
     CYPHER_DEBUG("Executing MATCH+CREATE query");
     
     /* First, execute the MATCH to bind variables to existing nodes */
