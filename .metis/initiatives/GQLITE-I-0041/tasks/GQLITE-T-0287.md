@@ -4,14 +4,14 @@ level: task
 title: "C2: Decide and document generated-files (parser/scanner) policy + CI gate"
 short_code: "GQLITE-T-0287"
 created_at: 2026-05-19T14:48:18.601517+00:00
-updated_at: 2026-05-19T14:48:18.601517+00:00
+updated_at: 2026-05-19T18:59:08.818331+00:00
 parent: GQLITE-I-0041
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -27,6 +27,10 @@ initiative_id: GQLITE-I-0041
 ## Objective
 
 Pick Option A (generated files in git + CI staleness check) or Option B (gitignore + always regenerate). Initiative recommends A so `git clone && make` works without flex/bison locally. Whichever wins: document in CONTRIBUTING and implement the CI check or build wiring.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

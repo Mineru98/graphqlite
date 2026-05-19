@@ -136,6 +136,12 @@ void append_sql(cypher_transform_context *ctx, const char *format, ...);
 void append_identifier(cypher_transform_context *ctx, const char *name);
 void append_string_literal(cypher_transform_context *ctx, const char *value);
 
+/* Pending property joins for aggregation optimization */
+void add_pending_prop_join(cypher_transform_context *ctx, const char *join_sql);
+const char* get_pending_prop_joins(cypher_transform_context *ctx);
+size_t get_pending_prop_joins_len(cypher_transform_context *ctx);
+void reset_pending_prop_joins(cypher_transform_context *ctx);
+
 /* Graph-aware table name helper - uses variable's associated graph */
 void append_var_table(cypher_transform_context *ctx, const char *var_name, const char *table);
 

@@ -132,3 +132,6 @@ Cargo.lock
 # Metis database (auto-generated)
 .metis/metis.db
 bindings/python/src/graphqlite.egg-info/
+
+# Generated parser/scanner output (regenerated into build/)
+src/generated/

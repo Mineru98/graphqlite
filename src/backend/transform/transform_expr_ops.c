@@ -9,7 +9,6 @@
 #include <ctype.h>
 
 #include "transform/cypher_transform.h"
-#include "transform/transform_internal.h"
 #include "transform/transform_functions.h"
 #include "transform/transform_func_dispatch.h"
 #include "parser/cypher_debug.h"
