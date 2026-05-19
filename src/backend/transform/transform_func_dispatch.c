@@ -10,7 +10,17 @@
 #include <strings.h>
 
 #include "transform/transform_func_dispatch.h"
-#include "transform/transform_functions.h"
+#include "transform/transform_func_string.h"
+#include "transform/transform_func_math.h"
+#include "transform/transform_func_entity.h"
+#include "transform/transform_func_path.h"
+#include "transform/transform_func_list.h"
+#include "transform/transform_func_aggregate.h"
+#include "transform/transform_func_graph.h"
+#include "transform/transform_func_temporal.h"
+#include "transform/transform_func_geo.h"
+#include "transform/transform_func_json.h"
+#include "transform/transform_func_typeconv.h"
 
 /*
  * Static dispatch table mapping function names to handlers.

@@ -18,7 +18,9 @@
 #include <string.h>
 
 #include "transform/cypher_transform.h"
-#include "transform/transform_functions.h"
+#include "transform/transform_func_list.h"
+#include "transform/transform_func_path.h"
+#include "transform/transform_func_string.h"
 #include "parser/cypher_ast.h"
 #include "parser/cypher_debug.h"
 

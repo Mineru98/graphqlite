@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "transform/cypher_transform.h"
-#include "transform/transform_functions.h"
+#include "transform/transform_func_temporal.h"
 #include "parser/cypher_ast.h"
 #include "parser/cypher_debug.h"
 
