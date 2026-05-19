@@ -133,6 +133,10 @@ TRANSFORM_SRCS = \
 	$(TRANSFORM_DIR)/transform_func_entity.c \
 	$(TRANSFORM_DIR)/transform_func_path.c \
 	$(TRANSFORM_DIR)/transform_func_list.c \
+	$(TRANSFORM_DIR)/transform_func_temporal.c \
+	$(TRANSFORM_DIR)/transform_func_geo.c \
+	$(TRANSFORM_DIR)/transform_func_json.c \
+	$(TRANSFORM_DIR)/transform_func_typeconv.c \
 	$(TRANSFORM_DIR)/transform_func_graph.c \
 	$(TRANSFORM_DIR)/transform_func_aggregate.c \
 	$(TRANSFORM_DIR)/transform_func_dispatch.c \

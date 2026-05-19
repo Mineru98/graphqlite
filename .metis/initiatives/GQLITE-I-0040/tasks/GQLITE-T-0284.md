@@ -4,14 +4,14 @@ level: task
 title: "M11: Move type-conversion transform fns (toString, toInteger, etc.) → transform_func_typeconv.c"
 short_code: "GQLITE-T-0284"
 created_at: 2026-05-19T14:47:55.024731+00:00
-updated_at: 2026-05-19T14:47:55.024731+00:00
+updated_at: 2026-05-19T22:50:29.035858+00:00
 parent: GQLITE-I-0040
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -27,6 +27,10 @@ initiative_id: GQLITE-I-0040
 ## Objective
 
 Carve out `tostring_function`, `type_conversion_function`, `type_conversion_ornull_function`, `valuetype_function`, `nullif_function`.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
