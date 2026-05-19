@@ -131,9 +131,18 @@ char* get_next_default_alias(cypher_transform_context *ctx);
 /* Path variable registration (uses unified transform_var system) */
 int register_path_variable(cypher_transform_context *ctx, const char *name, cypher_path *path);
 
-/* SQL generation helpers */
+/* SQL generation helpers — DEPRECATED (I-0039 S4).
+ *
+ * The legacy append_sql trio is being migrated to the sql_builder API in
+ * sql_builder.h. New code MUST use sql_builder. Existing callers warn at
+ * compile time but continue to compile during the per-file migration
+ * (S5–S12). See docs/internal/sql-migration-inventory.md for the
+ * migration plan and capability mapping. */
+__attribute__((deprecated("use sql_builder; see docs/internal/sql-migration-inventory.md")))
 void append_sql(cypher_transform_context *ctx, const char *format, ...);
+__attribute__((deprecated("use sql_builder; see docs/internal/sql-migration-inventory.md")))
 void append_identifier(cypher_transform_context *ctx, const char *name);
+__attribute__((deprecated("use sql_builder; see docs/internal/sql-migration-inventory.md")))
 void append_string_literal(cypher_transform_context *ctx, const char *value);
 
 /* Pending property joins for aggregation optimization */
