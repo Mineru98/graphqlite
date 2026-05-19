@@ -8,6 +8,7 @@
 
 #include "executor/cypher_executor.h"
 #include "executor/cypher_schema.h"
+#include "executor/query_patterns.h"
 #include "parser/cypher_ast.h"
 #include "parser/cypher_parser.h"
 #include "transform/cypher_transform.h"
@@ -147,6 +148,30 @@ char* serialize_ast_to_json(ast_node *expr);
 /* Result building functions */
 int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_return *return_clause,
                         cypher_result *result, cypher_transform_context *ctx);
+
+/* Query-pattern handlers extracted from query_dispatch.c (I-0040 M1-M3) */
+struct query_pattern;  /* forward-declared in executor/query_patterns.h */
+int handle_generic_transform(cypher_executor *executor, cypher_query *query,
+                             cypher_result *result, clause_flags flags);
+int handle_call_subquery(cypher_executor *executor, cypher_query *query,
+                         cypher_result *result, clause_flags flags);
+int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *query,
+                               cypher_result *result, clause_flags flags);
+
+/* RETURN-projection + aggregation helpers (executor_result_project.c, I-0040 M3) */
+bool synthesize_delete_return(cypher_return *ret, cypher_result *result);
+bool return_has_aggregation(cypher_return *ret);
+const char *aggregating_call_name(ast_node *expr);
+void project_aggregate_cell(cypher_executor *executor,
+                            cypher_return_item *item,
+                            variable_map **maps, int n_maps,
+                            cypher_result *result, int col_idx);
+void project_return_row_from_var_map(cypher_executor *executor,
+                                     cypher_return *ret,
+                                     variable_map *var_map,
+                                     cypher_result *result,
+                                     int row_idx);
+void set_return_column_names(cypher_return *ret, cypher_result *result);
 agtype_value* create_property_agtype_value(const char* value);
 agtype_value* build_path_from_ids(cypher_executor *executor, cypher_transform_context *ctx,
                                   const char *path_name, const char *json_ids);

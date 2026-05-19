@@ -4,14 +4,14 @@ level: task
 title: "M2: Move handle_merge_with_pipeline + helpers → executor_merge_pipeline.c"
 short_code: "GQLITE-T-0275"
 created_at: 2026-05-19T14:46:37.114366+00:00
-updated_at: 2026-05-19T14:46:37.114366+00:00
+updated_at: 2026-05-19T20:59:28.793118+00:00
 parent: GQLITE-I-0040
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -27,6 +27,10 @@ initiative_id: GQLITE-I-0040
 ## Objective
 
 `query_dispatch.c` lines ~1250–1633 (`handle_merge_with_pipeline` and its helpers) carve out into a new `src/backend/executor/executor_merge_pipeline.c`. Pure code move.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

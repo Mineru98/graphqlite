@@ -161,6 +161,9 @@ EXECUTOR_SRCS = \
 	$(EXECUTOR_DIR)/executor_merge.c \
 	$(EXECUTOR_DIR)/executor_match.c \
 	$(EXECUTOR_DIR)/query_dispatch.c \
+	$(EXECUTOR_DIR)/executor_call_subquery.c \
+	$(EXECUTOR_DIR)/executor_merge_pipeline.c \
+	$(EXECUTOR_DIR)/executor_result_project.c \
 	$(EXECUTOR_DIR)/agtype.c \
 	$(EXECUTOR_DIR)/json_builder.c \
 	$(EXECUTOR_DIR)/graph_algorithms.c \
