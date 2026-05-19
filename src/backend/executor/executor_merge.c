@@ -393,30 +393,17 @@ int find_edge_by_pattern(cypher_executor *executor, int source_id, int target_id
     sqlite3_finalize(stmt);
     return edge_id;
 }
-/* Execute MERGE clause */
-int execute_merge_clause(cypher_executor *executor, cypher_merge *merge, cypher_result *result)
+/* Execute MERGE clause — canonical signature (I-0041 C8–C10).
+ *
+ * external_vars may be NULL when MERGE is run without a preceding
+ * MATCH-bound scope. out_var_map may be NULL when the caller doesn't
+ * need the resulting variable bindings (e.g. terminal MERGE without
+ * trailing RETURN/SET). */
+int execute_merge_clause(cypher_executor *executor, cypher_merge *merge,
+                         cypher_result *result, variable_map *external_vars,
+                         variable_map **out_var_map)
 {
-    return execute_merge_clause_with_vars(executor, merge, result, NULL);
-}
-
-int execute_merge_clause_with_varmap(cypher_executor *executor, cypher_merge *merge,
-                                     cypher_result *result, variable_map **out_var_map)
-{
-    if (!out_var_map) return -1;
-    *out_var_map = NULL;
-    return execute_merge_clause_with_vars_ex(executor, merge, result, NULL, out_var_map);
-}
-
-int execute_merge_clause_with_vars(cypher_executor *executor, cypher_merge *merge,
-                                    cypher_result *result, variable_map *external_vars)
-{
-    return execute_merge_clause_with_vars_ex(executor, merge, result, external_vars, NULL);
-}
-
-int execute_merge_clause_with_vars_ex(cypher_executor *executor, cypher_merge *merge,
-                                       cypher_result *result, variable_map *external_vars,
-                                       variable_map **out_var_map)
-{
+    if (out_var_map) *out_var_map = NULL;
     if (!executor || !merge || !result) {
         return -1;
     }

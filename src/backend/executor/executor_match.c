@@ -854,18 +854,12 @@ int bind_match_clause_into_varmap(cypher_executor *executor, cypher_match *match
  * accumulate bindings, then run CREATE. Resolves GQLITE-T-0190 for the
  * MATCH ... MATCH ... CREATE shape (single MATCH routed through the legacy
  * execute_match_create_query still works since it takes the first MATCH). */
+/* Canonical entry point — pass NULL for out_var_map if the caller
+ * doesn't need the accumulated MATCH+CREATE bindings (the previous
+ * no-arg wrapper just did this). I-0041 C11. */
 int execute_multi_match_create_query(cypher_executor *executor, cypher_query *query,
-                                     cypher_create *create, cypher_result *result)
-{
-    return execute_multi_match_create_query_with_varmap(executor, query, create, result, NULL);
-}
-
-/* Same as execute_multi_match_create_query but optionally returns the
- * accumulated var_map (MATCH bindings + CREATE-introduced node vars)
- * so callers can thread it into a trailing SET. */
-int execute_multi_match_create_query_with_varmap(cypher_executor *executor, cypher_query *query,
-                                                 cypher_create *create, cypher_result *result,
-                                                 variable_map **out_var_map)
+                                     cypher_create *create, cypher_result *result,
+                                     variable_map **out_var_map)
 {
     if (!executor || !query || !create || !result) {
         if (out_var_map) *out_var_map = NULL;

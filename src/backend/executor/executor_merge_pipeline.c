@@ -244,7 +244,7 @@ int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *query,
         }
 
         /* Execute MERGE with resolved variable bindings */
-        int rc = execute_merge_clause_with_vars(executor, post_merge, result, resolved_vars);
+        int rc = execute_merge_clause(executor, post_merge, result, resolved_vars, NULL);
 
         /* Execute any post-WITH SET clauses */
         for (int i = with_pos + 1; i < query->clauses->count; i++) {
@@ -261,7 +261,7 @@ int handle_merge_with_pipeline(cypher_executor *executor, cypher_query *query,
     }
 
     /* Execute the MERGE clause (handles ON CREATE SET internally) */
-    int rc = execute_merge_clause(executor, merge, result);
+    int rc = execute_merge_clause(executor, merge, result, NULL, NULL);
     if (rc < 0) return -1;
 
     /* Execute any standalone SET clauses between MERGE and WITH */

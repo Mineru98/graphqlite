@@ -89,14 +89,13 @@ int execute_create_clause(cypher_executor *executor, cypher_create *create, cyph
 int execute_create_clause_with_varmap(cypher_executor *executor, cypher_create *create,
                                       cypher_result *result, variable_map **out_var_map);
 int execute_foreach_clause(cypher_executor *executor, cypher_foreach *foreach, cypher_result *result);
-int execute_merge_clause(cypher_executor *executor, cypher_merge *merge, cypher_result *result);
-int execute_merge_clause_with_vars(cypher_executor *executor, cypher_merge *merge,
-                                    cypher_result *result, variable_map *external_vars);
-int execute_merge_clause_with_varmap(cypher_executor *executor, cypher_merge *merge,
-                                     cypher_result *result, variable_map **out_var_map);
-int execute_merge_clause_with_vars_ex(cypher_executor *executor, cypher_merge *merge,
-                                       cypher_result *result, variable_map *external_vars,
-                                       variable_map **out_var_map);
+/* Canonical MERGE entry point (I-0041 C8). Pass NULL for external_vars
+ * if no inbound scope; pass NULL for out_var_map if you don't want the
+ * resulting bindings. The four pre-collapse variants (no-arg,
+ * _with_vars, _with_varmap, _with_vars_ex) all map to this signature. */
+int execute_merge_clause(cypher_executor *executor, cypher_merge *merge,
+                         cypher_result *result, variable_map *external_vars,
+                         variable_map **out_var_map);
 int execute_merge_with_variables(cypher_executor *executor, cypher_merge *merge,
                                  variable_map *var_map, cypher_result *result);
 int execute_set_clause(cypher_executor *executor, cypher_set *set, cypher_result *result);
@@ -114,8 +113,11 @@ int execute_set_items(cypher_executor *executor, ast_list *items, variable_map *
 /* MATCH-based query execution functions */
 int execute_match_return_query(cypher_executor *executor, cypher_match *match, cypher_return *return_clause, cypher_result *result);
 int execute_match_create_query(cypher_executor *executor, cypher_match *match, cypher_create *create, cypher_result *result);
-int execute_multi_match_create_query(cypher_executor *executor, cypher_query *query, cypher_create *create, cypher_result *result);
-int execute_multi_match_create_query_with_varmap(cypher_executor *executor, cypher_query *query, cypher_create *create, cypher_result *result, variable_map **out_var_map);
+/* Canonical multi-MATCH + CREATE entry point (I-0041 C11). Pass NULL
+ * for out_var_map if the caller doesn't need the accumulated bindings. */
+int execute_multi_match_create_query(cypher_executor *executor, cypher_query *query,
+                                     cypher_create *create, cypher_result *result,
+                                     variable_map **out_var_map);
 int bind_match_clause_into_varmap(cypher_executor *executor, cypher_match *match,
                                   variable_map *var_map, cypher_result *result);
 int execute_match_merge_query_with_varmap(cypher_executor *executor, cypher_match *match, cypher_merge *merge,

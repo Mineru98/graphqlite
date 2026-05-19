@@ -857,7 +857,7 @@ static int handle_match_create(cypher_executor *executor, cypher_query *query,
      * thread its scope. Single-MATCH queries behave identically to the
      * legacy execute_match_create_query path. */
     variable_map *mc_vars = NULL;
-    int rc = execute_multi_match_create_query_with_varmap(executor, query, create, result,
+    int rc = execute_multi_match_create_query(executor, query, create, result,
                                                           set ? &mc_vars : NULL);
     if (rc < 0) {
         if (mc_vars) free_variable_map(mc_vars);
@@ -976,7 +976,7 @@ static int handle_merge(cypher_executor *executor, cypher_query *query,
     CYPHER_DEBUG("Executing MERGE via pattern dispatch");
 
     if (!set) {
-        int rc = execute_merge_clause(executor, merge, result);
+        int rc = execute_merge_clause(executor, merge, result, NULL, NULL);
         if (rc >= 0) result->success = true;
         return rc;
     }
@@ -984,7 +984,7 @@ static int handle_merge(cypher_executor *executor, cypher_query *query,
     /* MERGE + trailing SET: thread MERGE's var_map into execute_set_operations.
      * ON CREATE / ON MATCH SET already run inside execute_merge_clause. */
     variable_map *merge_vars = NULL;
-    int rc = execute_merge_clause_with_varmap(executor, merge, result, &merge_vars);
+    int rc = execute_merge_clause(executor, merge, result, NULL, &merge_vars);
     if (rc < 0) {
         if (merge_vars) free_variable_map(merge_vars);
         return rc;
@@ -1306,7 +1306,7 @@ static int handle_unwind_merge(cypher_executor *executor, cypher_query *query,
                 set_foreach_binding_int(ctx, unwind->alias, sqlite3_column_int64(stmt, 0));
             }
 
-            if (execute_merge_clause(executor, merge, result) < 0) {
+            if (execute_merge_clause(executor, merge, result, NULL, NULL) < 0) {
                 g_foreach_ctx = prev_ctx;
                 free_foreach_context(ctx);
                 sqlite3_finalize(stmt);
@@ -1347,7 +1347,7 @@ static int handle_unwind_merge(cypher_executor *executor, cypher_query *query,
                 continue;
             }
 
-            if (execute_merge_clause(executor, merge, result) < 0) {
+            if (execute_merge_clause(executor, merge, result, NULL, NULL) < 0) {
                 g_foreach_ctx = prev_ctx;
                 free_foreach_context(ctx);
                 return -1;
@@ -1897,7 +1897,7 @@ static int handle_unwind_merge_return(cypher_executor *executor, cypher_query *q
             default: continue;
         }
         variable_map *vm = NULL;
-        if (execute_merge_clause_with_varmap(executor, merge, result, &vm) < 0) {
+        if (execute_merge_clause(executor, merge, result, NULL, &vm) < 0) {
             for (int j = 0; j < n_maps; j++) free_variable_map(maps[j]);
             free(maps);
             g_foreach_ctx = prev_ctx;
@@ -1992,7 +1992,7 @@ static int handle_merge_return(cypher_executor *executor, cypher_query *query,
     CYPHER_DEBUG("Executing MERGE+RETURN via pattern dispatch");
 
     variable_map *vm = NULL;
-    if (execute_merge_clause_with_varmap(executor, merge, result, &vm) < 0) {
+    if (execute_merge_clause(executor, merge, result, NULL, &vm) < 0) {
         if (vm) free_variable_map(vm);
         return -1;
     }

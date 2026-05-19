@@ -4,14 +4,14 @@ level: task
 title: "C8: Design canonical execute_merge_clause signature; document in commit message"
 short_code: "GQLITE-T-0293"
 created_at: 2026-05-19T14:49:07.195492+00:00
-updated_at: 2026-05-19T14:49:07.195492+00:00
+updated_at: 2026-05-19T23:28:16.642005+00:00
 parent: GQLITE-I-0041
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -27,6 +27,10 @@ initiative_id: GQLITE-I-0041
 ## Objective
 
 Pick the canonical signature. Per initiative: `int execute_merge_clause(cypher_executor *executor, cypher_merge *merge, cypher_result *result, variable_map *in_vars, variable_map **out_vars);` — caller passes NULL for unused slots. Document the design and the migration plan for the five existing variants in the commit message that introduces the canonical signature.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

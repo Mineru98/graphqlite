@@ -328,8 +328,7 @@ int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                         return -1;
                     }
                 } else if (inner_clause->type == AST_NODE_MERGE) {
-                    rc = execute_merge_clause_with_vars(executor,
-                            (cypher_merge*)inner_clause, result, scoped_map);
+                    rc = execute_merge_clause(executor, (cypher_merge*)inner_clause, result, scoped_map, NULL);
                     if (rc < 0) {
                         free_variable_map(scoped_map);
                         free_variable_map(var_map);
@@ -417,8 +416,7 @@ int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                                             rc = execute_set_operations(executor, (cypher_set*)post_clause,
                                                                        scoped_map, result);
                                         } else if (post_clause->type == AST_NODE_MERGE) {
-                                            rc = execute_merge_clause_with_vars(executor,
-                                                    (cypher_merge*)post_clause, result, scoped_map);
+                                            rc = execute_merge_clause(executor, (cypher_merge*)post_clause, result, scoped_map, NULL);
                                         } else if (post_clause->type == AST_NODE_CREATE) {
                                             rc = execute_create_clause(executor, (cypher_create*)post_clause, result);
                                         }
@@ -492,7 +490,7 @@ int handle_call_subquery(cypher_executor *executor, cypher_query *query,
                         if (bc->type == AST_NODE_SET) {
                             execute_set_operations(executor, (cypher_set*)bc, branch_scope, result);
                         } else if (bc->type == AST_NODE_MERGE) {
-                            execute_merge_clause(executor, (cypher_merge*)bc, result);
+                            execute_merge_clause(executor, (cypher_merge*)bc, result, NULL, NULL);
                         } else if (bc->type == AST_NODE_CREATE) {
                             execute_create_clause(executor, (cypher_create*)bc, result);
                         }

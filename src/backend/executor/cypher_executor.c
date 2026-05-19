@@ -313,7 +313,7 @@ cypher_result* cypher_executor_execute_ast(cypher_executor *executor, ast_node *
             break;
 
         case AST_NODE_MERGE:
-            if (execute_merge_clause(executor, (cypher_merge*)ast, result) < 0) {
+            if (execute_merge_clause(executor, (cypher_merge*)ast, result, NULL, NULL) < 0) {
                 return result; /* Error already set */
             }
             break;
