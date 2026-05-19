@@ -90,6 +90,7 @@ BUILD_DIR = build
 BUILD_PARSER_DIR = $(BUILD_DIR)/parser
 BUILD_TRANSFORM_DIR = $(BUILD_DIR)/transform
 BUILD_EXECUTOR_DIR = $(BUILD_DIR)/executor
+BUILD_RUNTIME_DIR = $(BUILD_DIR)/runtime
 BUILD_TEST_DIR = $(BUILD_DIR)/tests
 COVERAGE_DIR = $(BUILD_DIR)/coverage
 
@@ -190,6 +191,16 @@ TRANSFORM_OBJS_PIC = $(TRANSFORM_SRCS:$(TRANSFORM_DIR)/%.c=$(BUILD_TRANSFORM_DIR
 EXECUTOR_OBJS = $(EXECUTOR_SRCS:$(EXECUTOR_DIR)/%.c=$(BUILD_EXECUTOR_DIR)/%.o)
 EXECUTOR_OBJS_COV = $(EXECUTOR_SRCS:$(EXECUTOR_DIR)/%.c=$(BUILD_EXECUTOR_DIR)/%.cov.o)
 EXECUTOR_OBJS_PIC = $(EXECUTOR_SRCS:$(EXECUTOR_DIR)/%.c=$(BUILD_EXECUTOR_DIR)/%.pic.o)
+
+# Runtime sources (helper UDFs moved from extension.c, I-0040 M4-M7)
+RUNTIME_DIR = $(SRC_DIR)/backend/runtime
+RUNTIME_SRCS = \
+	$(RUNTIME_DIR)/udf_helpers.c \
+	$(RUNTIME_DIR)/udf_register.c
+
+RUNTIME_OBJS = $(RUNTIME_SRCS:$(RUNTIME_DIR)/%.c=$(BUILD_RUNTIME_DIR)/%.o)
+RUNTIME_OBJS_COV = $(RUNTIME_SRCS:$(RUNTIME_DIR)/%.c=$(BUILD_RUNTIME_DIR)/%.cov.o)
+RUNTIME_OBJS_PIC = $(RUNTIME_SRCS:$(RUNTIME_DIR)/%.c=$(BUILD_RUNTIME_DIR)/%.pic.o)
 
 # Test sources
 TEST_SRCS = \
@@ -295,11 +306,11 @@ endif
 
 
 # Standard gqlite build (dynamic linking)
-$(MAIN_APP): $(MAIN_OBJ) $(PARSER_OBJS) $(TRANSFORM_OBJS) $(EXECUTOR_OBJS) | dirs
+$(MAIN_APP): $(MAIN_OBJ) $(PARSER_OBJS) $(TRANSFORM_OBJS) $(EXECUTOR_OBJS) $(RUNTIME_OBJS) | dirs
 	$(CC) $(CFLAGS) $^ -o $@ -lsqlite3
 
 # Portable gqlite build for releases (static linking where possible)
-gqlite-portable: $(MAIN_OBJ) $(PARSER_OBJS) $(TRANSFORM_OBJS) $(EXECUTOR_OBJS) | dirs
+gqlite-portable: $(MAIN_OBJ) $(PARSER_OBJS) $(TRANSFORM_OBJS) $(EXECUTOR_OBJS) $(RUNTIME_OBJS) | dirs
 ifeq ($(UNAME_S),Darwin)
 	$(CC) $(CFLAGS) $^ -o $(BUILD_DIR)/gqlite -lsqlite3
 else ifneq (,$(findstring MINGW,$(UNAME_S)))
@@ -311,15 +322,15 @@ else
 endif
 
 # SQLite extension shared library (with full parser, transform, and executor)
-$(EXTENSION_LIB): $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) | dirs $(GRAMMAR_HDR)
+$(EXTENSION_LIB): $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) $(RUNTIME_OBJS_PIC) | dirs $(GRAMMAR_HDR)
 ifeq ($(UNAME_S),Darwin)
-	$(CC) -g -fPIC -dynamiclib $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) -o $@ -undefined dynamic_lookup
+	$(CC) -g -fPIC -dynamiclib $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) $(RUNTIME_OBJS_PIC) -o $@ -undefined dynamic_lookup
 else ifneq (,$(findstring MINGW,$(UNAME_S)))
-	$(CC) -shared -static $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) -o $@ -lsqlite3 -lsystre -ltre -lintl -liconv
+	$(CC) -shared -static $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) $(RUNTIME_OBJS_PIC) -o $@ -lsqlite3 -lsystre -ltre -lintl -liconv
 else ifneq (,$(findstring MSYS,$(UNAME_S)))
-	$(CC) -shared -static $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) -o $@ -lsqlite3 -lsystre -ltre -lintl -liconv
+	$(CC) -shared -static $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) $(RUNTIME_OBJS_PIC) -o $@ -lsqlite3 -lsystre -ltre -lintl -liconv
 else
-	$(CC) -shared -fPIC $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) -o $@
+	$(CC) -shared -fPIC $(EXTENSION_OBJ) $(PARSER_OBJS_PIC) $(TRANSFORM_OBJS_PIC) $(EXECUTOR_OBJS_PIC) $(RUNTIME_OBJS_PIC) -o $@
 endif
 
 # Main application object
@@ -368,6 +379,7 @@ dirs:
 	@mkdir -p $(BUILD_PARSER_DIR)
 	@mkdir -p $(BUILD_TRANSFORM_DIR)
 	@mkdir -p $(BUILD_EXECUTOR_DIR)
+	@mkdir -p $(BUILD_RUNTIME_DIR)
 	@mkdir -p $(BUILD_TEST_DIR)
 	@mkdir -p $(COVERAGE_DIR)
 
@@ -442,12 +454,22 @@ $(BUILD_TRANSFORM_DIR)/%.pic.o: $(TRANSFORM_DIR)/%.c | dirs
 $(BUILD_EXECUTOR_DIR)/%.pic.o: $(EXECUTOR_DIR)/%.c | dirs
 	$(CC) $(EXTENSION_CFLAGS_BASE) $(EXTENSION_CFLAGS) -fPIC -c $< -o $@
 
+# Runtime objects
+$(BUILD_RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.c | dirs
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_RUNTIME_DIR)/%.cov.o: $(RUNTIME_DIR)/%.c | dirs
+	$(CC) $(CFLAGS) $(COVERAGE_FLAGS) -c $< -o $@
+
+$(BUILD_RUNTIME_DIR)/%.pic.o: $(RUNTIME_DIR)/%.c | dirs
+	$(CC) $(EXTENSION_CFLAGS_BASE) $(EXTENSION_CFLAGS) -fPIC -c $< -o $@
+
 # Test objects
 $(BUILD_TEST_DIR)/%.o: $(TEST_DIR)/%.c $(GRAMMAR_HDR) | dirs
 	$(CC) $(CFLAGS) -I$(BUILD_PARSER_DIR) -c $< -o $@
 
 # Test runner executable
-$(TEST_RUNNER): $(TEST_OBJS) $(PARSER_OBJS_COV) $(TRANSFORM_OBJS_COV) $(EXECUTOR_OBJS_COV) $(BUILD_DIR)/extension.test.o | dirs
+$(TEST_RUNNER): $(TEST_OBJS) $(PARSER_OBJS_COV) $(TRANSFORM_OBJS_COV) $(EXECUTOR_OBJS_COV) $(RUNTIME_OBJS_COV) $(BUILD_DIR)/extension.test.o | dirs
 	$(CC) $(CFLAGS) $(COVERAGE_FLAGS) $^ -o $@ $(LDFLAGS) $(COVERAGE_LIBS)
 
 # Run constraint tests (expected to fail with specific errors)

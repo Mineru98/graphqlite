@@ -12,11 +12,7 @@
 #include "transform/sql_builder.h"
 #include "parser/cypher_debug.h"
 
-/* Implemented in src/extension.c. Registers the cache-less helper UDFs
- * (_gql_bool, _gql_normalize_date, _gql_in, _gql_dyn_add, ...). The
- * transform layer validates by preparing the generated SQL, which fails
- * if those UDFs aren't registered on the connection. */
-extern int graphqlite_register_helper_udfs(sqlite3 *db);
+#include "runtime/udf_register.h"
 
 /* Initial buffer sizes */
 #define INITIAL_SQL_BUFFER_SIZE 1024

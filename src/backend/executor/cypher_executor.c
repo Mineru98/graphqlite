@@ -53,11 +53,7 @@ static void sqlite_reverse_func(sqlite3_context *context, int argc, sqlite3_valu
     sqlite3_result_text(context, result, len, sqlite3_free);
 }
 
-/* Implemented in src/extension.c. Registers the cache-less helper UDFs
- * (_gql_bool, _gql_normalize_date, _gql_in, _gql_dyn_add, ...). Without
- * these, transformed Cypher SQL that uses any of those helpers fails with
- * "no such function: _gql_*" at prepare time. */
-extern int graphqlite_register_helper_udfs(sqlite3 *db);
+#include "runtime/udf_register.h"
 
 /* Register custom SQLite functions needed for Cypher execution */
 static int register_custom_functions(sqlite3 *db)
