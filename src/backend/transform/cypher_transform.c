@@ -12,6 +12,12 @@
 #include "transform/sql_builder.h"
 #include "parser/cypher_debug.h"
 
+/* Implemented in src/extension.c. Registers the cache-less helper UDFs
+ * (_gql_bool, _gql_normalize_date, _gql_in, _gql_dyn_add, ...). The
+ * transform layer validates by preparing the generated SQL, which fails
+ * if those UDFs aren't registered on the connection. */
+extern int graphqlite_register_helper_udfs(sqlite3 *db);
+
 /* Initial buffer sizes */
 #define INITIAL_SQL_BUFFER_SIZE 1024
 #define INITIAL_VARIABLE_CAPACITY 16
@@ -26,7 +32,16 @@ cypher_transform_context* cypher_transform_create_context(sqlite3 *db)
     }
     
     ctx->db = db;
-    
+
+    /* Make sure helper UDFs (_gql_bool, _gql_normalize_date, _gql_in, ...)
+     * are registered on this connection — the transform layer validates
+     * by preparing SQL that references them. sqlite3_create_function is
+     * idempotent (a repeat call just replaces the binding), so this is
+     * safe to call even when the SQLite extension already registered them. */
+    if (db) {
+        graphqlite_register_helper_udfs(db);
+    }
+
     /* Initialize SQL buffer */
     ctx->sql_buffer = malloc(INITIAL_SQL_BUFFER_SIZE);
     if (!ctx->sql_buffer) {
@@ -62,6 +77,8 @@ cypher_transform_context* cypher_transform_create_context(sqlite3 *db)
     ctx->unwind_cte_counter = 0;
     ctx->reduce_counter = 0;
     ctx->prop_join_counter = 0;
+    ctx->anon_node_counter = 0;
+    ctx->anon_node_base = 0;
 
     /* Initialize pending property JOINs buffer */
     ctx->pending_prop_joins = NULL;
@@ -306,6 +323,27 @@ void prepend_cte_to_sql(cypher_transform_context *ctx)
 /* Register a path variable (uses unified transform_var system) */
 int register_path_variable(cypher_transform_context *ctx, const char *name, cypher_path *path)
 {
+    /* Reject conflicts: if `name` is already bound as a node/edge or a
+     * scalar projection, the path variable can't shadow it. */
+    transform_var *existing = transform_var_lookup(ctx->var_ctx, name);
+    if (existing) {
+        const char *kind_str = "value";
+        switch (existing->kind) {
+            case VAR_KIND_NODE: kind_str = "node"; break;
+            case VAR_KIND_EDGE: kind_str = "relationship"; break;
+            case VAR_KIND_PATH: kind_str = "path"; break;
+            case VAR_KIND_PROJECTED: kind_str = "value"; break;
+            case VAR_KIND_AGGREGATED: kind_str = "aggregate"; break;
+        }
+        ctx->has_error = true;
+        char msg[256];
+        snprintf(msg, sizeof(msg),
+                 "Variable `%s` is already bound as a %s and cannot be used as a path (SyntaxError: VariableAlreadyBound)",
+                 name, kind_str);
+        ctx->error_message = strdup(msg);
+        return -1;
+    }
+
     /* Map AST path_type to var_path_type */
     var_path_type ptype;
     switch (path->type) {
@@ -753,7 +791,9 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
     }
 
     cypher_varlen_range *range = (cypher_varlen_range*)rel->varlen;
-    int min_hops = range->min_hops > 0 ? range->min_hops : 1;
+    /* min_hops == -1 means unspecified → default to 1. Explicit 0 must be
+     * preserved so the zero-hop case (`(a)-[*0]->(b)` ⇒ a = b) works. */
+    int min_hops = range->min_hops >= 0 ? range->min_hops : 1;
     int max_hops = range->max_hops > 0 ? range->max_hops : 100; /* Default max for unbounded */
 
     CYPHER_DEBUG("Generating varlen CTE %s: min=%d, max=%d, type=%s",
@@ -770,6 +810,14 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
         /* <-[*]- reversed direction */
         src_col = "target_id";
         tgt_col = "source_id";
+    }
+
+    /* Zero-hop base case (only when explicitly requested via *0..N):
+     * each node maps to itself with depth=0. */
+    if (min_hops == 0) {
+        dbuf_appendf(&cte_query,
+            "SELECT n.id, n.id, 0, CAST(n.id AS TEXT), ',' || n.id || ',' "
+            "FROM nodes n UNION ALL ");
     }
 
     /* Base case: direct edges (depth = 1) */
@@ -801,7 +849,9 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
         dbuf_append(&cte_query, ")");
     }
 
-    /* Recursive case */
+    /* Recursive case — only recurse from depth >= 1 rows. The depth=0
+     * base case is for self-bind (zero-hop); recursing from it would
+     * duplicate edges already emitted by the depth=1 base case. */
     dbuf_append(&cte_query, " UNION ALL ");
     dbuf_appendf(&cte_query,
         "SELECT cte.start_id, e.%s, cte.depth + 1, "
@@ -809,7 +859,7 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
         "cte.visited || e.%s || ',' "
         "FROM %s cte "
         "JOIN edges e ON e.%s = cte.end_id "
-        "WHERE cte.depth < %d",
+        "WHERE cte.depth >= 1 AND cte.depth < %d",
         tgt_col, tgt_col, tgt_col,
         cte_name,
         src_col,

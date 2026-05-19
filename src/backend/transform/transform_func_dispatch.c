@@ -156,6 +156,26 @@ static const transform_func_entry dispatch_table[] = {
     {"localtime",       transform_time_function},
     {"duration",        transform_duration_function},
 
+    /* Clock-reader aliases — date.transaction(), date.statement(),
+     * date.realtime() and the equivalents on time/datetime/localtime/
+     * localdatetime. openCypher defines these as different snapshots of
+     * "now"; we collapse all three onto the plain no-arg constructor. */
+    {"date.transaction",        transform_date_function},
+    {"date.statement",          transform_date_function},
+    {"date.realtime",           transform_date_function},
+    {"time.transaction",        transform_time_function},
+    {"time.statement",          transform_time_function},
+    {"time.realtime",           transform_time_function},
+    {"localtime.transaction",   transform_time_function},
+    {"localtime.statement",     transform_time_function},
+    {"localtime.realtime",      transform_time_function},
+    {"datetime.transaction",    transform_datetime_function},
+    {"datetime.statement",      transform_datetime_function},
+    {"datetime.realtime",       transform_datetime_function},
+    {"localdatetime.transaction", transform_datetime_function},
+    {"localdatetime.statement",   transform_datetime_function},
+    {"localdatetime.realtime",    transform_datetime_function},
+
     /* Temporal construction from epoch */
     {"datetimeFromEpoch",       transform_datetime_from_epoch_function},
     {"datetimefromepoch",       transform_datetime_from_epoch_function},
@@ -167,8 +187,14 @@ static const transform_func_entry dispatch_table[] = {
     /* Temporal truncation */
     {"date.truncate",           transform_date_truncate_function},
     {"dateTruncate",            transform_date_truncate_function},
-    {"datetime.truncate",       transform_date_truncate_function},
-    {"datetimeTruncate",        transform_date_truncate_function},
+    {"datetime.truncate",       transform_datetime_truncate_function},
+    {"datetimeTruncate",        transform_datetime_truncate_function},
+    {"localdatetime.truncate",  transform_localdatetime_truncate_function},
+    {"localdatetimeTruncate",   transform_localdatetime_truncate_function},
+    {"time.truncate",           transform_time_truncate_function},
+    {"timeTruncate",            transform_time_truncate_function},
+    {"localtime.truncate",      transform_localtime_truncate_function},
+    {"localtimeTruncate",       transform_localtime_truncate_function},
 
     /* Duration utility functions */
     {"duration.between",        transform_duration_between_function},

@@ -123,6 +123,16 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
                 const char *alias;
                 if (node->variable) {
                     transform_var *var = transform_var_lookup(ctx->var_ctx, node->variable);
+                    if (var && (var->kind == VAR_KIND_EDGE || var->kind == VAR_KIND_PATH)) {
+                        ctx->has_error = true;
+                        char msg[256];
+                        snprintf(msg, sizeof(msg),
+                                 "Variable `%s` is already bound as a %s and cannot be used as a node (SyntaxError: VariableTypeConflict)",
+                                 node->variable,
+                                 var->kind == VAR_KIND_EDGE ? "relationship" : "path");
+                        ctx->error_message = strdup(msg);
+                        return -1;
+                    }
                     if (!var) {
                         /* New variable - register it */
                         char *gen_alias = get_next_default_alias(ctx);
@@ -149,7 +159,7 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
                 } else {
                     /* Anonymous node - use legacy approach for now */
                     char temp_alias[32];
-                    snprintf(temp_alias, sizeof(temp_alias), "n_%d", j);
+                    snprintf(temp_alias, sizeof(temp_alias), "n_%d", ctx->anon_node_base + j);
                     alias = temp_alias;
                 }
                 
@@ -209,7 +219,7 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
                                             break;
                                         case LITERAL_DECIMAL:
                                             prop_table = "node_props_real";
-                                            snprintf(value_sql, sizeof(value_sql), "%f", lit->value.decimal);
+                                            snprintf(value_sql, sizeof(value_sql), "%.17g", lit->value.decimal);
                                             break;
                                         case LITERAL_BOOLEAN:
                                             prop_table = "node_props_bool";
@@ -349,7 +359,7 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
                     if (!source_alias) continue;
                 } else {
                     static char temp_source[32];
-                    snprintf(temp_source, sizeof(temp_source), "n_%d", j - 1);
+                    snprintf(temp_source, sizeof(temp_source), "n_%d", ctx->anon_node_base + (j - 1));
                     source_alias = temp_source;
                 }
 
@@ -368,7 +378,7 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
                     if (!target_alias) continue;
                 } else {
                     static char temp_target[32];
-                    snprintf(temp_target, sizeof(temp_target), "n_%d", j + 1);
+                    snprintf(temp_target, sizeof(temp_target), "n_%d", ctx->anon_node_base + (j + 1));
                     target_alias = temp_target;
                 }
 
@@ -391,7 +401,16 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
                     ctx->error_message = strdup("Internal error: anonymous relationship without assigned name");
                     return -1;
                 }
-                
+
+                /* Bound relationship from WITH: endpoint/edge constraints already
+                 * emitted by generate_relationship_match via subqueries; skip the
+                 * legacy edge_alias.source_id constraint that would produce
+                 * invalid SQL like `_with_0.r.source_id`. */
+                if (rel->variable &&
+                    transform_var_alias_is_id(ctx->var_ctx, rel->variable)) {
+                    continue;
+                }
+
                 /* Add relationship direction constraints using unified builder */
                 dynamic_buffer rel_cond;
                 dbuf_init(&rel_cond);
@@ -443,10 +462,48 @@ int transform_match_clause(cypher_transform_context *ctx, cypher_match *match)
 
                 sql_where(ctx->unified_builder, dbuf_get(&rel_cond));
                 dbuf_free(&rel_cond);
+
+                /* Add inline property constraints for the relationship.
+                 * Pattern like (a)-[r:KNOWS {name: 'x'}]->(b) should match
+                 * only edges whose `name` property is 'x'. */
+                if (rel->properties && rel->properties->type == AST_NODE_MAP) {
+                    cypher_map *m = (cypher_map*)rel->properties;
+                    if (m->pairs) {
+                        for (int pi = 0; pi < m->pairs->count; pi++) {
+                            cypher_map_pair *pair = (cypher_map_pair*)m->pairs->items[pi];
+                            if (!pair->key || !pair->value || pair->value->type != AST_NODE_LITERAL) continue;
+                            cypher_literal *lit = (cypher_literal*)pair->value;
+                            const char *tbl = NULL;
+                            char val_buf[256] = "";
+                            switch (lit->literal_type) {
+                                case LITERAL_STRING: tbl = "edge_props_text";
+                                    { char *esc = escape_sql_string(lit->value.string);
+                                      snprintf(val_buf, sizeof(val_buf), "'%s'", esc ? esc : lit->value.string);
+                                      free(esc); } break;
+                                case LITERAL_INTEGER: tbl = "edge_props_int";
+                                    snprintf(val_buf, sizeof(val_buf), "%lld", (long long)lit->value.integer); break;
+                                case LITERAL_DECIMAL: tbl = "edge_props_real";
+                                    snprintf(val_buf, sizeof(val_buf), "%.17g", lit->value.decimal); break;
+                                case LITERAL_BOOLEAN: tbl = "edge_props_bool";
+                                    snprintf(val_buf, sizeof(val_buf), "%d", lit->value.boolean ? 1 : 0); break;
+                                default: continue;
+                            }
+                            if (!tbl) continue;
+                            char *esc_key = escape_sql_string(pair->key);
+                            char prop_cond[1024];
+                            snprintf(prop_cond, sizeof(prop_cond),
+                                "EXISTS (SELECT 1 FROM %s ep JOIN property_keys pk ON ep.key_id = pk.id "
+                                "WHERE ep.edge_id = %s.id AND pk.key = '%s' AND ep.value = %s)",
+                                tbl, edge_alias, esc_key ? esc_key : pair->key, val_buf);
+                            free(esc_key);
+                            sql_where(ctx->unified_builder, prop_cond);
+                        }
+                    }
+                }
             }
         }
     }
-    
+
 handle_where_clause:
     /* Handle WHERE clause if present - capture expression to unified builder */
     if (match->where) {
@@ -505,15 +562,26 @@ handle_where_clause:
 static int transform_match_pattern(cypher_transform_context *ctx, ast_node *pattern, bool optional)
 {
     cypher_path *path = (cypher_path*)pattern;
-    
+
     CYPHER_DEBUG("Transforming %s path with %d elements", optional ? "OPTIONAL" : "regular", path->elements->count);
+
+    /* Allocate a fresh range of anon-node alias indices for this pattern
+     * so anonymous `n_<j>` aliases don't collide with anon nodes from
+     * sibling patterns / preceding MATCH clauses. */
+    ctx->anon_node_base = ctx->anon_node_counter;
+    ctx->anon_node_counter += path->elements->count;
     
     /* If path has a variable name, register it as a path variable */
     if (path->var_name) {
         CYPHER_DEBUG("Registering path variable: %s with %d elements", path->var_name, path->elements->count);
         if (register_path_variable(ctx, path->var_name, path) < 0) {
-            ctx->has_error = true;
-            ctx->error_message = strdup("Failed to register path variable");
+            /* register_path_variable already set a specific message if it
+             * detected a conflict; only fall back to a generic message if
+             * none is present. */
+            if (!ctx->error_message) {
+                ctx->has_error = true;
+                ctx->error_message = strdup("Failed to register path variable");
+            }
             return -1;
         }
         CYPHER_DEBUG("Successfully registered path variable: %s", path->var_name);
@@ -536,6 +604,25 @@ static int transform_match_pattern(cypher_transform_context *ctx, ast_node *patt
 
             if (node->variable) {
                 transform_var *var = transform_var_lookup(ctx->var_ctx, node->variable);
+                if (var && (var->kind == VAR_KIND_EDGE || var->kind == VAR_KIND_PATH)) {
+                    ctx->has_error = true;
+                    char msg[256];
+                    snprintf(msg, sizeof(msg),
+                             "Variable `%s` is already bound as a %s and cannot be used as a node (SyntaxError: VariableTypeConflict)",
+                             node->variable,
+                             var->kind == VAR_KIND_EDGE ? "relationship" : "path");
+                    ctx->error_message = strdup(msg);
+                    return -1;
+                }
+                if (var && var->is_scalar_value) {
+                    ctx->has_error = true;
+                    char msg[256];
+                    snprintf(msg, sizeof(msg),
+                             "Variable `%s` is already bound to a scalar value and cannot be used as a node (SyntaxError: VariableTypeConflict)",
+                             node->variable);
+                    ctx->error_message = strdup(msg);
+                    return -1;
+                }
                 if (var) {
                     /* Variable exists - check if it's from WITH (projected or alias_is_id) */
                     bool is_from_with = (var->kind == VAR_KIND_PROJECTED) ||
@@ -618,7 +705,7 @@ static int transform_match_pattern(cypher_transform_context *ctx, ast_node *patt
             } else {
                 /* Anonymous node - use generated alias */
                 static char temp_alias[32];
-                snprintf(temp_alias, sizeof(temp_alias), "n_%d", i);
+                snprintf(temp_alias, sizeof(temp_alias), "n_%d", ctx->anon_node_base + i);
                 alias = temp_alias;
                 need_from_clause = true;
             }
@@ -687,6 +774,24 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
                  node->variable ? node->variable : "<anonymous>",
                  first_label ? first_label : "<no label>",
                  node->labels ? node->labels->count : 0);
+
+    /* If this alias has already been added to FROM/joins by an earlier
+     * generate_relationship_match call (OPTIONAL MATCH joins the target
+     * node through the edge), skip re-adding it to avoid duplicate-alias
+     * SQL errors. */
+    {
+        const char *from_str = dbuf_get(&ctx->unified_builder->from);
+        const char *joins_str = dbuf_get(&ctx->unified_builder->joins);
+        char needle[80];
+        snprintf(needle, sizeof(needle), " AS %s ", alias);
+        char needle_end[80];
+        snprintf(needle_end, sizeof(needle_end), " AS %s\n", alias);
+        if ((from_str && (strstr(from_str, needle) || strstr(from_str, needle_end))) ||
+            (joins_str && (strstr(joins_str, needle) || strstr(joins_str, needle_end)))) {
+            CYPHER_DEBUG("Skipping duplicate node match for %s", alias);
+            return 0;
+        }
+    }
 
     /* Check if there's already a FROM clause using the unified builder */
     bool has_from = !dbuf_is_empty(&ctx->unified_builder->from);
@@ -757,10 +862,48 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
                     sql_from(ctx->unified_builder, get_graph_table(ctx, "nodes"), alias);
                 }
             } else {
-                sql_from(ctx->unified_builder, get_graph_table(ctx, "nodes"), alias);
+                if (optional) {
+                    /* GQLITE-T-0218 follow-up: OPTIONAL MATCH on an empty graph
+                     * must return one row with NULL bindings, not zero rows.
+                     * Anchor the FROM on a synthetic 1-row table so the LEFT
+                     * JOIN to nodes always produces at least one row. */
+                    sql_from(ctx->unified_builder, "(SELECT 1)", "_gql_anchor");
+                    sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
+                             get_graph_table(ctx, "nodes"), alias, "1=1");
+                } else {
+                    sql_from(ctx->unified_builder, get_graph_table(ctx, "nodes"), alias);
+                }
             }
         } else {
-            sql_from(ctx->unified_builder, get_graph_table(ctx, "nodes"), alias);
+            if (optional) {
+                sql_from(ctx->unified_builder, "(SELECT 1)", "_gql_anchor");
+                /* Inline the label check into the LEFT JOIN's ON condition
+                 * so the anchor row produces NULL bindings when no node
+                 * matches the label. The post-JOIN label JOINs below are
+                 * then skipped (they'd inner-join away the anchor). */
+                if (has_labels(node)) {
+                    dynamic_buffer on_buf;
+                    dbuf_init(&on_buf);
+                    for (int li = 0; li < node->labels->count; li++) {
+                        const char *lbl = get_label_string(node->labels->items[li]);
+                        if (!lbl) continue;
+                        char *esc = escape_sql_string(lbl);
+                        if (li > 0) dbuf_append(&on_buf, " AND ");
+                        dbuf_appendf(&on_buf,
+                                     "EXISTS (SELECT 1 FROM node_labels nl WHERE nl.node_id = %s.id AND nl.label = '%s')",
+                                     alias, esc ? esc : lbl);
+                        free(esc);
+                    }
+                    sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
+                             get_graph_table(ctx, "nodes"), alias, dbuf_get(&on_buf));
+                    dbuf_free(&on_buf);
+                } else {
+                    sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
+                             get_graph_table(ctx, "nodes"), alias, "1=1");
+                }
+            } else {
+                sql_from(ctx->unified_builder, get_graph_table(ctx, "nodes"), alias);
+            }
         }
     } else {
         /* Subsequent tables - use JOIN */
@@ -828,8 +971,10 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
         }
     }
 
-    /* Add label JOINs if specified - one JOIN per label for multi-label support */
-    if (has_labels(node)) {
+    /* Add label JOINs if specified - one JOIN per label for multi-label support.
+     * Skip when we already inlined the label check into the LEFT JOIN's ON
+     * condition (OPTIONAL MATCH first-node-no-FROM-no-props path above). */
+    if (has_labels(node) && !(optional && !has_from && !has_prop_pairs)) {
         /* Get proper node id reference (handles projected variables from WITH) */
         const char *node_id = get_node_id_ref(ctx, alias, node->variable);
 
@@ -867,6 +1012,17 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
 
     /* Source node */
     if (source_node->variable) {
+        transform_var *src_var = transform_var_lookup(ctx->var_ctx, source_node->variable);
+        if (src_var && (src_var->kind == VAR_KIND_EDGE || src_var->kind == VAR_KIND_PATH)) {
+            ctx->has_error = true;
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                     "Variable `%s` is already bound as a %s and cannot be used as a node (SyntaxError: VariableTypeConflict)",
+                     source_node->variable,
+                     src_var->kind == VAR_KIND_EDGE ? "relationship" : "path");
+            ctx->error_message = strdup(msg);
+            return -1;
+        }
         source_alias = transform_var_get_alias(ctx->var_ctx, source_node->variable);
         if (!source_alias) {
             /* Add missing variable */
@@ -879,12 +1035,23 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
         if (!source_alias) return -1;
     } else {
         static char temp_source[32];
-        snprintf(temp_source, sizeof(temp_source), "n_%d", rel_index - 1);
+        snprintf(temp_source, sizeof(temp_source), "n_%d", ctx->anon_node_base + (rel_index - 1));
         source_alias = temp_source;
     }
 
     /* Target node */
     if (target_node->variable) {
+        transform_var *tgt_var = transform_var_lookup(ctx->var_ctx, target_node->variable);
+        if (tgt_var && (tgt_var->kind == VAR_KIND_EDGE || tgt_var->kind == VAR_KIND_PATH)) {
+            ctx->has_error = true;
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                     "Variable `%s` is already bound as a %s and cannot be used as a node (SyntaxError: VariableTypeConflict)",
+                     target_node->variable,
+                     tgt_var->kind == VAR_KIND_EDGE ? "relationship" : "path");
+            ctx->error_message = strdup(msg);
+            return -1;
+        }
         target_alias = transform_var_get_alias(ctx->var_ctx, target_node->variable);
         if (!target_alias) {
             /* Add missing variable */
@@ -898,12 +1065,23 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
         if (!target_alias) return -1;
     } else {
         static char temp_target[32];
-        snprintf(temp_target, sizeof(temp_target), "n_%d", rel_index + 1);
+        snprintf(temp_target, sizeof(temp_target), "n_%d", ctx->anon_node_base + (rel_index + 1));
         target_alias = temp_target;
     }
 
     /* Edge */
     if (rel->variable) {
+        transform_var *rel_var = transform_var_lookup(ctx->var_ctx, rel->variable);
+        if (rel_var && (rel_var->kind == VAR_KIND_NODE || rel_var->kind == VAR_KIND_PATH)) {
+            ctx->has_error = true;
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                     "Variable `%s` is already bound as a %s and cannot be used as a relationship (SyntaxError: VariableTypeConflict)",
+                     rel->variable,
+                     rel_var->kind == VAR_KIND_NODE ? "node" : "path");
+            ctx->error_message = strdup(msg);
+            return -1;
+        }
         edge_alias = transform_var_get_alias(ctx->var_ctx, rel->variable);
         if (!edge_alias) {
             /* Add new edge variable */
@@ -945,9 +1123,14 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
             return -1;
         }
 
-        /* Get min/max hops for filtering */
+        /* Get min/max hops for filtering. min_hops == -1 → unspecified
+         * (default to 1); explicit 0 must be preserved so zero-hop matches
+         * include the start node. */
         cypher_varlen_range *range = (cypher_varlen_range*)rel->varlen;
-        int min_hops = range->min_hops > 0 ? range->min_hops : 1;
+        int min_hops = range->min_hops >= 0 ? range->min_hops : 1;
+        int max_hops = range->max_hops;  /* -1 → unbounded */
+        /* Empty interval `*M..N` with M > N must return zero rows. */
+        bool empty_interval = (max_hops >= 0 && min_hops > max_hops);
 
         /* Join the main query with the CTE result using unified builder */
         sql_join(ctx->unified_builder, SQL_JOIN_CROSS, cte_name, edge_alias, NULL);
@@ -1053,9 +1236,19 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
         dbuf_appendf(&on_cond, "%s.start_id = %s AND %s.end_id = %s",
                      edge_alias, src_id_ref, edge_alias, tgt_id_ref);
 
-        /* Add minimum depth constraint if > 1 */
-        if (min_hops > 1) {
+        /* Always honor min_hops (zero-hop rows come from the CTE base case
+         * we just added; bound-1 paths are excluded if min > 1). */
+        if (min_hops >= 0) {
             dbuf_appendf(&on_cond, " AND %s.depth >= %d", edge_alias, min_hops);
+        }
+        /* Honor max_hops (the CTE already caps recursion at the internal
+         * `max_hops` ceiling, but the user-given max may be lower). */
+        if (max_hops >= 0) {
+            dbuf_appendf(&on_cond, " AND %s.depth <= %d", edge_alias, max_hops);
+        }
+        /* Empty interval (min > max) → unconditionally false. */
+        if (empty_interval) {
+            dbuf_appendf(&on_cond, " AND 0");
         }
 
         /* Add shortest path filtering based on path type */
@@ -1072,6 +1265,81 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
     }
     /* Add edges table - use LEFT JOIN for optional relationships */
     else {
+        /* Check if rel variable is bound from a prior WITH (alias_is_id means
+         * its "alias" is actually a column expression like _with_0.r, not a
+         * table alias). When bound, we must NOT add a new edges JOIN with that
+         * column as alias — instead, constrain endpoints to match the bound
+         * edge's source/target via subqueries. */
+        bool rel_is_bound = rel->variable &&
+                            transform_var_alias_is_id(ctx->var_ctx, rel->variable);
+
+        if (rel_is_bound) {
+            /* Bound relationship: the edge expression edge_alias is the id of
+             * an already-selected edge. Skip the edges JOIN; node JOINs are
+             * added separately by generate_node_match. Just emit WHERE
+             * constraints that tie the endpoint node aliases to the bound
+             * edge's source/target. */
+            const char *graph = ctx->current_graph ? ctx->current_graph : "";
+            char src_subq[256], tgt_subq[256];
+            snprintf(src_subq, sizeof(src_subq),
+                     "(SELECT source_id FROM %sedges WHERE id = %s)", graph, edge_alias);
+            snprintf(tgt_subq, sizeof(tgt_subq),
+                     "(SELECT target_id FROM %sedges WHERE id = %s)", graph, edge_alias);
+
+            char src_id_ref[256], tgt_id_ref[256];
+            snprintf(src_id_ref, sizeof(src_id_ref), "%s",
+                     get_node_id_ref(ctx, source_alias, source_node->variable));
+            snprintf(tgt_id_ref, sizeof(tgt_id_ref), "%s",
+                     get_node_id_ref(ctx, target_alias, target_node->variable));
+
+            char cond[1024];
+            if (rel->left_arrow && !rel->right_arrow) {
+                snprintf(cond, sizeof(cond), "%s = %s AND %s = %s",
+                         src_id_ref, tgt_subq, tgt_id_ref, src_subq);
+            } else if (!rel->left_arrow && !rel->right_arrow) {
+                snprintf(cond, sizeof(cond),
+                         "((%s = %s AND %s = %s) OR (%s = %s AND %s = %s))",
+                         src_id_ref, src_subq, tgt_id_ref, tgt_subq,
+                         src_id_ref, tgt_subq, tgt_id_ref, src_subq);
+            } else {
+                snprintf(cond, sizeof(cond), "%s = %s AND %s = %s",
+                         src_id_ref, src_subq, tgt_id_ref, tgt_subq);
+            }
+            sql_where(ctx->unified_builder, cond);
+
+            /* If the new pattern specifies a relationship type, enforce it
+             * against the bound edge's type. `MATCH ()-[r:T]->() WITH r
+             * MATCH ()-[r:Y]->()` should match zero rows because r was
+             * bound as type T but the second MATCH requires type Y. */
+            if (rel->type) {
+                char type_cond[512];
+                char *esc = escape_sql_string(rel->type);
+                snprintf(type_cond, sizeof(type_cond),
+                         "(SELECT type FROM %sedges WHERE id = %s) = '%s'",
+                         graph, edge_alias, esc ? esc : rel->type);
+                free(esc);
+                sql_where(ctx->unified_builder, type_cond);
+            } else if (rel->types && rel->types->count > 0) {
+                dynamic_buffer tc; dbuf_init(&tc);
+                dbuf_appendf(&tc, "(SELECT type FROM %sedges WHERE id = %s) IN (",
+                             graph, edge_alias);
+                for (int t = 0; t < rel->types->count; t++) {
+                    if (t > 0) dbuf_append(&tc, ", ");
+                    cypher_literal *type_lit = (cypher_literal*)rel->types->items[t];
+                    char *esc = escape_sql_string(type_lit->value.string);
+                    dbuf_appendf(&tc, "'%s'", esc ? esc : type_lit->value.string);
+                    free(esc);
+                }
+                dbuf_append(&tc, ")");
+                sql_where(ctx->unified_builder, dbuf_get(&tc));
+                dbuf_free(&tc);
+            }
+
+            CYPHER_DEBUG("Generated bound-rel match: %s as %s connects %s to %s",
+                         rel->variable, edge_alias, source_alias, target_alias);
+            return 0;
+        }
+
         if (optional) {
             /* For OPTIONAL MATCH, we LEFT JOIN edges first, then target through edge */
             /* This ensures we get NULLs for unmatched patterns, not cartesian products */
@@ -1079,10 +1347,25 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
             /* Get proper source id reference (handles projected variables from WITH) */
             const char *source_id = get_node_id_ref(ctx, source_alias, source_node->variable);
 
+            /* Check if target node is already added (was bound by a prior MATCH).
+             * When it is, fold target_id = bound_target.id into the edge JOIN's
+             * ON clause so the OPTIONAL pattern actually constrains on the
+             * bound endpoint. Without this, the edge can match ANY target. */
+            bool target_already_added = false;
+            const char *from_str_pre = dbuf_get(&ctx->unified_builder->from);
+            const char *joins_str_pre = dbuf_get(&ctx->unified_builder->joins);
+            if (from_str_pre && strstr(from_str_pre, target_alias)) target_already_added = true;
+            if (!target_already_added && joins_str_pre && strstr(joins_str_pre, target_alias))
+                target_already_added = true;
+
             /* Build the edge JOIN condition */
             dynamic_buffer edge_cond;
             dbuf_init(&edge_cond);
             dbuf_appendf(&edge_cond, "%s.source_id = %s", edge_alias, source_id);
+            if (target_already_added) {
+                const char *target_id = get_node_id_ref(ctx, target_alias, target_node->variable);
+                dbuf_appendf(&edge_cond, " AND %s.target_id = %s", edge_alias, target_id);
+            }
 
             /* Add relationship type constraint to edge JOIN */
             if (rel->type) {
@@ -1105,20 +1388,27 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
                 dbuf_append(&edge_cond, ")");
             }
 
+            /* If the target node has labels, fold them into the edge JOIN
+             * condition so the edge is only matched when its target
+             * actually has the required label(s). Otherwise the edge can
+             * match and the target node's LEFT JOIN produces NULL, leaving
+             * r non-null when the pattern shouldn't match. */
+            const char *graph_prefix = ctx->current_graph ? ctx->current_graph : "";
+            if (!target_already_added && has_labels(target_node)) {
+                for (int li = 0; li < target_node->labels->count; li++) {
+                    const char *label = get_label_string(target_node->labels->items[li]);
+                    if (!label) continue;
+                    char *esc_label = escape_sql_string(label);
+                    dbuf_appendf(&edge_cond,
+                        " AND EXISTS (SELECT 1 FROM %snode_labels WHERE node_id = %s.target_id AND label = '%s')",
+                        graph_prefix, edge_alias, esc_label ? esc_label : label);
+                    free(esc_label);
+                }
+            }
+
             sql_join(ctx->unified_builder, SQL_JOIN_LEFT, get_graph_table(ctx, "edges"), edge_alias, dbuf_get(&edge_cond));
             dbuf_free(&edge_cond);
-
-            /* Then, LEFT JOIN target node through the edge's target_id */
-            /* Check if target node is already added to avoid duplicates */
-            bool target_already_added = false;
-            const char *from_str = dbuf_get(&ctx->unified_builder->from);
-            const char *joins_str = dbuf_get(&ctx->unified_builder->joins);
-            if (from_str && strstr(from_str, target_alias)) {
-                target_already_added = true;
-            }
-            if (!target_already_added && joins_str && strstr(joins_str, target_alias)) {
-                target_already_added = true;
-            }
+            /* target_already_added still applies to the block below. */
 
             if (!target_already_added) {
                 /* For OPTIONAL MATCH with labels on the target, fold the label

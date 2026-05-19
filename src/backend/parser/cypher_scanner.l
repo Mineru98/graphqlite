@@ -23,6 +23,7 @@ static void prepare_integer_token(CypherScannerState *state, const char *text);
 static void prepare_decimal_token(CypherScannerState *state, const char *text);
 static void scanner_error(CypherScannerState *state, const char *message);
 static char* unescape_string(const char *escaped_str, int length);
+extern bool g_invalid_unicode_in_string;
 
 /* Update location tracking - yyextra is CypherScannerState* in reentrant mode */
 #define YY_USER_ACTION \
@@ -71,7 +72,8 @@ whitespace  [ \t\r\n]+
 /* Numbers */
 integer     {digit}+
 hexint      0[xX]{hexdigit}+
-decimal     {digit}+\.{digit}+([eE][+-]?{digit}+)?
+octint      0[oO][0-7]+
+decimal     {digit}+\.{digit}+([eE][+-]?{digit}+)?|\.{digit}+([eE][+-]?{digit}+)?|{digit}+[eE][+-]?{digit}+
 
 /* Identifiers */
 identifier  {letter}{alnum}*
@@ -146,8 +148,17 @@ operator    [+*/%^=!&|~]+
 {regex_match}   { RETURN_TOKEN(CYPHER_TOKEN_REGEX_MATCH); }
 
 {hexint}        { prepare_integer_token(yyextra, yytext); return CYPHER_TOKEN_INTEGER; }
+{octint}        { prepare_integer_token(yyextra, yytext); return CYPHER_TOKEN_INTEGER; }
 {integer}       { prepare_integer_token(yyextra, yytext); return CYPHER_TOKEN_INTEGER; }
 {decimal}       { prepare_decimal_token(yyextra, yytext); return CYPHER_TOKEN_DECIMAL; }
+{digit}+\./[^.] {
+    /* '5.' as a decimal when NOT immediately followed by another dot
+     * (flex trailing context: `/[^.]`). Prevents '1..2' from tokenizing
+     * as DECIMAL('1.') + DECIMAL('.2'). The non-dot trailing char is
+     * already excluded from yyleng under flex's trailing-context rule. */
+    prepare_decimal_token(yyextra, yytext);
+    return CYPHER_TOKEN_DECIMAL;
+}
 
 {string}        {
                     /* Remove quotes and handle escapes */
@@ -156,6 +167,10 @@ operator    [+*/%^=!&|~]+
                     if (!unescaped) {
                         scanner_error(yyextra, "Out of memory processing string literal");
                         return CYPHER_TOKEN_EOF;
+                    }
+                    if (g_invalid_unicode_in_string) {
+                        scanner_error(yyextra,
+                            "SyntaxError: InvalidUnicodeLiteral: invalid \\u escape in string literal");
                     }
                     
                     prepare_string_token(yyextra, CYPHER_TOKEN_STRING, yytext, unescaped);
@@ -170,6 +185,10 @@ operator    [+*/%^=!&|~]+
                     if (!unescaped) {
                         scanner_error(yyextra, "Out of memory processing string literal");
                         return CYPHER_TOKEN_EOF;
+                    }
+                    if (g_invalid_unicode_in_string) {
+                        scanner_error(yyextra,
+                            "SyntaxError: InvalidUnicodeLiteral: invalid \\u escape in string literal");
                     }
                     
                     prepare_string_token(yyextra, CYPHER_TOKEN_STRING, yytext, unescaped);
@@ -283,18 +302,29 @@ static void prepare_string_token(CypherScannerState *state, CypherTokenType type
 static void prepare_integer_token(CypherScannerState *state, const char *text)
 {
     prepare_token(state, CYPHER_TOKEN_INTEGER, text);
-    
-    /* Parse integer with proper base detection */
+
+    /* Parse integer with proper base detection.
+     * strtoll sets errno=ERANGE on overflow and clamps to LLONG_MIN/MAX;
+     * surface that as SyntaxError: IntegerOverflow. */
+    errno = 0;
+    long long parsed;
     if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
-        /* Hexadecimal */
-        state->current_token.value.integer = strtoll(text, NULL, 16);
+        parsed = strtoll(text, NULL, 16);
+    } else if (text[0] == '0' && (text[1] == 'o' || text[1] == 'O')) {
+        parsed = strtoll(text + 2, NULL, 8);
     } else if (text[0] == '0' && strlen(text) > 1) {
-        /* Octal */
-        state->current_token.value.integer = strtoll(text, NULL, 8);
+        parsed = strtoll(text, NULL, 8);
     } else {
-        /* Decimal */
-        state->current_token.value.integer = strtoll(text, NULL, 10);
+        parsed = strtoll(text, NULL, 10);
     }
+    if (errno == ERANGE) {
+        char buf[160];
+        snprintf(buf, sizeof(buf),
+                 "SyntaxError: IntegerOverflow: integer literal '%s' is out of range",
+                 text);
+        scanner_error(state, buf);
+    }
+    state->current_token.value.integer = parsed;
 }
 
 static void prepare_decimal_token(CypherScannerState *state, const char *text)
@@ -326,8 +356,15 @@ CypherToken cypher_scanner_get_current_token(const CypherScannerState *state)
 }
 
 /* Process escape sequences in string literals */
+/* Set by unescape_string to flag an InvalidUnicodeLiteral so the caller
+ * can route a specific scanner_error. We're single-threaded per parse so
+ * a file-scope slot is fine. (Declared `extern` at top of file so the
+ * earlier callers can read it.) */
+bool g_invalid_unicode_in_string = false;
+
 static char* unescape_string(const char *escaped_str, int length)
 {
+    g_invalid_unicode_in_string = false;
     char *result = malloc(length + 1); /* Worst case - no escapes */
     if (!result) {
         return NULL;
@@ -409,11 +446,15 @@ static char* unescape_string(const char *escaped_str, int length)
                             }
                             i += 6; /* Skip \uxxxx */
                         } else {
-                            /* Invalid unicode escape - treat as literal */
+                            /* Invalid unicode escape — flag for caller and
+                             * fall through, treating as literal so the
+                             * token still has coherent state. */
+                            g_invalid_unicode_in_string = true;
                             result[j++] = escaped_str[i++];
                         }
                     } else {
-                        /* Incomplete unicode escape - treat as literal */
+                        /* Incomplete unicode escape — flag and treat as literal. */
+                        g_invalid_unicode_in_string = true;
                         result[j++] = escaped_str[i++];
                     }
                     break;

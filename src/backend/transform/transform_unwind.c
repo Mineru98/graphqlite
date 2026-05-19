@@ -10,6 +10,7 @@
 
 #include "transform/cypher_transform.h"
 #include "transform/transform_internal.h"
+#include "transform/transform_helpers.h"
 #include "transform/sql_builder.h"
 #include "parser/cypher_debug.h"
 
@@ -38,6 +39,30 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
     /* Generate unique CTE name */
     char cte_name[32];
     snprintf(cte_name, sizeof(cte_name), "_unwind_%d", ctx->unwind_cte_counter++);
+
+    /* GQLITE-T-0228 family: capture projected variables that are currently
+     * in scope so we can carry them through the UNWIND CTE. Without this,
+     * `WITH 1 AS a UNWIND [1,2] AS x RETURN a, x` errors out because the
+     * UNWIND drops `a` from the var context. */
+    char *carry_names[64];
+    char *carry_aliases[64];
+    int carry_count = 0;
+    {
+        int n = transform_var_count(ctx->var_ctx);
+        for (int i = 0; i < n && carry_count < 64; i++) {
+            transform_var *v = transform_var_at(ctx->var_ctx, i);
+            if (!v || !v->name) continue;
+            if (!v->is_visible) continue;
+            if (v->kind != VAR_KIND_PROJECTED) continue;
+            /* Projected vars store the source expression here (e.g.
+             * "_with_0.msg"); table_alias may be NULL for them. */
+            const char *alias = v->source_expr ? v->source_expr : v->table_alias;
+            if (!alias) continue;
+            carry_names[carry_count]   = strdup(v->name);
+            carry_aliases[carry_count] = strdup(alias);
+            carry_count++;
+        }
+    }
 
     /*
      * Build inner SQL from builder state directly.
@@ -91,14 +116,43 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
     dynamic_buffer cte_query;
     dbuf_init(&cte_query);
 
-    /* Check expression type and generate appropriate SQL */
-    if (unwind->expr->type == AST_NODE_LIST) {
+    /* Pre-build a "_prev carry projection" snippet to splice into each
+     * UNION arm when prior projected variables exist. Looks like:
+     *   ", _prev.a AS a, _prev.b AS b"
+     * Without prior projected vars OR an inner_sql to source them from,
+     * this stays empty and behavior is unchanged. */
+    dynamic_buffer carry_cols;
+    dbuf_init(&carry_cols);
+    bool has_carry = (carry_count > 0 && inner_sql && strlen(inner_sql) > 0);
+    if (has_carry) {
+        for (int i = 0; i < carry_count; i++) {
+            /* Projected variables' table_alias is typically `<cte>.<col>`;
+             * we just need the column name when sourcing from _prev. */
+            const char *col = strrchr(carry_aliases[i], '.');
+            col = col ? col + 1 : carry_aliases[i];
+            { char _ib1[128], _ib2[128];
+              dbuf_appendf(&carry_cols, ", _prev.%s AS %s",
+                           sql_ident(_ib1, sizeof(_ib1), col),
+                           sql_ident(_ib2, sizeof(_ib2), carry_names[i])); }
+        }
+    }
+
+    /* UNWIND null AS x → zero rows (openCypher spec). Emit an empty
+     * CTE; the common tail below handles var registration and FROM. */
+    if (unwind->expr->type == AST_NODE_LITERAL &&
+        ((cypher_literal *)unwind->expr)->literal_type == LITERAL_NULL) {
+        dbuf_append(&cte_query, "SELECT NULL AS value");
+        if (has_carry) dbuf_append(&cte_query, dbuf_get(&carry_cols));
+        dbuf_append(&cte_query, " WHERE 0");
+    } else if (unwind->expr->type == AST_NODE_LIST) {
         /* List literal: use UNION ALL approach */
         cypher_list *list = (cypher_list*)unwind->expr;
 
         if (!list->items || list->items->count == 0) {
             /* Empty list: return no rows using impossible condition */
-            dbuf_append(&cte_query, "SELECT NULL AS value WHERE 0");
+            dbuf_append(&cte_query, "SELECT NULL AS value");
+            if (has_carry) dbuf_append(&cte_query, dbuf_get(&carry_cols));
+            dbuf_append(&cte_query, " WHERE 0");
         } else {
             for (int i = 0; i < list->items->count; i++) {
                 if (i > 0) {
@@ -115,13 +169,17 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
                             dbuf_appendf(&cte_query, "%lld", (long long)lit->value.integer);
                             break;
                         case LITERAL_DECIMAL:
-                            dbuf_appendf(&cte_query, "%g", lit->value.decimal);
+                            dbuf_appendf(&cte_query, "%.17g", lit->value.decimal);
                             break;
                         case LITERAL_STRING:
                             dbuf_appendf(&cte_query, "'%s'", lit->value.string ? lit->value.string : "");
                             break;
                         case LITERAL_BOOLEAN:
-                            dbuf_appendf(&cte_query, "%s", lit->value.boolean ? "1" : "0");
+                            /* Emit as 'true'/'false' string so downstream
+                             * output formatting renders JSON booleans
+                             * (matches the convention used by boolean
+                             * property access). */
+                            dbuf_append(&cte_query, lit->value.boolean ? "'true'" : "'false'");
                             break;
                         case LITERAL_NULL:
                             dbuf_append(&cte_query, "NULL");
@@ -144,11 +202,37 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
                         dbuf_append(&cte_query, "NULL");
                     }
                 } else {
-                    /* For other expression types, we'd need to transform them */
-                    /* For now, just handle literals */
-                    dbuf_append(&cte_query, "NULL");
+                    /* General expression (function call, identifier, etc.) —
+                     * transform to SQL and emit inline. */
+                    char *saved_buffer = ctx->sql_buffer;
+                    size_t saved_size = ctx->sql_size;
+                    size_t saved_capacity = ctx->sql_capacity;
+                    size_t temp_capacity = 4096;
+                    char *temp_buffer = malloc(temp_capacity);
+                    bool ok = false;
+                    if (temp_buffer) {
+                        temp_buffer[0] = '\0';
+                        ctx->sql_buffer = temp_buffer;
+                        ctx->sql_size = 0;
+                        ctx->sql_capacity = temp_capacity;
+                        if (transform_expression(ctx, item) == 0 && ctx->sql_buffer[0]) {
+                            dbuf_appendf(&cte_query, "(%s)", ctx->sql_buffer);
+                            ok = true;
+                        }
+                        /* append_sql may realloc; free what ctx->sql_buffer
+                         * now points to, not the original temp_buffer. */
+                        free(ctx->sql_buffer);
+                        ctx->sql_buffer = saved_buffer;
+                        ctx->sql_size = saved_size;
+                        ctx->sql_capacity = saved_capacity;
+                    }
+                    if (!ok) dbuf_append(&cte_query, "NULL");
                 }
                 dbuf_append(&cte_query, " AS value");
+                if (has_carry) {
+                    dbuf_append(&cte_query, dbuf_get(&carry_cols));
+                    dbuf_appendf(&cte_query, " FROM (%s) AS _prev", inner_sql);
+                }
             }
         }
     } else if (unwind->expr->type == AST_NODE_PROPERTY) {
@@ -161,7 +245,9 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
             bool is_projected = transform_var_is_projected(ctx->var_ctx, id->name);
 
             /* Build json_each on the property value */
-            dbuf_append(&cte_query, "SELECT json_each.value AS value FROM ");
+            dbuf_append(&cte_query, "SELECT json_each.value AS value");
+            if (has_carry) dbuf_append(&cte_query, dbuf_get(&carry_cols));
+            dbuf_append(&cte_query, " FROM ");
 
             if (inner_sql && strlen(inner_sql) > 0) {
                 dbuf_appendf(&cte_query, "(%s) AS _prev, ", inner_sql);
@@ -186,15 +272,35 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
         cypher_identifier *id = (cypher_identifier*)unwind->expr;
         const char *alias = transform_var_get_alias(ctx->var_ctx, id->name);
 
-        dbuf_append(&cte_query, "SELECT json_each.value AS value FROM ");
+        dbuf_append(&cte_query, "SELECT json_each.value AS value");
+        if (has_carry) dbuf_append(&cte_query, dbuf_get(&carry_cols));
+        dbuf_append(&cte_query, " FROM ");
+
+        /* When the unwound variable IS a carried-through projection, source
+         * it from `_prev` (the subquery alias) rather than its original CTE
+         * alias — the original CTE isn't in the new FROM clause directly. */
+        const char *json_each_arg = alias ? alias : id->name;
+        char prev_arg[128];
+        if (has_carry && alias) {
+            const char *col = strrchr(alias, '.');
+            if (col) {
+                char _ib[128];
+                snprintf(prev_arg, sizeof(prev_arg), "_prev.%s",
+                         sql_ident(_ib, sizeof(_ib), col + 1));
+                json_each_arg = prev_arg;
+            }
+        }
 
         if (inner_sql && strlen(inner_sql) > 0) {
             dbuf_appendf(&cte_query, "(%s) AS _prev, ", inner_sql);
         }
 
-        dbuf_appendf(&cte_query, "json_each(%s)", alias ? alias : id->name);
-    } else if (unwind->expr->type == AST_NODE_FUNCTION_CALL) {
-        /* Function call that returns a list (e.g., range(), keys(), etc.) */
+        dbuf_appendf(&cte_query, "json_each(%s)", json_each_arg);
+    } else if (unwind->expr->type == AST_NODE_FUNCTION_CALL ||
+               unwind->expr->type == AST_NODE_SUBSCRIPT ||
+               unwind->expr->type == AST_NODE_BINARY_OP) {
+        /* Function call that returns a list (e.g., range(), keys(), etc.),
+         * subscript expression (qrows[p]), or binary op (list concat). */
         /* Transform the function expression to SQL, then use json_each on the result */
 
         /* Save current SQL buffer state */
@@ -240,10 +346,22 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
         ctx->sql_capacity = saved_capacity;
 
         /* Build json_each query on the function result */
-        dbuf_append(&cte_query, "SELECT json_each.value AS value FROM ");
+        dbuf_append(&cte_query, "SELECT json_each.value AS value");
+        if (has_carry) dbuf_append(&cte_query, dbuf_get(&carry_cols));
+        dbuf_append(&cte_query, " FROM ");
 
         if (inner_sql && strlen(inner_sql) > 0) {
-            dbuf_appendf(&cte_query, "(%s) AS _prev, ", inner_sql);
+            /* If inner_sql is `SELECT * FROM <tables>...`, splice the
+             * <tables>... portion into the outer FROM directly so the
+             * function's references to original aliases stay in scope.
+             * Falls back to subquery wrapping for non-trivial shapes. */
+            const char *select_star = "SELECT * FROM ";
+            size_t sl = strlen(select_star);
+            if (strncmp(inner_sql, select_star, sl) == 0) {
+                dbuf_appendf(&cte_query, "%s, ", inner_sql + sl);
+            } else {
+                dbuf_appendf(&cte_query, "(%s) AS _prev, ", inner_sql);
+            }
         }
 
         dbuf_appendf(&cte_query, "json_each(%s)", func_sql);
@@ -263,7 +381,9 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
 
         register_parameter(ctx, param->name);
 
-        dbuf_append(&cte_query, "SELECT json_each.value AS value FROM ");
+        dbuf_append(&cte_query, "SELECT json_each.value AS value");
+        if (has_carry) dbuf_append(&cte_query, dbuf_get(&carry_cols));
+        dbuf_append(&cte_query, " FROM ");
 
         if (inner_sql && strlen(inner_sql) > 0) {
             dbuf_appendf(&cte_query, "(%s) AS _prev, ", inner_sql);
@@ -285,6 +405,20 @@ int transform_unwind_clause(cypher_transform_context *ctx, cypher_unwind *unwind
 
     /* Clear old variables - UNWIND creates a new scope */
     transform_var_ctx_reset(ctx->var_ctx);
+
+    /* Restore the projected variables we captured pre-reset, now pointing
+     * at the new UNWIND CTE's columns (which we projected through above). */
+    for (int i = 0; i < carry_count; i++) {
+        if (has_carry) {
+            char src[256], _ib[128];
+            snprintf(src, sizeof(src), "%s.%s", cte_name,
+                     sql_ident(_ib, sizeof(_ib), carry_names[i]));
+            transform_var_register_projected(ctx->var_ctx, carry_names[i], src);
+        }
+        free(carry_names[i]);
+        free(carry_aliases[i]);
+    }
+    dbuf_free(&carry_cols);
 
     /* Register the unwound variable in unified system */
     char unwind_source[256];

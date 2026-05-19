@@ -50,21 +50,31 @@ int transform_not_expression(cypher_transform_context *ctx, cypher_not_expr *not
 {
     CYPHER_DEBUG("Transforming NOT expression");
 
-    append_sql(ctx, "NOT (");
+    /* Wrap outer parens too — SQLite gives `>=` higher precedence than NOT,
+     * so 'NOT (0) >= 0' parses as 'NOT ((0) >= 0)'. Outer parens force the
+     * NOT to bind to its single operand. Coerce string-encoded booleans
+     * ('true'/'false') to int via _gql_bool(). */
+    append_sql(ctx, "(NOT _gql_bool(");
 
     if (transform_expression(ctx, not_expr->expr) < 0) {
         return -1;
     }
 
-    append_sql(ctx, ")");
+    append_sql(ctx, "))");
 
     return 0;
 }
 
-/* Transform null check expression (e.g., n.name IS NULL, n.age IS NOT NULL) */
+/* Transform null check expression (e.g., n.name IS NULL, n.age IS NOT NULL).
+ * Wrap in outer parens — in Cypher IS NULL has higher precedence than `=`
+ * and other comparison operators, but in SQLite the opposite is true, so
+ * `false = true IS NULL` parses as `(false = true) IS NULL`. Forcing
+ * parens recovers Cypher semantics. */
 int transform_null_check(cypher_transform_context *ctx, cypher_null_check *null_check)
 {
     CYPHER_DEBUG("Transforming NULL check expression: is_not_null=%d", null_check->is_not_null);
+
+    append_sql(ctx, "(");
 
     /* Transform the expression being checked */
     if (transform_expression(ctx, null_check->expr) < 0) {
@@ -73,9 +83,9 @@ int transform_null_check(cypher_transform_context *ctx, cypher_null_check *null_
 
     /* Append IS NULL or IS NOT NULL */
     if (null_check->is_not_null) {
-        append_sql(ctx, " IS NOT NULL");
+        append_sql(ctx, " IS NOT NULL)");
     } else {
-        append_sql(ctx, " IS NULL");
+        append_sql(ctx, " IS NULL)");
     }
 
     return 0;
@@ -88,13 +98,121 @@ int transform_binary_operation(cypher_transform_context *ctx, cypher_binary_op *
     
     /* Set comparison context for comparison operators */
     bool was_in_comparison = ctx->in_comparison;
-    if (binary_op->op_type == BINARY_OP_EQ || binary_op->op_type == BINARY_OP_NEQ ||
+    bool is_cmp = (binary_op->op_type == BINARY_OP_EQ || binary_op->op_type == BINARY_OP_NEQ ||
         binary_op->op_type == BINARY_OP_LT || binary_op->op_type == BINARY_OP_GT ||
         binary_op->op_type == BINARY_OP_LTE || binary_op->op_type == BINARY_OP_GTE ||
         binary_op->op_type == BINARY_OP_REGEX_MATCH || binary_op->op_type == BINARY_OP_IN ||
         binary_op->op_type == BINARY_OP_STARTS_WITH || binary_op->op_type == BINARY_OP_ENDS_WITH ||
-        binary_op->op_type == BINARY_OP_CONTAINS) {
+        binary_op->op_type == BINARY_OP_CONTAINS);
+    if (is_cmp) {
         ctx->in_comparison = true;
+    }
+
+    /* Chained comparison: openCypher allows `1 < n < 3` meaning
+     * `(1 < n) AND (n < 3)`. Bison gives a left-associative tree
+     * `((1 < n) < 3)`, which the naïve compile treats as
+     * `(true < 3)` and lets every row through. Detect when both this
+     * op and its LHS are *ordering* comparisons (<, <=, >, >=) and
+     * rewrite to the conjunction.
+     *
+     * Limited to ordering operators on purpose: a `(a < b) = true`
+     * expression is genuinely "compare a boolean result against true",
+     * not a chained comparison, and rewriting it would be wrong. */
+    bool is_order_cmp = (binary_op->op_type == BINARY_OP_LT ||
+                         binary_op->op_type == BINARY_OP_GT ||
+                         binary_op->op_type == BINARY_OP_LTE ||
+                         binary_op->op_type == BINARY_OP_GTE);
+    if (is_order_cmp && binary_op->left &&
+        binary_op->left->type == AST_NODE_BINARY_OP) {
+        cypher_binary_op *lop = (cypher_binary_op *)binary_op->left;
+        bool lhs_is_order_cmp = (lop->op_type == BINARY_OP_LT ||
+                                  lop->op_type == BINARY_OP_GT ||
+                                  lop->op_type == BINARY_OP_LTE ||
+                                  lop->op_type == BINARY_OP_GTE);
+        if (lhs_is_order_cmp) {
+            /* Build SQL: (<lhs>) AND (<lop.right> <cur op> <rhs>) */
+            append_sql(ctx, "((");
+            if (transform_expression(ctx, binary_op->left) < 0) return -1;
+            append_sql(ctx, ") AND (");
+            if (transform_expression(ctx, lop->right) < 0) return -1;
+            const char *op_sql = NULL;
+            switch (binary_op->op_type) {
+                case BINARY_OP_EQ: op_sql = "="; break;
+                case BINARY_OP_NEQ: op_sql = "<>"; break;
+                case BINARY_OP_LT: op_sql = "<"; break;
+                case BINARY_OP_GT: op_sql = ">"; break;
+                case BINARY_OP_LTE: op_sql = "<="; break;
+                case BINARY_OP_GTE: op_sql = ">="; break;
+                default: op_sql = "="; break;
+            }
+            append_sql(ctx, " %s ", op_sql);
+            if (transform_expression(ctx, binary_op->right) < 0) return -1;
+            append_sql(ctx, "))");
+            ctx->in_comparison = was_in_comparison;
+            return 0;
+        }
+    }
+
+    /* Handle list/map equality with Cypher three-valued semantics via the
+     * _gql_eq() UDF. Triggered only when at least one operand is a literal
+     * list/map (which is when the existing JSON-string equality breaks down
+     * due to embedded nulls). */
+    if ((binary_op->op_type == BINARY_OP_EQ || binary_op->op_type == BINARY_OP_NEQ) &&
+        (binary_op->left->type == AST_NODE_LIST || binary_op->left->type == AST_NODE_MAP ||
+         binary_op->right->type == AST_NODE_LIST || binary_op->right->type == AST_NODE_MAP)) {
+        if (binary_op->op_type == BINARY_OP_NEQ) append_sql(ctx, "(NOT _gql_eq(");
+        else                                    append_sql(ctx, "_gql_eq(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ", ");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, ")");
+        if (binary_op->op_type == BINARY_OP_NEQ) append_sql(ctx, ")");
+        ctx->in_comparison = was_in_comparison;
+        return 0;
+    }
+
+    /* Handle boolean logical operators: wrap operands in _gql_bool() to coerce
+     * string 'true'/'false' (from boolean property access) to int 1/0 so SQL
+     * AND / OR / XOR behave correctly. */
+    if (binary_op->op_type == BINARY_OP_AND ||
+        binary_op->op_type == BINARY_OP_OR ||
+        binary_op->op_type == BINARY_OP_XOR) {
+        append_sql(ctx, "(_gql_bool(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ") %s _gql_bool(",
+                   binary_op->op_type == BINARY_OP_AND ? "AND" :
+                   binary_op->op_type == BINARY_OP_OR  ? "OR"  : "<>");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, "))");
+        ctx->in_comparison = was_in_comparison;
+        return 0;
+    }
+
+    /* For =/<> where one operand is a logical operator result (NOT, AND,
+     * OR, XOR) and the other might be a 'true'/'false' string, coerce
+     * both sides via _gql_bool so comparison works regardless of whether
+     * a side flows as int 1/0 or text. */
+    if ((binary_op->op_type == BINARY_OP_EQ || binary_op->op_type == BINARY_OP_NEQ)) {
+        bool l_is_logic = binary_op->left && (
+            binary_op->left->type == AST_NODE_NOT_EXPR ||
+            (binary_op->left->type == AST_NODE_BINARY_OP &&
+             ((cypher_binary_op*)binary_op->left)->op_type >= BINARY_OP_AND &&
+             ((cypher_binary_op*)binary_op->left)->op_type <= BINARY_OP_XOR));
+        bool r_is_logic = binary_op->right && (
+            binary_op->right->type == AST_NODE_NOT_EXPR ||
+            (binary_op->right->type == AST_NODE_BINARY_OP &&
+             ((cypher_binary_op*)binary_op->right)->op_type >= BINARY_OP_AND &&
+             ((cypher_binary_op*)binary_op->right)->op_type <= BINARY_OP_XOR));
+        if (l_is_logic || r_is_logic) {
+            append_sql(ctx, "(_gql_bool(");
+            if (transform_expression(ctx, binary_op->left) < 0) return -1;
+            append_sql(ctx, ") %s _gql_bool(",
+                       binary_op->op_type == BINARY_OP_EQ ? "=" : "<>");
+            if (transform_expression(ctx, binary_op->right) < 0) return -1;
+            append_sql(ctx, "))");
+            ctx->in_comparison = was_in_comparison;
+            return 0;
+        }
     }
 
     /* Handle REGEX_MATCH specially - convert to regexp(pattern, string) function call */
@@ -116,81 +234,101 @@ int transform_binary_operation(cypher_transform_context *ctx, cypher_binary_op *
 
     /* Handle IN operator specially - check membership in list */
     if (binary_op->op_type == BINARY_OP_IN) {
-        append_sql(ctx, "(");
-        /* Transform the left operand (value to check) */
-        if (transform_expression(ctx, binary_op->left) < 0) {
+        /* Right side must be a list. Reject non-list literals at compile
+         * time (TCK list/[42]). Parameters and identifiers pass through. */
+        if (binary_op->right && binary_op->right->type == AST_NODE_LITERAL) {
+            cypher_literal *rl = (cypher_literal*)binary_op->right;
+            if (rl->literal_type == LITERAL_INTEGER ||
+                rl->literal_type == LITERAL_DECIMAL ||
+                rl->literal_type == LITERAL_STRING  ||
+                rl->literal_type == LITERAL_BOOLEAN) {
+                ctx->has_error = true;
+                ctx->error_message = strdup(
+                    "SyntaxError: InvalidArgumentType: IN operator requires a list on its right side");
+                return -1;
+            }
+        } else if (binary_op->right && binary_op->right->type == AST_NODE_MAP) {
+            ctx->has_error = true;
+            ctx->error_message = strdup(
+                "SyntaxError: InvalidArgumentType: IN operator requires a list on its right side");
             return -1;
         }
-        append_sql(ctx, " IN ");
-
-        /* Check if right side is a literal list */
+        /* Use _gql_in() UDF for proper Cypher three-valued logic:
+         *   null IN []         -> false
+         *   null IN <nonempty> -> null
+         *   x    IN coll       -> true / null (if coll has null) / false */
+        append_sql(ctx, "_gql_in(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ", ");
         if (binary_op->right->type == AST_NODE_LIST) {
-            /* Literal list: generate IN (val1, val2, val3) */
+            /* Literal list: wrap with json_array() */
             cypher_list *list = (cypher_list*)binary_op->right;
-            append_sql(ctx, "(");
-            for (int i = 0; i < list->items->count; i++) {
-                if (i > 0) append_sql(ctx, ", ");
-                if (transform_expression(ctx, list->items->items[i]) < 0) {
-                    return -1;
+            append_sql(ctx, "json_array(");
+            if (list->items) {
+                for (int i = 0; i < list->items->count; i++) {
+                    if (i > 0) append_sql(ctx, ", ");
+                    if (transform_expression(ctx, list->items->items[i]) < 0) return -1;
                 }
             }
             append_sql(ctx, ")");
         } else {
-            /* Variable or expression: use json_each subquery */
-            append_sql(ctx, "(SELECT value FROM json_each(");
-            if (transform_expression(ctx, binary_op->right) < 0) {
-                return -1;
-            }
-            append_sql(ctx, "))");
+            if (transform_expression(ctx, binary_op->right) < 0) return -1;
         }
         append_sql(ctx, ")");
         ctx->in_comparison = was_in_comparison;
         return 0;
     }
 
-    /* Handle STARTS WITH operator - string starts with prefix.
-     * Escape LIKE metacharacters (%, _, \) in the pattern value so that
-     * STARTS WITH 'admin_' only matches literal underscore, not any char. */
+    /* Handle STARTS WITH operator — case-sensitive prefix match.
+     * Spec returns NULL when either operand is not a string. Use the
+     * typeof() guard to gate the substr comparison; otherwise NULL. */
     if (binary_op->op_type == BINARY_OP_STARTS_WITH) {
-        append_sql(ctx, "(");
-        if (transform_expression(ctx, binary_op->left) < 0) {
-            return -1;
-        }
-        append_sql(ctx, " LIKE replace(replace(replace(");
-        if (transform_expression(ctx, binary_op->right) < 0) {
-            return -1;
-        }
-        append_sql(ctx, ", '\\', '\\\\'), '%%', '\\%%'), '_', '\\_') || '%%' ESCAPE '\\')");
+        append_sql(ctx, "(CASE WHEN typeof(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ") = 'text' AND typeof(");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, ") = 'text' THEN substr(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ", 1, length(");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, ")) = ");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, " ELSE NULL END)");
         ctx->in_comparison = was_in_comparison;
         return 0;
     }
 
-    /* Handle ENDS WITH operator - string ends with suffix */
+    /* Handle ENDS WITH operator — case-sensitive suffix match.
+     * Same NULL-on-non-string semantics as STARTS WITH. */
     if (binary_op->op_type == BINARY_OP_ENDS_WITH) {
-        append_sql(ctx, "(");
-        if (transform_expression(ctx, binary_op->left) < 0) {
-            return -1;
-        }
-        append_sql(ctx, " LIKE '%%' || replace(replace(replace(");
-        if (transform_expression(ctx, binary_op->right) < 0) {
-            return -1;
-        }
-        append_sql(ctx, ", '\\', '\\\\'), '%%', '\\%%'), '_', '\\_') ESCAPE '\\')");
+        append_sql(ctx, "(CASE WHEN typeof(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ") = 'text' AND typeof(");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, ") = 'text' THEN substr(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ", length(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ") - length(");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, ") + 1) = ");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, " ELSE NULL END)");
         ctx->in_comparison = was_in_comparison;
         return 0;
     }
 
-    /* Handle CONTAINS operator - string contains substring */
+    /* Handle CONTAINS operator - case-sensitive substring match. */
     if (binary_op->op_type == BINARY_OP_CONTAINS) {
-        append_sql(ctx, "(INSTR(");
-        if (transform_expression(ctx, binary_op->left) < 0) {
-            return -1;
-        }
+        append_sql(ctx, "(CASE WHEN typeof(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ") = 'text' AND typeof(");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, ") = 'text' THEN INSTR(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
         append_sql(ctx, ", ");
-        if (transform_expression(ctx, binary_op->right) < 0) {
-            return -1;
-        }
-        append_sql(ctx, ") > 0)");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, ") > 0 ELSE NULL END)");
         ctx->in_comparison = was_in_comparison;
         return 0;
     }
@@ -198,6 +336,41 @@ int transform_binary_operation(cypher_transform_context *ctx, cypher_binary_op *
     /* Add left parenthesis for precedence */
     append_sql(ctx, "(");
     
+    /* ADD/SUB: Cypher's `+` and `-` are polymorphic over numbers, strings,
+     * lists, durations, and temporal+duration. We can't distinguish these
+     * statically, so emit a runtime helper `_gql_dyn_add` / `_gql_dyn_sub`
+     * that dispatches on operand types. Fall through to native SQL for
+     * the obvious integer-literal-on-both-sides case (avoids overhead for
+     * `1 + 2`). */
+    /* POW: emit as function call since SQLite lacks the ** operator. */
+    if (binary_op->op_type == BINARY_OP_POW) {
+        append_sql(ctx, "power(");
+        if (transform_expression(ctx, binary_op->left) < 0) return -1;
+        append_sql(ctx, ", ");
+        if (transform_expression(ctx, binary_op->right) < 0) return -1;
+        append_sql(ctx, "))");
+        ctx->in_comparison = was_in_comparison;
+        return 0;
+    }
+    if (binary_op->op_type == BINARY_OP_ADD || binary_op->op_type == BINARY_OP_SUB) {
+        bool both_int_lit = false;
+        if (binary_op->left->type == AST_NODE_LITERAL && binary_op->right->type == AST_NODE_LITERAL) {
+            cypher_literal *ll = (cypher_literal *)binary_op->left;
+            cypher_literal *rl = (cypher_literal *)binary_op->right;
+            if (ll->literal_type == LITERAL_INTEGER && rl->literal_type == LITERAL_INTEGER)
+                both_int_lit = true;
+        }
+        if (!both_int_lit) {
+            append_sql(ctx, binary_op->op_type == BINARY_OP_ADD ? "_gql_dyn_add(" : "_gql_dyn_sub(");
+            if (transform_expression(ctx, binary_op->left) < 0) return -1;
+            append_sql(ctx, ", ");
+            if (transform_expression(ctx, binary_op->right) < 0) return -1;
+            append_sql(ctx, "))");  /* closes the helper + the outer paren */
+            ctx->in_comparison = was_in_comparison;
+            return 0;
+        }
+    }
+
     /* Transform left expression */
     CYPHER_DEBUG("Transforming left operand");
     if (transform_expression(ctx, binary_op->left) < 0) {
@@ -205,7 +378,7 @@ int transform_binary_operation(cypher_transform_context *ctx, cypher_binary_op *
         return -1;
     }
     CYPHER_DEBUG("Left operand done, SQL so far: %s", ctx->sql_buffer);
-    
+
     /* Add operator */
     switch (binary_op->op_type) {
         case BINARY_OP_AND:
@@ -283,6 +456,9 @@ int transform_binary_operation(cypher_transform_context *ctx, cypher_binary_op *
         case BINARY_OP_MOD:
             append_sql(ctx, " %% ");
             break;
+        case BINARY_OP_POW:
+            /* Handled above via early return — should never reach here. */
+            break;
         default:
             CYPHER_DEBUG("Unknown binary operator: %d", binary_op->op_type);
             ctx->has_error = true;
@@ -358,12 +534,12 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
             append_sql(ctx, " AND pk.key = ");
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT CAST(npi.value AS TEXT) FROM %snode_props_int npi JOIN %sproperty_keys pk ON npi.key_id = pk.id WHERE npi.node_id = ", gprefix, gprefix);
+            append_sql(ctx, "(SELECT npi.value FROM %snode_props_int npi JOIN %sproperty_keys pk ON npi.key_id = pk.id WHERE npi.node_id = ", gprefix, gprefix);
             if (transform_expression(ctx, prop->expr) < 0) return -1;
             append_sql(ctx, " AND pk.key = ");
             append_string_literal(ctx, prop->property_name);
             append_sql(ctx, "), ");
-            append_sql(ctx, "(SELECT CAST(npr.value AS TEXT) FROM %snode_props_real npr JOIN %sproperty_keys pk ON npr.key_id = pk.id WHERE npr.node_id = ", gprefix, gprefix);
+            append_sql(ctx, "(SELECT npr.value FROM %snode_props_real npr JOIN %sproperty_keys pk ON npr.key_id = pk.id WHERE npr.node_id = ", gprefix, gprefix);
             if (transform_expression(ctx, prop->expr) < 0) return -1;
             append_sql(ctx, " AND pk.key = ");
             append_string_literal(ctx, prop->property_name);
@@ -414,6 +590,23 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
     if (is_projected && alias && strstr(alias, "_unwind_") && strstr(alias, ".value")) {
         { char *esc_prop = escape_sql_string(prop->property_name);
           append_sql(ctx, "json_extract(%s, '$.%s')", alias, esc_prop ? esc_prop : prop->property_name);
+          free(esc_prop); }
+        return 0;
+    }
+
+    /* Projected variables that are NOT nodes/edges (i.e., scalar/JSON values
+     * from a WITH-expression like `duration.between(...) AS dur`, or a
+     * temporal string like `date(...)`) — try json_extract first (works for
+     * JSON objects like durations); fall back to _gql_temporal_field which
+     * parses temporal strings for `.year`/`.hour`/etc. */
+    if (is_projected && !is_edge && !alias_is_id) {
+        /* json_extract raises 'malformed JSON' on non-JSON inputs (e.g. a
+         * temporal string like '1984-10-11'), so guard with json_valid. */
+        { char *esc_prop = escape_sql_string(prop->property_name);
+          append_sql(ctx, "CASE WHEN json_valid(%s) THEN json_extract(%s, '$.%s')"
+                          " ELSE _gql_temporal_field(%s, '%s') END",
+                     alias, alias, esc_prop ? esc_prop : prop->property_name,
+                     alias, esc_prop ? esc_prop : prop->property_name);
           free(esc_prop); }
         return 0;
     }
@@ -503,11 +696,11 @@ int transform_property_access(cypher_transform_context *ctx, cypher_property *pr
                    gprefix, gprefix, alias, skip_id_suffix ? "" : ".id");
         append_string_literal(ctx, prop->property_name);
         append_sql(ctx, "), ");
-        append_sql(ctx, "(SELECT CAST(npi.value AS TEXT) FROM %snode_props_int npi JOIN %sproperty_keys pk ON npi.key_id = pk.id WHERE npi.node_id = %s%s AND pk.key = ",
+        append_sql(ctx, "(SELECT npi.value FROM %snode_props_int npi JOIN %sproperty_keys pk ON npi.key_id = pk.id WHERE npi.node_id = %s%s AND pk.key = ",
                    gprefix, gprefix, alias, skip_id_suffix ? "" : ".id");
         append_string_literal(ctx, prop->property_name);
         append_sql(ctx, "), ");
-        append_sql(ctx, "(SELECT CAST(npr.value AS TEXT) FROM %snode_props_real npr JOIN %sproperty_keys pk ON npr.key_id = pk.id WHERE npr.node_id = %s%s AND pk.key = ",
+        append_sql(ctx, "(SELECT npr.value FROM %snode_props_real npr JOIN %sproperty_keys pk ON npr.key_id = pk.id WHERE npr.node_id = %s%s AND pk.key = ",
                    gprefix, gprefix, alias, skip_id_suffix ? "" : ".id");
         append_string_literal(ctx, prop->property_name);
         append_sql(ctx, "), ");

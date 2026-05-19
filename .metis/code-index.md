@@ -1,6 +1,6 @@
 # Code Index
 
-> Generated: 2026-03-31T13:05:15Z | 55 files | JavaScript, Python, Rust
+> Generated: 2026-05-19T15:24:01Z | 73 files | JavaScript, Python, Rust
 
 ## Project Structure
 
@@ -39,6 +39,8 @@
 │   │       └── test_new_functions.py
 │   └── rust/
 │       ├── build.rs
+│       ├── examples/
+│       │   └── tck_runner.rs
 │       ├── src/
 │       │   ├── algorithms/
 │       │   │   ├── centrality.rs
@@ -69,13 +71,34 @@
 ├── docs/
 │   └── theme/
 │       └── version-select.js
-└── examples/
-    └── llm-graphrag/
-        ├── analyze.py
-        ├── hotpotqa.py
-        ├── ingest.py
-        ├── ollama_client.py
-        └── rag.py
+├── examples/
+│   └── llm-graphrag/
+│       ├── analyze.py
+│       ├── hotpotqa.py
+│       ├── ingest.py
+│       ├── ollama_client.py
+│       └── rag.py
+└── tests/
+    └── tck/
+        ├── __init__.py
+        ├── __main__.py
+        ├── _extension_worker.py
+        ├── _python_binding_worker.py
+        ├── backends/
+        │   ├── __init__.py
+        │   ├── base.py
+        │   ├── extension.py
+        │   ├── python_binding.py
+        │   └── rust_binding.py
+        ├── gherkin.py
+        ├── report.py
+        ├── runner.py
+        ├── tests/
+        │   ├── __init__.py
+        │   ├── test_gherkin.py
+        │   ├── test_smoke_extension.py
+        │   └── test_values.py
+        └── values.py
 ```
 
 ## Modules
@@ -629,67 +652,67 @@
 - pub `TestTemporalFromEpoch` class L303-314 — `{ test_datetime_from_epoch, test_datetime_from_epoch_millis }`
 - pub `test_datetime_from_epoch` method L304-308 — `def test_datetime_from_epoch(self, db)`
 - pub `test_datetime_from_epoch_millis` method L310-314 — `def test_datetime_from_epoch_millis(self, db)`
-- pub `TestDurationIn` class L317-331 — `{ test_duration_in_days, test_duration_in_seconds }`
-- pub `test_duration_in_days` method L318-324 — `def test_duration_in_days(self, db)`
-- pub `test_duration_in_seconds` method L326-331 — `def test_duration_in_seconds(self, db)`
-- pub `TestDateTruncate` class L334-340 — `{ test_date_truncate }`
-- pub `test_date_truncate` method L335-340 — `def test_date_truncate(self, db)`
-- pub `TestDateArithmetic` class L343-356 — `{ test_date_add, test_date_sub }`
-- pub `test_date_add` method L344-349 — `def test_date_add(self, db)`
-- pub `test_date_sub` method L351-356 — `def test_date_sub(self, db)`
-- pub `TestPointConstruction` class L359-372 — `{ test_point_cartesian, test_point_geographic }`
-- pub `test_point_cartesian` method L360-365 — `def test_point_cartesian(self, db)`
-- pub `test_point_geographic` method L367-372 — `def test_point_geographic(self, db)`
-- pub `TestDistance` class L375-390 — `{ test_distance_cartesian, test_distance_geographic }`
-- pub `test_distance_cartesian` method L376-381 — `def test_distance_cartesian(self, db)`
-- pub `test_distance_geographic` method L383-390 — `def test_distance_geographic(self, db)`
-- pub `TestPointWithinBBox` class L393-411 — `{ test_point_within_bbox_true, test_point_within_bbox_false, test_point_within_b...`
-- pub `test_point_within_bbox_true` method L394-398 — `def test_point_within_bbox_true(self, db)`
-- pub `test_point_within_bbox_false` method L400-404 — `def test_point_within_bbox_false(self, db)`
-- pub `test_point_within_bbox_edge` method L406-411 — `def test_point_within_bbox_edge(self, db)` — Point exactly on the boundary should be inside.
-- pub `TestOrNullEdgeCases` class L419-453 — `{ test_tointegerornull_float_string, test_tointegerornull_empty_string, test_toi...` — Boundary tests for OrNull type conversion functions.
-- pub `test_tointegerornull_float_string` method L422-427 — `def test_tointegerornull_float_string(self, db)` — Float string should convert to integer (truncated).
-- pub `test_tointegerornull_empty_string` method L429-431 — `def test_tointegerornull_empty_string(self, db)`
-- pub `test_tointegerornull_negative` method L433-435 — `def test_tointegerornull_negative(self, db)`
-- pub `test_tofloatornull_negative` method L437-441 — `def test_tofloatornull_negative(self, db)`
-- pub `test_tobooleanornull_integer_one` method L443-445 — `def test_tobooleanornull_integer_one(self, db)`
-- pub `test_tobooleanornull_integer_zero` method L447-449 — `def test_tobooleanornull_integer_zero(self, db)`
-- pub `test_tostringornull_boolean` method L451-453 — `def test_tostringornull_boolean(self, db)`
-- pub `TestIsEmptyEdgeCases` class L456-469 — `{ test_isempty_null, test_isempty_whitespace, test_isempty_single_char }`
-- pub `test_isempty_null` method L457-460 — `def test_isempty_null(self, db)`
-- pub `test_isempty_whitespace` method L462-465 — `def test_isempty_whitespace(self, db)` — Whitespace-only string is NOT empty (has length > 0).
-- pub `test_isempty_single_char` method L467-469 — `def test_isempty_single_char(self, db)`
-- pub `TestListSlicingEdgeCases` class L472-494 — `{ test_slice_empty_result, test_slice_single_element, test_slice_full_range, tes...`
-- pub `test_slice_empty_result` method L473-477 — `def test_slice_empty_result(self, db)` — Slice beyond array length returns empty array.
-- pub `test_slice_single_element` method L479-482 — `def test_slice_single_element(self, db)`
-- pub `test_slice_full_range` method L484-488 — `def test_slice_full_range(self, db)` — Slice covering entire list.
-- pub `test_slice_zero_length` method L490-494 — `def test_slice_zero_length(self, db)` — Start == end gives empty slice.
-- pub `TestTemporalEdgeCases` class L497-534 — `{ test_date_leap_year, test_date_end_of_year, test_date_add_cross_month, test_da...`
-- pub `test_date_leap_year` method L498-500 — `def test_date_leap_year(self, db)`
-- pub `test_date_end_of_year` method L502-504 — `def test_date_end_of_year(self, db)`
-- pub `test_date_add_cross_month` method L506-509 — `def test_date_add_cross_month(self, db)` — Adding days that cross a month boundary.
-- pub `test_date_add_cross_year` method L511-514 — `def test_date_add_cross_year(self, db)` — Adding months that cross a year boundary.
-- pub `test_date_sub_cross_year` method L516-518 — `def test_date_sub_cross_year(self, db)`
-- pub `test_duration_in_days_same_date` method L520-522 — `def test_duration_in_days_same_date(self, db)`
-- pub `test_duration_in_seconds_negative` method L524-529 — `def test_duration_in_seconds_negative(self, db)` — Earlier date first gives negative duration.
-- pub `test_datetime_from_epoch_negative` method L531-534 — `def test_datetime_from_epoch_negative(self, db)` — Negative epoch = before 1970.
-- pub `TestSpatialEdgeCases` class L537-577 — `{ test_distance_same_point, test_distance_negative_coords, test_point_3d, test_g...`
-- pub `test_distance_same_point` method L538-542 — `def test_distance_same_point(self, db)`
-- pub `test_distance_negative_coords` method L544-548 — `def test_distance_negative_coords(self, db)`
-- pub `test_point_3d` method L550-553 — `def test_point_3d(self, db)`
-- pub `test_geographic_distance_same_point` method L555-559 — `def test_geographic_distance_same_point(self, db)`
-- pub `test_geographic_distance_antipodal` method L561-567 — `def test_geographic_distance_antipodal(self, db)` — North pole to south pole ≈ 20,015 km.
-- pub `test_bbox_geographic` method L569-577 — `def test_bbox_geographic(self, db)` — NYC is within a US northeast bounding box.
-- pub `TestNullIfEdgeCases` class L580-593 — `{ test_nullif_strings, test_nullif_null_args, test_nullif_mixed_types }`
-- pub `test_nullif_strings` method L581-583 — `def test_nullif_strings(self, db)`
-- pub `test_nullif_null_args` method L585-587 — `def test_nullif_null_args(self, db)`
-- pub `test_nullif_mixed_types` method L589-593 — `def test_nullif_mixed_types(self, db)`
-- pub `TestValueTypeEdgeCases` class L596-604 — `{ test_valuetype_null, test_valuetype_boolean }`
-- pub `test_valuetype_null` method L597-599 — `def test_valuetype_null(self, db)`
-- pub `test_valuetype_boolean` method L601-604 — `def test_valuetype_boolean(self, db)`
-- pub `TestReturnStarEdgeCases` class L607-620 — `{ test_return_star_with_relationship, test_return_star_multiple_nodes }`
-- pub `test_return_star_with_relationship` method L608-614 — `def test_return_star_with_relationship(self, db)`
-- pub `test_return_star_multiple_nodes` method L616-620 — `def test_return_star_multiple_nodes(self, db)`
+- pub `TestDurationIn` class L317-335 — `{ test_duration_in_days, test_duration_in_seconds }`
+- pub `test_duration_in_days` method L322-328 — `def test_duration_in_days(self, db)`
+- pub `test_duration_in_seconds` method L330-335 — `def test_duration_in_seconds(self, db)`
+- pub `TestDateTruncate` class L338-344 — `{ test_date_truncate }`
+- pub `test_date_truncate` method L339-344 — `def test_date_truncate(self, db)`
+- pub `TestDateArithmetic` class L347-360 — `{ test_date_add, test_date_sub }`
+- pub `test_date_add` method L348-353 — `def test_date_add(self, db)`
+- pub `test_date_sub` method L355-360 — `def test_date_sub(self, db)`
+- pub `TestPointConstruction` class L363-376 — `{ test_point_cartesian, test_point_geographic }`
+- pub `test_point_cartesian` method L364-369 — `def test_point_cartesian(self, db)`
+- pub `test_point_geographic` method L371-376 — `def test_point_geographic(self, db)`
+- pub `TestDistance` class L379-394 — `{ test_distance_cartesian, test_distance_geographic }`
+- pub `test_distance_cartesian` method L380-385 — `def test_distance_cartesian(self, db)`
+- pub `test_distance_geographic` method L387-394 — `def test_distance_geographic(self, db)`
+- pub `TestPointWithinBBox` class L397-415 — `{ test_point_within_bbox_true, test_point_within_bbox_false, test_point_within_b...`
+- pub `test_point_within_bbox_true` method L398-402 — `def test_point_within_bbox_true(self, db)`
+- pub `test_point_within_bbox_false` method L404-408 — `def test_point_within_bbox_false(self, db)`
+- pub `test_point_within_bbox_edge` method L410-415 — `def test_point_within_bbox_edge(self, db)` — Point exactly on the boundary should be inside.
+- pub `TestOrNullEdgeCases` class L423-457 — `{ test_tointegerornull_float_string, test_tointegerornull_empty_string, test_toi...` — Boundary tests for OrNull type conversion functions.
+- pub `test_tointegerornull_float_string` method L426-431 — `def test_tointegerornull_float_string(self, db)` — Float string should convert to integer (truncated).
+- pub `test_tointegerornull_empty_string` method L433-435 — `def test_tointegerornull_empty_string(self, db)`
+- pub `test_tointegerornull_negative` method L437-439 — `def test_tointegerornull_negative(self, db)`
+- pub `test_tofloatornull_negative` method L441-445 — `def test_tofloatornull_negative(self, db)`
+- pub `test_tobooleanornull_integer_one` method L447-449 — `def test_tobooleanornull_integer_one(self, db)`
+- pub `test_tobooleanornull_integer_zero` method L451-453 — `def test_tobooleanornull_integer_zero(self, db)`
+- pub `test_tostringornull_boolean` method L455-457 — `def test_tostringornull_boolean(self, db)`
+- pub `TestIsEmptyEdgeCases` class L460-473 — `{ test_isempty_null, test_isempty_whitespace, test_isempty_single_char }`
+- pub `test_isempty_null` method L461-464 — `def test_isempty_null(self, db)`
+- pub `test_isempty_whitespace` method L466-469 — `def test_isempty_whitespace(self, db)` — Whitespace-only string is NOT empty (has length > 0).
+- pub `test_isempty_single_char` method L471-473 — `def test_isempty_single_char(self, db)`
+- pub `TestListSlicingEdgeCases` class L476-498 — `{ test_slice_empty_result, test_slice_single_element, test_slice_full_range, tes...`
+- pub `test_slice_empty_result` method L477-481 — `def test_slice_empty_result(self, db)` — Slice beyond array length returns empty array.
+- pub `test_slice_single_element` method L483-486 — `def test_slice_single_element(self, db)`
+- pub `test_slice_full_range` method L488-492 — `def test_slice_full_range(self, db)` — Slice covering entire list.
+- pub `test_slice_zero_length` method L494-498 — `def test_slice_zero_length(self, db)` — Start == end gives empty slice.
+- pub `TestTemporalEdgeCases` class L501-539 — `{ test_date_leap_year, test_date_end_of_year, test_date_add_cross_month, test_da...`
+- pub `test_date_leap_year` method L502-504 — `def test_date_leap_year(self, db)`
+- pub `test_date_end_of_year` method L506-508 — `def test_date_end_of_year(self, db)`
+- pub `test_date_add_cross_month` method L510-513 — `def test_date_add_cross_month(self, db)` — Adding days that cross a month boundary.
+- pub `test_date_add_cross_year` method L515-518 — `def test_date_add_cross_year(self, db)` — Adding months that cross a year boundary.
+- pub `test_date_sub_cross_year` method L520-522 — `def test_date_sub_cross_year(self, db)`
+- pub `test_duration_in_days_same_date` method L524-527 — `def test_duration_in_days_same_date(self, db)`
+- pub `test_duration_in_seconds_negative` method L529-534 — `def test_duration_in_seconds_negative(self, db)` — Earlier date first gives negative duration.
+- pub `test_datetime_from_epoch_negative` method L536-539 — `def test_datetime_from_epoch_negative(self, db)` — Negative epoch = before 1970.
+- pub `TestSpatialEdgeCases` class L542-582 — `{ test_distance_same_point, test_distance_negative_coords, test_point_3d, test_g...`
+- pub `test_distance_same_point` method L543-547 — `def test_distance_same_point(self, db)`
+- pub `test_distance_negative_coords` method L549-553 — `def test_distance_negative_coords(self, db)`
+- pub `test_point_3d` method L555-558 — `def test_point_3d(self, db)`
+- pub `test_geographic_distance_same_point` method L560-564 — `def test_geographic_distance_same_point(self, db)`
+- pub `test_geographic_distance_antipodal` method L566-572 — `def test_geographic_distance_antipodal(self, db)` — North pole to south pole ≈ 20,015 km.
+- pub `test_bbox_geographic` method L574-582 — `def test_bbox_geographic(self, db)` — NYC is within a US northeast bounding box.
+- pub `TestNullIfEdgeCases` class L585-598 — `{ test_nullif_strings, test_nullif_null_args, test_nullif_mixed_types }`
+- pub `test_nullif_strings` method L586-588 — `def test_nullif_strings(self, db)`
+- pub `test_nullif_null_args` method L590-592 — `def test_nullif_null_args(self, db)`
+- pub `test_nullif_mixed_types` method L594-598 — `def test_nullif_mixed_types(self, db)`
+- pub `TestValueTypeEdgeCases` class L601-609 — `{ test_valuetype_null, test_valuetype_boolean }`
+- pub `test_valuetype_null` method L602-604 — `def test_valuetype_null(self, db)`
+- pub `test_valuetype_boolean` method L606-609 — `def test_valuetype_boolean(self, db)`
+- pub `TestReturnStarEdgeCases` class L612-625 — `{ test_return_star_with_relationship, test_return_star_multiple_nodes }`
+- pub `test_return_star_with_relationship` method L613-619 — `def test_return_star_with_relationship(self, db)`
+- pub `test_return_star_multiple_nodes` method L621-625 — `def test_return_star_multiple_nodes(self, db)`
 
 ### bindings/rust
 
@@ -698,6 +721,15 @@
 #### bindings/rust/build.rs
 
 -  `main` function L7-13 — `()` — When the `bundled-extension` feature is enabled, pre-built extension binaries
+
+### bindings/rust/examples
+
+> *Semantic summary to be generated by AI agent.*
+
+#### bindings/rust/examples/tck_runner.rs
+
+-  `Request` enum L25-29 — `Reset | Execute | Shutdown` — Run via:  cargo run --example tck_runner --manifest-path bindings/rust/Cargo.toml
+-  `main` function L31-118 — `()` — Run via:  cargo run --example tck_runner --manifest-path bindings/rust/Cargo.toml
 
 ### bindings/rust/src/algorithms
 
@@ -709,8 +741,8 @@
 - pub `degree_centrality` function L37-54 — `(&self) -> Result<Vec<DegreeCentralityResult>>` — Calculate degree centrality for all nodes.
 - pub `betweenness_centrality` function L57-72 — `(&self) -> Result<Vec<BetweennessCentralityResult>>` — Calculate betweenness centrality for all nodes.
 - pub `closeness_centrality` function L75-90 — `(&self) -> Result<Vec<ClosenessCentralityResult>>` — Calculate closeness centrality for all nodes.
-- pub `eigenvector_centrality` function L97-113 — `(&self, iterations: i32) -> Result<Vec<EigenvectorCentralityResult>>` — Calculate eigenvector centrality for all nodes.
--  `Graph` type L11-114 — `= Graph` — Centrality algorithm implementations.
+- pub `eigenvector_centrality` function L97-116 — `( &self, iterations: i32, ) -> Result<Vec<EigenvectorCentralityResult>>` — Calculate eigenvector centrality for all nodes.
+-  `Graph` type L11-117 — `= Graph` — Centrality algorithm implementations.
 
 #### bindings/rust/src/algorithms/community.rs
 
@@ -750,26 +782,26 @@
 
 #### bindings/rust/src/algorithms/parsing.rs
 
--  `extract_algo_array` function L13-41 — `(result: &[&Row]) -> Vec<Row>` — Extract a wrapped array result from graph algorithms.
--  `extract_node_id` function L44-50 — `(row: &Row) -> Option<String>` — Extract node_id from a result row.
--  `extract_user_id` function L53-59 — `(row: &Row) -> Option<String>` — Extract user_id from a result row.
--  `extract_float` function L62-70 — `(row: &Row, field: &str) -> f64` — Extract a float score from a result row.
--  `extract_int` function L73-81 — `(row: &Row, field: &str) -> i64` — Extract an integer value from a result row.
--  `extract_string` function L84-90 — `(row: &Row, field: &str) -> Option<String>` — Extract a string value from a result row.
+-  `extract_algo_array` function L13-53 — `(result: &[&Row]) -> Vec<Row>` — Extract a wrapped array result from graph algorithms.
+-  `extract_node_id` function L56-62 — `(row: &Row) -> Option<String>` — Extract node_id from a result row.
+-  `extract_user_id` function L65-71 — `(row: &Row) -> Option<String>` — Extract user_id from a result row.
+-  `extract_float` function L74-82 — `(row: &Row, field: &str) -> f64` — Extract a float score from a result row.
+-  `extract_int` function L85-93 — `(row: &Row, field: &str) -> i64` — Extract an integer value from a result row.
+-  `extract_string` function L96-102 — `(row: &Row, field: &str) -> Option<String>` — Extract a string value from a result row.
 
 #### bindings/rust/src/algorithms/paths.rs
 
-- pub `shortest_path` function L17-107 — `( &self, source_id: &str, target_id: &str, weight_property: Option<&str>, ) -> R...` — Find the shortest path between two nodes using Dijkstra's algorithm.
-- pub `astar` function L117-183 — `( &self, source_id: &str, target_id: &str, lat_prop: Option<&str>, lon_prop: Opt...` — Find shortest path using A* algorithm with heuristic guidance.
-- pub `apsp` function L188-211 — `(&self) -> Result<Vec<ApspResult>>` — Compute shortest paths between all pairs of nodes.
--  `Graph` type L9-212 — `= Graph` — Path finding algorithm implementations.
+- pub `shortest_path` function L17-121 — `( &self, source_id: &str, target_id: &str, weight_property: Option<&str>, ) -> R...` — Find the shortest path between two nodes using Dijkstra's algorithm.
+- pub `astar` function L131-205 — `( &self, source_id: &str, target_id: &str, lat_prop: Option<&str>, lon_prop: Opt...` — Find shortest path using A* algorithm with heuristic guidance.
+- pub `apsp` function L210-233 — `(&self) -> Result<Vec<ApspResult>>` — Compute shortest paths between all pairs of nodes.
+-  `Graph` type L9-234 — `= Graph` — Path finding algorithm implementations.
 
 #### bindings/rust/src/algorithms/similarity.rs
 
-- pub `node_similarity` function L18-58 — `( &self, node1_id: Option<&str>, node2_id: Option<&str>, threshold: f64, top_k: ...` — Compute node similarity using Jaccard coefficient.
-- pub `knn` function L66-81 — `(&self, node_id: &str, k: i32) -> Result<Vec<KnnResult>>` — Find K-nearest neighbors using Jaccard similarity.
-- pub `triangle_count` function L84-99 — `(&self) -> Result<Vec<TriangleCountResult>>` — Count triangles each node participates in.
--  `Graph` type L9-100 — `= Graph` — Similarity algorithm implementations.
+- pub `node_similarity` function L20-60 — `( &self, node1_id: Option<&str>, node2_id: Option<&str>, threshold: f64, top_k: ...` — Compute node similarity using Jaccard coefficient.
+- pub `knn` function L68-83 — `(&self, node_id: &str, k: i32) -> Result<Vec<KnnResult>>` — Find K-nearest neighbors using Jaccard similarity.
+- pub `triangle_count` function L86-101 — `(&self) -> Result<Vec<TriangleCountResult>>` — Count triangles each node participates in.
+-  `Graph` type L11-102 — `= Graph` — Similarity algorithm implementations.
 
 #### bindings/rust/src/algorithms/traversal.rs
 
@@ -790,19 +822,19 @@
 - pub `from_rusqlite` function L74-78 — `(conn: rusqlite::Connection) -> Result<Self>` — Create a GraphQLite connection from an existing rusqlite Connection.
 - pub `open_with_extension` function L89-96 — `( path: P, extension_path: E, ) -> Result<Self>` — Create a connection with a custom extension path.
 - pub `cypher` function L118-133 — `(&self, query: &str) -> Result<CypherResult>` — Execute a Cypher query.
-- pub `cypher_with_params` function L160-162 — `(&self, query: &str, params: &serde_json::Value) -> Result<CypherResult>` — Execute a Cypher query with named parameters.
-- pub `cypher_builder` function L197-199 — `(&'a self, query: &'a str) -> CypherQuery<'a>` — Create a builder for a parameterized Cypher query.
-- pub `execute` function L205-207 — `(&self, sql: &str) -> Result<usize>` — Execute raw SQL.
-- pub `sqlite_connection` function L210-212 — `(&self) -> &rusqlite::Connection` — Access the underlying rusqlite connection.
--  `Connection` type L18-213 — `= Connection` — GraphQLite connection wrapper.
--  `execute_cypher_with_params` function L165-181 — `(&self, query: &str, params: &serde_json::Value) -> Result<CypherResult>` — Internal: execute a parameterized Cypher query.
--  `find_extension` function L217-258 — `() -> Result<PathBuf>` — Find the GraphQLite extension library.
--  `load_extension` function L262-281 — `(conn: &rusqlite::Connection, path: &std::path::Path) -> Result<()>` — Load the GraphQLite extension into a connection.
--  `parse_structured_error` function L285-292 — `(s: &str) -> Error` — Parse a structured JSON error from the extension into an Error.
--  `tests` module L295-335 — `-` — GraphQLite connection wrapper.
--  `get_test_extension_path` function L299-316 — `() -> Option<std::path::PathBuf>` — GraphQLite connection wrapper.
--  `test_find_extension` function L320-326 — `()` — GraphQLite connection wrapper.
--  `test_bundled_connection` function L330-334 — `()` — GraphQLite connection wrapper.
+- pub `cypher_with_params` function L160-166 — `( &self, query: &str, params: &serde_json::Value, ) -> Result<CypherResult>` — Execute a Cypher query with named parameters.
+- pub `cypher_builder` function L207-209 — `(&'a self, query: &'a str) -> CypherQuery<'a>` — Create a builder for a parameterized Cypher query.
+- pub `execute` function L215-217 — `(&self, sql: &str) -> Result<usize>` — Execute raw SQL.
+- pub `sqlite_connection` function L220-222 — `(&self) -> &rusqlite::Connection` — Access the underlying rusqlite connection.
+-  `Connection` type L18-223 — `= Connection` — GraphQLite connection wrapper.
+-  `execute_cypher_with_params` function L169-191 — `( &self, query: &str, params: &serde_json::Value, ) -> Result<CypherResult>` — Internal: execute a parameterized Cypher query.
+-  `find_extension` function L227-268 — `() -> Result<PathBuf>` — Find the GraphQLite extension library.
+-  `load_extension` function L272-291 — `(conn: &rusqlite::Connection, path: &std::path::Path) -> Result<()>` — Load the GraphQLite extension into a connection.
+-  `parse_structured_error` function L295-302 — `(s: &str) -> Error` — Parse a structured JSON error from the extension into an Error.
+-  `tests` module L305-345 — `-` — GraphQLite connection wrapper.
+-  `get_test_extension_path` function L309-326 — `() -> Option<std::path::PathBuf>` — GraphQLite connection wrapper.
+-  `test_find_extension` function L330-336 — `()` — GraphQLite connection wrapper.
+-  `test_bundled_connection` function L340-344 — `()` — GraphQLite connection wrapper.
 
 #### bindings/rust/src/error.rs
 
@@ -831,27 +863,27 @@
 - pub `open_graph` function L149-167 — `(&mut self, name: &str) -> Result<&Graph>` — Open an existing graph.
 - pub `open_or_create` function L174-180 — `(&mut self, name: &str) -> Result<&Graph>` — Open a graph, creating it if it doesn't exist.
 - pub `get_mut` function L191-193 — `(&mut self, name: &str) -> Option<&mut Graph>` — Get a mutable reference to an open graph.
-- pub `drop` function L204-226 — `(&mut self, name: &str) -> Result<()>` — Delete a graph and its database file.
-- pub `query` function L241-296 — `(&mut self, cypher: &str, graph_names: &[&str]) -> Result<CypherResult>` — Execute a cross-graph Cypher query.
-- pub `query_sql` function L306-356 — `(&mut self, sql: &str, graph_names: &[&str]) -> Result<Vec<Vec<rusqlite::types::...` — Execute a raw SQL query across attached graphs.
-- pub `len` function L359-361 — `(&self) -> Result<usize>` — Get the number of graphs in the directory.
-- pub `is_empty` function L364-366 — `(&self) -> Result<bool>` — Check if the directory is empty (no graphs).
-- pub `contains` function L369-371 — `(&self, name: &str) -> bool` — Check if a graph name is in the directory.
-- pub `iter` function L374-376 — `(&self) -> Result<impl Iterator<Item = String>>` — Iterate over graph names.
-- pub `graphs` function L388-390 — `(base_path: P) -> Result<GraphManager>` — Create a new GraphManager instance (convenience function).
--  `GraphManager` type L46-377 — `= GraphManager` — in a directory, with cross-graph query support via ATTACH.
+- pub `drop` function L204-228 — `(&mut self, name: &str) -> Result<()>` — Delete a graph and its database file.
+- pub `query` function L243-291 — `(&mut self, cypher: &str, graph_names: &[&str]) -> Result<CypherResult>` — Execute a cross-graph Cypher query.
+- pub `query_sql` function L301-351 — `( &mut self, sql: &str, graph_names: &[&str], ) -> Result<Vec<Vec<rusqlite::type...` — Execute a raw SQL query across attached graphs.
+- pub `len` function L354-356 — `(&self) -> Result<usize>` — Get the number of graphs in the directory.
+- pub `is_empty` function L359-361 — `(&self) -> Result<bool>` — Check if the directory is empty (no graphs).
+- pub `contains` function L364-366 — `(&self, name: &str) -> bool` — Check if a graph name is in the directory.
+- pub `iter` function L369-371 — `(&self) -> Result<impl Iterator<Item = String>>` — Iterate over graph names.
+- pub `graphs` function L383-385 — `(base_path: P) -> Result<GraphManager>` — Create a new GraphManager instance (convenience function).
+-  `GraphManager` type L46-372 — `= GraphManager` — in a directory, with cross-graph query support via ATTACH.
 -  `graph_path` function L66-68 — `(&self, name: &str) -> PathBuf` — Get the file path for a graph.
 -  `ensure_coordinator` function L71-77 — `(&mut self) -> Result<&Connection>` — Get or create the coordinator connection for cross-graph queries.
--  `GraphManager` type L379-385 — `impl Drop for GraphManager` — in a directory, with cross-graph query support via ATTACH.
--  `drop` function L380-384 — `(&mut self)` — in a directory, with cross-graph query support via ATTACH.
--  `tests` module L393-455 — `-` — in a directory, with cross-graph query support via ATTACH.
--  `test_create_manager` function L398-402 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_list_empty` function L405-409 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_create_graph` function L412-418 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_create_duplicate_fails` function L421-426 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_open_missing_fails` function L429-433 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_drop_graph` function L436-443 — `()` — in a directory, with cross-graph query support via ATTACH.
--  `test_list_multiple` function L446-454 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `GraphManager` type L374-380 — `impl Drop for GraphManager` — in a directory, with cross-graph query support via ATTACH.
+-  `drop` function L375-379 — `(&mut self)` — in a directory, with cross-graph query support via ATTACH.
+-  `tests` module L388-450 — `-` — in a directory, with cross-graph query support via ATTACH.
+-  `test_create_manager` function L393-397 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_list_empty` function L400-404 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_create_graph` function L407-413 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_create_duplicate_fails` function L416-421 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_open_missing_fails` function L424-428 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_drop_graph` function L431-438 — `()` — in a directory, with cross-graph query support via ATTACH.
+-  `test_list_multiple` function L441-449 — `()` — in a directory, with cross-graph query support via ATTACH.
 
 #### bindings/rust/src/platform.rs
 
@@ -866,17 +898,17 @@
 -  `EXTENSION_BYTES` variable L36 — `: &[u8]` — Embedded extension binary for Linux ARM64
 -  `EXTENSION_BYTES` variable L40 — `: &[u8]` — Embedded extension binary for Windows x86_64
 -  `EXTENSION_PATH` variable L43 — `: Mutex<Option<PathBuf>>` — Cache for the extracted extension path
--  `extract_extension` function L70-102 — `() -> Result<PathBuf>` — Extract the embedded extension binary to a temp file.
--  `dirs_fallback` function L105-120 — `() -> PathBuf` — Fallback directory: ~/.cache/graphqlite/ (or %LOCALAPPDATA%\graphqlite on Windows)
--  `try_extract_to` function L123-168 — `(dir: &PathBuf, filename: &str) -> Result<PathBuf>` — Try to extract the extension to a specific directory.
--  `cleanup_old_versions` function L171-182 — `(dir: &PathBuf, current_filename: &str)` — Remove old versioned extension files from the directory.
+-  `extract_extension` function L70-99 — `() -> Result<PathBuf>` — Extract the embedded extension binary to a temp file.
+-  `dirs_fallback` function L102-117 — `() -> PathBuf` — Fallback directory: ~/.cache/graphqlite/ (or %LOCALAPPDATA%\graphqlite on Windows)
+-  `try_extract_to` function L120-165 — `(dir: &PathBuf, filename: &str) -> Result<PathBuf>` — Try to extract the extension to a specific directory.
+-  `cleanup_old_versions` function L168-182 — `(dir: &PathBuf, current_filename: &str)` — Remove old versioned extension files from the directory.
 
 #### bindings/rust/src/query_builder.rs
 
 - pub `CypherQuery` struct L29-33 — `{ conn: &'a Connection, query: &'a str, params: serde_json::Map<String, serde_js...` — A builder for constructing and executing parameterized Cypher queries.
 - pub `param` function L60-63 — `(mut self, key: &str, value: impl Into<serde_json::Value>) -> Self` — Set an individual named parameter.
 - pub `params` function L81-88 — `(mut self, params: &serde_json::Value) -> Self` — Merge parameters from a JSON object.
-- pub `run` function L94-101 — `(self) -> Result<CypherResult>` — Execute the query and return results.
+- pub `run` function L94-102 — `(self) -> Result<CypherResult>` — Execute the query and return results.
 -  `new` function L37-43 — `(conn: &'a Connection, query: &'a str) -> Self` — Create a new builder (called internally by `Connection::cypher_builder`).
 
 #### bindings/rust/src/result.rs
@@ -892,75 +924,75 @@
 - pub `get_index` function L160-165 — `(&self, index: usize) -> Option<&Value>` — Access an element of a [`Value::Array`] by index.
 - pub `as_array` function L168-173 — `(&self) -> Option<&Vec<Value>>` — Returns the array if this is a [`Value::Array`].
 - pub `as_object` function L176-181 — `(&self) -> Option<&HashMap<String, Value>>` — Returns the object map if this is a [`Value::Object`].
-- pub `Row` struct L212-215 — `{ columns: Vec<String>, values: HashMap<String, Value> }` — A single row from a Cypher query result.
-- pub `get_value` function L240-242 — `(&self, column: &str) -> Option<&Value>` — Get a raw [`Value`] by column name.
-- pub `get` function L261-266 — `(&self, column: &str) -> crate::Result<T>` — Get a typed value by column name.
-- pub `columns` function L269-271 — `(&self) -> &[String]` — Get the column names in this row.
-- pub `contains` function L274-276 — `(&self, column: &str) -> bool` — Check if the row contains a column with the given name.
-- pub `FromValue` interface L292-295 — `{ fn from_value() }` — Trait for converting from [`Value`] to typed Rust values.
-- pub `CypherResult` struct L405-408 — `{ rows: Vec<Row>, columns: Vec<String> }` — Result of a Cypher query, containing zero or more rows.
-- pub `empty` function L412-417 — `() -> Self` — Create an empty result with no rows or columns.
-- pub `from_json` function L422-503 — `(json_str: &str) -> crate::Result<Self>` — Parse a JSON string into a `CypherResult`.
-- pub `len` function L506-508 — `(&self) -> usize` — Returns the number of rows in the result.
-- pub `is_empty` function L511-513 — `(&self) -> bool` — Returns `true` if the result contains no rows.
-- pub `columns` function L518-520 — `(&self) -> &[String]` — Returns the column names from the query.
-- pub `get` function L523-525 — `(&self, index: usize) -> Option<&Row>` — Returns a reference to the row at the given index, or `None` if out of bounds.
-- pub `iter` function L528-530 — `(&self) -> impl Iterator<Item = &Row>` — Returns an iterator over the rows.
+- pub `Row` struct L213-216 — `{ columns: Vec<String>, values: HashMap<String, Value> }` — A single row from a Cypher query result.
+- pub `get_value` function L244-246 — `(&self, column: &str) -> Option<&Value>` — Get a raw [`Value`] by column name.
+- pub `get` function L265-271 — `(&self, column: &str) -> crate::Result<T>` — Get a typed value by column name.
+- pub `columns` function L274-276 — `(&self) -> &[String]` — Get the column names in this row.
+- pub `contains` function L279-281 — `(&self, column: &str) -> bool` — Check if the row contains a column with the given name.
+- pub `FromValue` interface L297-300 — `{ fn from_value() }` — Trait for converting from [`Value`] to typed Rust values.
+- pub `CypherResult` struct L410-413 — `{ rows: Vec<Row>, columns: Vec<String> }` — Result of a Cypher query, containing zero or more rows.
+- pub `empty` function L417-422 — `() -> Self` — Create an empty result with no rows or columns.
+- pub `from_json` function L427-508 — `(json_str: &str) -> crate::Result<Self>` — Parse a JSON string into a `CypherResult`.
+- pub `len` function L511-513 — `(&self) -> usize` — Returns the number of rows in the result.
+- pub `is_empty` function L516-518 — `(&self) -> bool` — Returns `true` if the result contains no rows.
+- pub `columns` function L523-525 — `(&self) -> &[String]` — Returns the column names from the query.
+- pub `get` function L528-530 — `(&self, index: usize) -> Option<&Row>` — Returns a reference to the row at the given index, or `None` if out of bounds.
+- pub `iter` function L533-535 — `(&self) -> impl Iterator<Item = &Row>` — Returns an iterator over the rows.
 -  `Value` type L65-182 — `= Value` — ```
--  `Value` type L184-195 — `= Value` — ```
+-  `Value` type L184-196 — `= Value` — ```
 -  `Output` type L185 — `= Value` — ```
--  `index` function L192-194 — `(&self, key: &str) -> &Self::Output` — Index into an Object value by key.
--  `Row` type L217-277 — `= Row` — ```
--  `from_json_object` function L219-226 — `(obj: serde_json::Map<String, JsonValue>) -> Self` — Create a new row from column names and a JSON object.
--  `from_map` function L231-234 — `(map: HashMap<String, Value>) -> Self` — Create a new row from a HashMap of Values.
--  `String` type L297-308 — `impl FromValue for String` — ```
--  `from_value` function L298-307 — `(value: &Value) -> crate::Result<Self>` — ```
--  `from_value` function L311-324 — `(value: &Value) -> crate::Result<Self>` — ```
--  `from_value` function L328-336 — `(value: &Value) -> crate::Result<Self>` — ```
--  `from_value` function L340-349 — `(value: &Value) -> crate::Result<Self>` — ```
--  `from_value` function L353-364 — `(value: &Value) -> crate::Result<Self>` — ```
--  `from_value` function L368-373 — `(value: &Value) -> crate::Result<Self>` — ```
--  `CypherResult` type L410-531 — `= CypherResult` — ```
--  `Item` type L534 — `= &'a Row` — ```
--  `IntoIter` type L535 — `= std::slice::Iter<'a, Row>` — ```
--  `into_iter` function L537-539 — `(self) -> Self::IntoIter` — ```
--  `CypherResult` type L542-549 — `impl IntoIterator for CypherResult` — ```
--  `Item` type L543 — `= Row` — ```
--  `IntoIter` type L544 — `= std::vec::IntoIter<Row>` — ```
--  `into_iter` function L546-548 — `(self) -> Self::IntoIter` — ```
--  `CypherResult` type L551-557 — `= CypherResult` — ```
--  `Output` type L552 — `= Row` — ```
--  `index` function L554-556 — `(&self, index: usize) -> &Self::Output` — ```
+-  `index` function L192-195 — `(&self, key: &str) -> &Self::Output` — Index into an Object value by key.
+-  `Row` type L218-282 — `= Row` — ```
+-  `from_json_object` function L220-227 — `(obj: serde_json::Map<String, JsonValue>) -> Self` — Create a new row from column names and a JSON object.
+-  `from_map` function L232-238 — `(map: HashMap<String, Value>) -> Self` — Create a new row from a HashMap of Values.
+-  `String` type L302-313 — `impl FromValue for String` — ```
+-  `from_value` function L303-312 — `(value: &Value) -> crate::Result<Self>` — ```
+-  `from_value` function L316-329 — `(value: &Value) -> crate::Result<Self>` — ```
+-  `from_value` function L333-341 — `(value: &Value) -> crate::Result<Self>` — ```
+-  `from_value` function L345-354 — `(value: &Value) -> crate::Result<Self>` — ```
+-  `from_value` function L358-369 — `(value: &Value) -> crate::Result<Self>` — ```
+-  `from_value` function L373-378 — `(value: &Value) -> crate::Result<Self>` — ```
+-  `CypherResult` type L415-536 — `= CypherResult` — ```
+-  `Item` type L539 — `= &'a Row` — ```
+-  `IntoIter` type L540 — `= std::slice::Iter<'a, Row>` — ```
+-  `into_iter` function L542-544 — `(self) -> Self::IntoIter` — ```
+-  `CypherResult` type L547-554 — `impl IntoIterator for CypherResult` — ```
+-  `Item` type L548 — `= Row` — ```
+-  `IntoIter` type L549 — `= std::vec::IntoIter<Row>` — ```
+-  `into_iter` function L551-553 — `(self) -> Self::IntoIter` — ```
+-  `CypherResult` type L556-562 — `= CypherResult` — ```
+-  `Output` type L557 — `= Row` — ```
+-  `index` function L559-561 — `(&self, index: usize) -> &Self::Output` — ```
 
 #### bindings/rust/src/utils.rs
 
-- pub `CYPHER_RESERVED` variable L6-20 — `: &[&str]` — Cypher reserved keywords that can't be used as relationship types.
-- pub `escape_string` function L25-30 — `(s: &str) -> String` — Escape a string for use in Cypher queries.
-- pub `sanitize_rel_type` function L35-53 — `(rel_type: &str) -> String` — Sanitize a relationship type for use in Cypher.
-- pub `rel_type_pattern` function L58-63 — `(rel_type: Option<&str>) -> String` — Build a Cypher relationship type pattern fragment.
-- pub `format_value` function L76-92 — `(v: &str) -> String` — Format a value for inclusion in a Cypher query.
-- pub `PropertyValue` enum L120-129 — `Text | Integer | Float | Bool` — A typed property value for graph nodes and edges.
-- pub `to_cypher` function L133-144 — `(&self) -> String` — Format this value for embedding in a Cypher query string.
--  `has_leading_zero` function L70-73 — `(s: &str) -> bool` — Check if a string has a leading zero that would be lost in numeric parsing.
--  `PropertyValue` type L131-145 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `PropertyValue` type L147-169 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L152-168 — `(s: &str) -> Self` — Auto-detect type from string (backward-compatible behavior).
--  `PropertyValue` type L171-175 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L172-174 — `(s: String) -> Self` — Utility functions for Cypher query construction.
--  `PropertyValue` type L177-181 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L178-180 — `(s: &String) -> Self` — Utility functions for Cypher query construction.
--  `PropertyValue` type L183-187 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L184-186 — `(v: i64) -> Self` — Utility functions for Cypher query construction.
--  `PropertyValue` type L189-193 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L190-192 — `(v: i32) -> Self` — Utility functions for Cypher query construction.
--  `PropertyValue` type L195-199 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L196-198 — `(v: f64) -> Self` — Utility functions for Cypher query construction.
--  `PropertyValue` type L201-205 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L202-204 — `(v: f32) -> Self` — Utility functions for Cypher query construction.
--  `PropertyValue` type L207-211 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L208-210 — `(v: bool) -> Self` — Utility functions for Cypher query construction.
--  `PropertyValue` type L213-217 — `= PropertyValue` — Utility functions for Cypher query construction.
--  `from` function L214-216 — `(v: usize) -> Self` — Utility functions for Cypher query construction.
+- pub `CYPHER_RESERVED` variable L6-74 — `: &[&str]` — Cypher reserved keywords that can't be used as relationship types.
+- pub `escape_string` function L79-84 — `(s: &str) -> String` — Escape a string for use in Cypher queries.
+- pub `sanitize_rel_type` function L89-113 — `(rel_type: &str) -> String` — Sanitize a relationship type for use in Cypher.
+- pub `rel_type_pattern` function L118-123 — `(rel_type: Option<&str>) -> String` — Build a Cypher relationship type pattern fragment.
+- pub `format_value` function L136-152 — `(v: &str) -> String` — Format a value for inclusion in a Cypher query.
+- pub `PropertyValue` enum L180-189 — `Text | Integer | Float | Bool` — A typed property value for graph nodes and edges.
+- pub `to_cypher` function L193-208 — `(&self) -> String` — Format this value for embedding in a Cypher query string.
+-  `has_leading_zero` function L130-133 — `(s: &str) -> bool` — Check if a string has a leading zero that would be lost in numeric parsing.
+-  `PropertyValue` type L191-209 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L211-233 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L216-232 — `(s: &str) -> Self` — Auto-detect type from string (backward-compatible behavior).
+-  `PropertyValue` type L235-239 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L236-238 — `(s: String) -> Self` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L241-245 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L242-244 — `(s: &String) -> Self` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L247-251 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L248-250 — `(v: i64) -> Self` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L253-257 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L254-256 — `(v: i32) -> Self` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L259-263 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L260-262 — `(v: f64) -> Self` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L265-269 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L266-268 — `(v: f32) -> Self` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L271-275 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L272-274 — `(v: bool) -> Self` — Utility functions for Cypher query construction.
+-  `PropertyValue` type L277-281 — `= PropertyValue` — Utility functions for Cypher query construction.
+-  `from` function L278-280 — `(v: usize) -> Self` — Utility functions for Cypher query construction.
 
 ### bindings/rust/src/graph
 
@@ -976,30 +1008,30 @@
 
 - pub `BulkInsertResult` struct L42-49 — `{ nodes_inserted: usize, edges_inserted: usize, id_map: HashMap<String, i64> }` — Result of a bulk insert operation.
 - pub `insert_nodes_bulk` function L79-177 — `(&self, nodes: I) -> Result<HashMap<String, i64>>` — Insert multiple nodes in a single transaction with minimal overhead.
-- pub `insert_edges_bulk` function L208-326 — `( &self, edges: I, id_map: &HashMap<String, i64>, ) -> Result<usize>` — Insert multiple edges using pre-resolved internal IDs.
-- pub `insert_graph_bulk` function L340-369 — `( &self, nodes: NI, edges: EI, ) -> Result<BulkInsertResult>` — Bulk insert both nodes and edges in a single operation.
-- pub `resolve_node_ids` function L384-421 — `(&self, external_ids: I) -> Result<HashMap<String, i64>>` — Resolve multiple external node IDs to internal rowids in a single query.
--  `Graph` type L51-465 — `= Graph` — ```
--  `ensure_property_key` function L424-441 — `(&self, conn: &rusqlite::Connection, key: &str) -> Result<i64>` — ```
--  `lookup_node_id` function L444-464 — `(&self, conn: &rusqlite::Connection, external_id: &str) -> Result<i64>` — ```
--  `tests` module L468-665 — `-` — ```
--  `Props` type L472 — `= Vec<(&'static str, &'static str)>` — ```
--  `empty_props` function L474-476 — `() -> Props` — ```
--  `test_bulk_insert_nodes` function L479-496 — `()` — ```
--  `test_bulk_insert_edges` function L499-526 — `()` — ```
--  `test_bulk_insert_graph` function L529-544 — `()` — ```
--  `test_resolve_node_ids` function L547-560 — `()` — ```
--  `test_bulk_insert_mixed_sources` function L563-589 — `()` — ```
--  `test_bulk_insert_performance` function L592-664 — `()` — ```
+- pub `insert_edges_bulk` function L208-325 — `( &self, edges: I, id_map: &HashMap<String, i64>, ) -> Result<usize>` — Insert multiple edges using pre-resolved internal IDs.
+- pub `insert_graph_bulk` function L339-368 — `( &self, nodes: NI, edges: EI, ) -> Result<BulkInsertResult>` — Bulk insert both nodes and edges in a single operation.
+- pub `resolve_node_ids` function L383-418 — `(&self, external_ids: I) -> Result<HashMap<String, i64>>` — Resolve multiple external node IDs to internal rowids in a single query.
+-  `Graph` type L51-459 — `= Graph` — ```
+-  `ensure_property_key` function L421-438 — `(&self, conn: &rusqlite::Connection, key: &str) -> Result<i64>` — ```
+-  `lookup_node_id` function L441-458 — `(&self, conn: &rusqlite::Connection, external_id: &str) -> Result<i64>` — ```
+-  `tests` module L462-674 — `-` — ```
+-  `Props` type L466 — `= Vec<(&'static str, &'static str)>` — ```
+-  `empty_props` function L468-470 — `() -> Props` — ```
+-  `test_bulk_insert_nodes` function L473-492 — `()` — ```
+-  `test_bulk_insert_edges` function L495-522 — `()` — ```
+-  `test_bulk_insert_graph` function L525-540 — `()` — ```
+-  `test_resolve_node_ids` function L543-558 — `()` — ```
+-  `test_bulk_insert_mixed_sources` function L561-588 — `()` — ```
+-  `test_bulk_insert_performance` function L591-673 — `()` — ```
 
 #### bindings/rust/src/graph/edges.rs
 
-- pub `has_edge` function L9-25 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<bool...` — Check if a directed edge exists from source to target.
-- pub `get_edge` function L28-43 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<Opti...` — Get edge properties between two nodes.
-- pub `upsert_edge` function L50-97 — `( &self, source_id: &str, target_id: &str, props: I, rel_type: &str, ) -> Result...` — Create or update an edge between two nodes.
-- pub `delete_edge` function L100-112 — `(&self, source_id: &str, target_id: &str, rel_type: Option<&str>) -> Result<()>` — Delete the directed edge between two nodes.
-- pub `get_all_edges` function L115-118 — `(&self) -> Result<CypherResult>` — Get all edges in the graph.
--  `Graph` type L7-119 — `= Graph` — Edge operations for Graph.
+- pub `has_edge` function L9-31 — `( &self, source_id: &str, target_id: &str, rel_type: Option<&str>, ) -> Result<b...` — Check if a directed edge exists from source to target.
+- pub `get_edge` function L34-55 — `( &self, source_id: &str, target_id: &str, rel_type: Option<&str>, ) -> Result<O...` — Get edge properties between two nodes.
+- pub `upsert_edge` function L62-109 — `( &self, source_id: &str, target_id: &str, props: I, rel_type: &str, ) -> Result...` — Create or update an edge between two nodes.
+- pub `delete_edge` function L112-129 — `( &self, source_id: &str, target_id: &str, rel_type: Option<&str>, ) -> Result<(...` — Delete the directed edge between two nodes.
+- pub `get_all_edges` function L132-135 — `(&self) -> Result<CypherResult>` — Get all edges in the graph.
+-  `Graph` type L7-136 — `= Graph` — Edge operations for Graph.
 
 #### bindings/rust/src/graph/mod.rs
 
@@ -1011,42 +1043,42 @@
 - pub `from_connection` function L70-72 — `(conn: Connection) -> Self` — Create a Graph from an existing [`Connection`].
 - pub `connection` function L75-77 — `(&self) -> &Connection` — Access the underlying Connection.
 - pub `query` function L80-82 — `(&self, cypher: &str) -> Result<CypherResult>` — Execute a raw Cypher query.
-- pub `query_with_params` function L91-93 — `(&self, cypher: &str, params: &serde_json::Value) -> Result<CypherResult>` — Execute a raw Cypher query with named parameters.
-- pub `query_builder` function L109-111 — `(&'a self, cypher: &'a str) -> CypherQuery<'a>` — Create a builder for a parameterized Cypher query.
-- pub `query_params` function L132-142 — `( &self, cypher: &str, params: &[(&str, &serde_json::Value)], ) -> Result<Cypher...` — Execute a parameterized Cypher query in a single call.
-- pub `load_graph` function L168-173 — `(&self) -> Result<CacheStatus>` — Load the graph into an in-memory CSR cache for fast algorithm execution.
-- pub `unload_graph` function L192-197 — `(&self) -> Result<CacheStatus>` — Free the cached graph from memory.
-- pub `reload_graph` function L216-221 — `(&self) -> Result<CacheStatus>` — Reload the graph cache with the latest data.
-- pub `graph_loaded` function L240-245 — `(&self) -> Result<bool>` — Check if the graph cache is currently loaded.
-- pub `CacheStatus` struct L250-259 — `{ status: String, node_count: Option<i64>, edge_count: Option<i64> }` — Cache operation status returned by load/unload/reload operations.
-- pub `graph` function L268-270 — `(path: P) -> Result<Graph>` — Create a new Graph instance (convenience function).
+- pub `query_with_params` function L91-97 — `( &self, cypher: &str, params: &serde_json::Value, ) -> Result<CypherResult>` — Execute a raw Cypher query with named parameters.
+- pub `query_builder` function L113-115 — `(&'a self, cypher: &'a str) -> CypherQuery<'a>` — Create a builder for a parameterized Cypher query.
+- pub `query_params` function L136-146 — `( &self, cypher: &str, params: &[(&str, &serde_json::Value)], ) -> Result<Cypher...` — Execute a parameterized Cypher query in a single call.
+- pub `load_graph` function L172-179 — `(&self) -> Result<CacheStatus>` — Load the graph into an in-memory CSR cache for fast algorithm execution.
+- pub `unload_graph` function L198-205 — `(&self) -> Result<CacheStatus>` — Free the cached graph from memory.
+- pub `reload_graph` function L224-231 — `(&self) -> Result<CacheStatus>` — Reload the graph cache with the latest data.
+- pub `graph_loaded` function L250-257 — `(&self) -> Result<bool>` — Check if the graph cache is currently loaded.
+- pub `CacheStatus` struct L262-271 — `{ status: String, node_count: Option<i64>, edge_count: Option<i64> }` — Cache operation status returned by load/unload/reload operations.
+- pub `graph` function L280-282 — `(path: P) -> Result<Graph>` — Create a new Graph instance (convenience function).
 -  `batch` module L5 — `-` — The `Graph` struct provides an ergonomic interface for common graph operations.
 -  `bulk` module L6 — `-` — The `Graph` struct provides an ergonomic interface for common graph operations.
 -  `edges` module L7 — `-` — The `Graph` struct provides an ergonomic interface for common graph operations.
 -  `nodes` module L8 — `-` — The `Graph` struct provides an ergonomic interface for common graph operations.
 -  `queries` module L9 — `-` — The `Graph` struct provides an ergonomic interface for common graph operations.
--  `Graph` type L35-246 — `= Graph` — The `Graph` struct provides an ergonomic interface for common graph operations.
--  `CacheLoadedStatus` struct L263-265 — `{ loaded: bool }` — Response from graph_loaded() query.
+-  `Graph` type L35-258 — `= Graph` — The `Graph` struct provides an ergonomic interface for common graph operations.
+-  `CacheLoadedStatus` struct L275-277 — `{ loaded: bool }` — Response from graph_loaded() query.
 
 #### bindings/rust/src/graph/nodes.rs
 
-- pub `has_node` function L9-19 — `(&self, node_id: &str) -> Result<bool>` — Check if a node with the given ID exists.
-- pub `get_node` function L24-33 — `(&self, node_id: &str) -> Result<Option<Value>>` — Get a node by ID.
-- pub `upsert_node` function L39-74 — `(&self, node_id: &str, props: I, label: &str) -> Result<()>` — Create or update a node.
-- pub `delete_node` function L77-83 — `(&self, node_id: &str) -> Result<()>` — Delete a node and all its relationships.
-- pub `get_all_nodes` function L86-99 — `(&self, label: Option<&str>) -> Result<Vec<Value>>` — Get all nodes, optionally filtered by label.
--  `Graph` type L7-100 — `= Graph` — Node operations for Graph.
+- pub `has_node` function L9-20 — `(&self, node_id: &str) -> Result<bool>` — Check if a node with the given ID exists.
+- pub `get_node` function L25-35 — `(&self, node_id: &str) -> Result<Option<Value>>` — Get a node by ID.
+- pub `upsert_node` function L41-76 — `(&self, node_id: &str, props: I, label: &str) -> Result<()>` — Create or update a node.
+- pub `delete_node` function L79-85 — `(&self, node_id: &str) -> Result<()>` — Delete a node and all its relationships.
+- pub `get_all_nodes` function L88-101 — `(&self, label: Option<&str>) -> Result<Vec<Value>>` — Get all nodes, optionally filtered by label.
+-  `Graph` type L7-102 — `= Graph` — Node operations for Graph.
 
 #### bindings/rust/src/graph/queries.rs
 
-- pub `node_degree` function L9-18 — `(&self, node_id: &str) -> Result<i64>` — Get the degree (number of connections) of a node.
-- pub `get_neighbors` function L21-33 — `(&self, node_id: &str) -> Result<Vec<Value>>` — Get all neighboring nodes (connected via any edge direction).
-- pub `stats` function L36-53 — `(&self) -> Result<GraphStats>` — Get graph statistics (node and edge counts).
-- pub `get_edges_from` function L58-63 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all outgoing edges from a node.
-- pub `get_edges_to` function L68-73 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all incoming edges to a node.
-- pub `get_edges_by_type` function L78-88 — `(&self, node_id: &str, rel_type: &str) -> Result<CypherResult>` — Get outgoing edges of a specific type from a node.
-- pub `get_node_edges` function L93-98 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all edges (both directions) connected to a node.
--  `Graph` type L7-99 — `= Graph` — Query operations for Graph.
+- pub `node_degree` function L9-19 — `(&self, node_id: &str) -> Result<i64>` — Get the degree (number of connections) of a node.
+- pub `get_neighbors` function L22-35 — `(&self, node_id: &str) -> Result<Vec<Value>>` — Get all neighboring nodes (connected via any edge direction).
+- pub `stats` function L38-62 — `(&self) -> Result<GraphStats>` — Get graph statistics (node and edge counts).
+- pub `get_edges_from` function L67-72 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all outgoing edges from a node.
+- pub `get_edges_to` function L77-82 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all incoming edges to a node.
+- pub `get_edges_by_type` function L87-97 — `(&self, node_id: &str, rel_type: &str) -> Result<CypherResult>` — Get outgoing edges of a specific type from a node.
+- pub `get_node_edges` function L102-107 — `(&self, node_id: &str) -> Result<CypherResult>` — Get all edges (both directions) connected to a node.
+-  `Graph` type L7-108 — `= Graph` — Query operations for Graph.
 
 ### bindings/rust/tests
 
@@ -1054,261 +1086,261 @@
 
 #### bindings/rust/tests/integration.rs
 
--  `test_connection` function L7-9 — `() -> Connection` — Create a test connection.
--  `test_graph` function L12-14 — `() -> Graph` — Create a test graph.
--  `test_open_memory` function L17-20 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_concurrent_parsing` function L25-47 — `()` — Verifies concurrent parsing: multiple threads each run Cypher queries in parallel.
--  `test_open_file` function L50-58 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_create_node` function L61-75 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_create_relationship` function L78-96 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_return_scalar` function L99-110 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_multiple_rows` function L113-126 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_aggregation` function L129-142 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_empty_result` function L145-152 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_iteration` function L155-169 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_column_not_found` function L172-182 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_type_error` function L185-195 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_optional_values` function L198-215 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_columns` function L218-227 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_algorithms` function L230-250 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_upsert_node` function L257-268 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_upsert_edge` function L271-281 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_stats` function L284-297 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_degree` function L300-314 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_neighbors` function L317-331 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_delete_node` function L334-342 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_delete_edge` function L345-356 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_upsert_edge_multiple_types` function L359-372 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_get_edge_by_type` function L375-409 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_delete_edge_by_type` function L412-426 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_has_edge_by_type` function L429-439 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_upsert_edge_updates_properties` function L442-469 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_upsert_edge_update_empty_props` function L472-494 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_query` function L497-508 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_batch_nodes` function L511-523 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_api_algorithms` function L526-543 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_shortest_path` function L546-572 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_degree_centrality` function L575-609 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_wcc` function L612-648 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_wcc_empty` function L651-656 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_wcc_alias` function L659-672 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_scc_cycle` function L675-694 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_scc_no_cycle` function L697-715 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_scc_empty` function L718-723 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_node_property` function L730-757 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_multiple_properties` function L760-780 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_label` function L783-820 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_edge_property` function L823-852 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_with_where` function L855-890 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_nonexistent_property` function L893-910 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_no_match` function L913-919 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_in_literal_list_match` function L926-934 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_in_literal_list_no_match` function L937-945 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_in_with_where_clause` function L948-961 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_in_with_integers` function L964-977 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_in_empty_result` function L980-989 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_utility_functions` function L992-1002 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_starts_with_match` function L1009-1017 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_starts_with_no_match` function L1020-1027 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_ends_with_match` function L1030-1037 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_ends_with_no_match` function L1040-1047 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_contains_match` function L1050-1057 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_contains_no_match` function L1060-1067 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_operators_in_where` function L1070-1100 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_to_upper` function L1107-1113 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_to_lower` function L1116-1122 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_trim` function L1125-1131 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_ltrim` function L1134-1140 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_rtrim` function L1143-1149 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_substring` function L1152-1164 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_replace` function L1167-1173 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_reverse` function L1176-1182 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_left` function L1185-1191 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_right` function L1194-1200 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_split` function L1203-1215 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_string_functions_with_properties` function L1218-1229 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_abs` function L1236-1249 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_ceil` function L1252-1259 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_floor` function L1262-1269 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_round` function L1272-1283 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_sqrt` function L1286-1302 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_sign` function L1305-1313 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_rand` function L1316-1323 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_math_functions_with_properties` function L1326-1341 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_size` function L1348-1354 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_head` function L1357-1363 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_tail` function L1366-1378 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_last` function L1381-1387 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_range` function L1390-1402 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_range_with_step` function L1405-1417 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_union_basic` function L1424-1434 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_union_all` function L1437-1448 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_union_removes_duplicates` function L1451-1459 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_with_basic` function L1466-1480 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_with_aggregation` function L1483-1498 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_with_order_by_limit` function L1501-1515 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_case_simple` function L1522-1537 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_case_generic` function L1540-1554 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_coalesce` function L1561-1573 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_is_null` function L1576-1587 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_is_not_null` function L1590-1601 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_to_string` function L1608-1619 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_to_integer` function L1622-1632 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_to_float` function L1635-1649 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_to_boolean` function L1652-1664 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_exists_property` function L1671-1682 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_create_multiple_labels` function L1689-1704 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_match_multiple_labels` function L1707-1720 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_return_node_all_labels` function L1723-1738 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_optional_match_with_results` function L1745-1756 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_optional_match_no_results` function L1759-1771 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_unwind_basic` function L1778-1788 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_unwind_with_create` function L1791-1803 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_unwind_with_list_literal` function L1806-1817 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_manager` function L1824-1828 — `() -> (GraphManager, tempfile::TempDir)` — Create a test GraphManager.
--  `test_manager_create` function L1831-1836 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_create_graph` function L1839-1853 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_create_duplicate_fails` function L1856-1861 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_open_graph` function L1864-1870 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_open_missing_fails` function L1873-1883 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_open_or_create` function L1886-1901 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_drop_graph` function L1904-1912 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_drop_missing_fails` function L1915-1919 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_list_multiple` function L1922-1931 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_contains` function L1934-1940 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_len` function L1943-1951 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_graph_isolation` function L1954-1989 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_cross_graph_query` function L1992-2011 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_query_missing_graph_fails` function L2014-2022 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_query_sql` function L2025-2041 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graphs_convenience_function` function L2044-2052 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_manager_iter` function L2055-2063 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_regression_gqlite_t_0092_detach_delete_property_filter` function L2070-2096 — `()` — Regression test for GQLITE-T-0092: DETACH DELETE deletes all nodes
--  `test_graph_loaded_initially_false` function L2103-2106 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_load_graph` function L2109-2123 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_load_graph_already_loaded` function L2126-2136 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_unload_graph` function L2139-2151 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_unload_graph_not_loaded` function L2154-2160 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_reload_graph` function L2163-2178 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_reload_graph_not_loaded` function L2181-2192 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_cache_with_pagerank` function L2195-2212 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_cache_empty_graph` function L2215-2224 — `()` — Integration tests for GraphQLite Rust bindings.
--  `BulkProps` type L2231 — `= Vec<(&'static str, &'static str)>` — Integration tests for GraphQLite Rust bindings.
--  `empty_bulk_props` function L2233-2235 — `() -> BulkProps` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_nodes` function L2238-2264 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_nodes_empty` function L2267-2276 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_edges` function L2279-2314 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_edges_empty` function L2317-2333 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_edges_fallback_lookup` function L2336-2354 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_graph` function L2357-2382 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_resolve_node_ids` function L2385-2400 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_resolve_node_ids_empty` function L2403-2408 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_mixed_sources` function L2411-2444 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_with_typed_properties` function L2447-2475 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_insert_verifies_with_graph_api` function L2478-2512 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_string_match` function L2519-2528 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_integer_filter` function L2531-2541 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_in_create` function L2544-2555 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_bulk_params` function L2558-2567 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_mixed_param_and_params` function L2570-2581 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_run_no_params` function L2584-2592 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_injection_safe` function L2595-2605 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_builder_backward_compat` function L2608-2613 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_query_builder` function L2616-2625 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_graph_query_without_params_unchanged` function L2628-2633 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_create_with_map_property` function L2640-2650 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_create_with_list_property` function L2653-2663 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_nested_dot_access` function L2666-2675 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_nested_dot_access_deep` function L2678-2687 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_json_map_property` function L2690-2701 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_json_list_property` function L2704-2715 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_replace` function L2718-2732 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_merge` function L2735-2749 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_merge_updates_existing` function L2752-2763 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_edge` function L2766-2779 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_empty_map_clears` function L2782-2797 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_mixed_property_and_bulk_set` function L2800-2811 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_with_builder_params` function L2814-2825 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_single_property_return` function L2828-2837 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_bulk_replace_return` function L2840-2855 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_timestamp_function` function L2858-2869 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_to_upper_function` function L2872-2882 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_merge_on_create_set_timestamp` function L2885-2895 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_merge` function L2898-2914 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_replace` function L2917-2933 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_nested_json` function L2936-2949 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_to_float_function` function L2952-2963 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_set_function_null_result` function L2966-2979 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_float_values` function L2982-2997 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_null_skipped` function L3000-3016 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_bool_false` function L3019-3032 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_nested_array` function L3035-3050 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_non_json_error` function L3053-3061 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_bulk_set_parameter_missing_error` function L3064-3072 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_merge_on_match_set_function` function L3075-3086 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_merge_with_set_return` function L3089-3097 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_merge_with_set_no_return` function L3100-3109 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_merge_with_return_no_set` function L3112-3119 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_remove_property_return` function L3122-3136 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_return_star` function L3143-3150 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_return_star_with_relationship` function L3153-3159 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_isempty` function L3162-3169 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_btrim` function L3172-3176 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_to_integer_or_null` function L3179-3187 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_to_float_or_null` function L3190-3199 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_to_boolean_or_null` function L3202-3210 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_element_id` function L3213-3218 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_nullif` function L3221-3229 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_value_type` function L3232-3242 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_char_length` function L3245-3252 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_slice_range` function L3259-3266 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_slice_from` function L3269-3275 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_list_slice_to` function L3278-3284 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_stdev` function L3287-3299 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_stdevp` function L3302-3312 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_trig_functions` function L3315-3341 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_hyperbolic_functions` function L3344-3365 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_isnan` function L3368-3372 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_date_map_construction` function L3379-3383 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_time_map_construction` function L3386-3390 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_datetime_map_construction` function L3393-3397 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_duration_map` function L3400-3406 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_datetime_from_epoch` function L3409-3413 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_duration_in_days` function L3416-3420 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_duration_in_seconds` function L3423-3427 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_date_add` function L3430-3435 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_date_sub` function L3438-3443 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_date_truncate` function L3446-3450 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_point_cartesian` function L3453-3461 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_point_geographic` function L3464-3470 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_distance_euclidean` function L3473-3481 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_distance_haversine` function L3484-3493 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_within_bbox` function L3496-3507 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_distance_same_point` function L3510-3517 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_date_add_cross_year` function L3520-3525 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_negative_epoch` function L3528-3533 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_clotho_bug1_count_aggregate_with_where_filter` function L3543-3556 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_clotho_bug2_property_match_syntax` function L3559-3569 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_clotho_bug3_optional_match_with_where_filter` function L3572-3600 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_clotho_bug5_undirected_match_bare` function L3603-3623 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_clotho_pattern_predicate_in_where` function L3626-3641 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_call_subquery_standalone` function L3648-3659 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_call_subquery_with_import` function L3662-3674 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_call_subquery_union` function L3677-3687 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_issue_49_unwind_param_create_set` function L3694-3707 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_issue_49_unwind_param_merge` function L3710-3721 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_issue_49_unwind_literal_set` function L3724-3731 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_issue_50_startnode_endnode_same_return` function L3734-3747 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_issue_51_call_merge_scoping` function L3750-3763 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_issue_34b_optional_match_where_null` function L3766-3778 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_with_match_merge` function L3781-3792 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_functions_in_set` function L3795-3802 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_unwind_merge_on_create_set` function L3805-3818 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_count_skips_nulls_from_optional_match` function L3825-3835 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_edge_variable_through_with` function L3838-3845 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_function_call_in_create_property_map` function L3848-3855 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_call_subquery_exports_inner_return` function L3858-3865 — `()` — Integration tests for GraphQLite Rust bindings.
--  `test_call_subquery_processes_all_inner_match_rows` function L3868-3877 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_connection` function L9-11 — `() -> Connection` — Create a test connection.
+-  `test_graph` function L14-16 — `() -> Graph` — Create a test graph.
+-  `test_open_memory` function L19-22 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_concurrent_parsing` function L27-49 — `()` — Verifies concurrent parsing: multiple threads each run Cypher queries in parallel.
+-  `test_open_file` function L52-60 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_create_node` function L63-77 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_create_relationship` function L80-98 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_return_scalar` function L101-112 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_multiple_rows` function L115-133 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_aggregation` function L136-149 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_empty_result` function L152-159 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_iteration` function L162-176 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_column_not_found` function L179-189 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_type_error` function L192-202 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_optional_values` function L205-219 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_columns` function L222-231 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_algorithms` function L234-254 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_upsert_node` function L261-272 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_upsert_edge` function L275-285 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_stats` function L288-301 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_degree` function L304-318 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_neighbors` function L321-335 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_delete_node` function L338-346 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_delete_edge` function L349-360 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_upsert_edge_multiple_types` function L363-378 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_get_edge_by_type` function L381-417 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_delete_edge_by_type` function L420-436 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_has_edge_by_type` function L439-450 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_upsert_edge_updates_properties` function L453-480 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_upsert_edge_update_empty_props` function L483-505 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_query` function L508-517 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_batch_nodes` function L520-532 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_api_algorithms` function L535-552 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_shortest_path` function L555-581 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_degree_centrality` function L584-627 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_wcc` function L630-667 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_wcc_empty` function L670-675 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_wcc_alias` function L678-691 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_scc_cycle` function L694-713 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_scc_no_cycle` function L716-734 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_scc_empty` function L737-742 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_node_property` function L749-776 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_multiple_properties` function L779-799 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_label` function L802-844 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_edge_property` function L847-876 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_with_where` function L879-917 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_nonexistent_property` function L920-937 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_no_match` function L940-946 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_in_literal_list_match` function L953-961 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_in_literal_list_no_match` function L964-972 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_in_with_where_clause` function L975-991 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_in_with_integers` function L994-1010 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_in_empty_result` function L1013-1023 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_utility_functions` function L1026-1036 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_starts_with_match` function L1043-1053 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_starts_with_no_match` function L1056-1065 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_ends_with_match` function L1068-1077 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_ends_with_no_match` function L1080-1089 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_contains_match` function L1092-1101 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_contains_no_match` function L1104-1111 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_operators_in_where` function L1114-1147 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_to_upper` function L1154-1162 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_to_lower` function L1165-1173 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_trim` function L1176-1182 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_ltrim` function L1185-1191 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_rtrim` function L1194-1200 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_substring` function L1203-1219 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_replace` function L1222-1230 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_reverse` function L1233-1239 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_left` function L1242-1250 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_right` function L1253-1261 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_split` function L1264-1276 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_string_functions_with_properties` function L1279-1291 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_abs` function L1298-1311 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_ceil` function L1314-1321 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_floor` function L1324-1331 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_round` function L1334-1345 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_sqrt` function L1348-1364 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_sign` function L1367-1377 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_rand` function L1380-1387 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_math_functions_with_properties` function L1390-1405 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_size` function L1412-1420 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_head` function L1423-1429 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_tail` function L1432-1444 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_last` function L1447-1453 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_range` function L1456-1468 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_range_with_step` function L1471-1483 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_union_basic` function L1490-1502 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_union_all` function L1505-1516 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_union_removes_duplicates` function L1519-1527 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_with_basic` function L1534-1551 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_with_aggregation` function L1554-1572 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_with_order_by_limit` function L1575-1589 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_case_simple` function L1596-1614 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_case_generic` function L1617-1631 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_coalesce` function L1638-1652 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_is_null` function L1655-1667 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_is_not_null` function L1670-1682 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_to_string` function L1689-1700 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_to_integer` function L1703-1713 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_to_float` function L1716-1730 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_to_boolean` function L1733-1745 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_exists_property` function L1752-1764 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_create_multiple_labels` function L1771-1787 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_match_multiple_labels` function L1790-1806 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_return_node_all_labels` function L1809-1839 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_optional_match_with_results` function L1846-1858 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_optional_match_no_results` function L1861-1877 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_unwind_basic` function L1884-1892 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_unwind_with_create` function L1895-1908 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_unwind_with_list_literal` function L1911-1920 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_manager` function L1927-1931 — `() -> (GraphManager, tempfile::TempDir)` — Create a test GraphManager.
+-  `test_manager_create` function L1934-1939 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_create_graph` function L1942-1958 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_create_duplicate_fails` function L1961-1966 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_open_graph` function L1969-1975 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_open_missing_fails` function L1978-1988 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_open_or_create` function L1991-2008 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_drop_graph` function L2011-2019 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_drop_missing_fails` function L2022-2026 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_list_multiple` function L2029-2038 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_contains` function L2041-2047 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_len` function L2050-2058 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_graph_isolation` function L2061-2100 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_cross_graph_query` function L2103-2128 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_query_missing_graph_fails` function L2131-2136 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_query_sql` function L2139-2156 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graphs_convenience_function` function L2159-2167 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_manager_iter` function L2170-2178 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_regression_gqlite_t_0092_detach_delete_property_filter` function L2185-2226 — `()` — Regression test for GQLITE-T-0092: DETACH DELETE deletes all nodes
+-  `test_graph_loaded_initially_false` function L2233-2236 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_load_graph` function L2239-2253 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_load_graph_already_loaded` function L2256-2266 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_unload_graph` function L2269-2281 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_unload_graph_not_loaded` function L2284-2290 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_reload_graph` function L2293-2308 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_reload_graph_not_loaded` function L2311-2322 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_cache_with_pagerank` function L2325-2342 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_cache_empty_graph` function L2345-2354 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `BulkProps` type L2361 — `= Vec<(&'static str, &'static str)>` — Integration tests for GraphQLite Rust bindings.
+-  `empty_bulk_props` function L2363-2365 — `() -> BulkProps` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_nodes` function L2368-2400 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_nodes_empty` function L2403-2414 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_edges` function L2417-2457 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_edges_empty` function L2460-2476 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_edges_fallback_lookup` function L2479-2499 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_graph` function L2502-2527 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_resolve_node_ids` function L2530-2547 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_resolve_node_ids_empty` function L2550-2557 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_mixed_sources` function L2560-2594 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_with_typed_properties` function L2597-2633 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_insert_verifies_with_graph_api` function L2636-2670 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_string_match` function L2677-2688 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_integer_filter` function L2691-2704 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_in_create` function L2707-2720 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_bulk_params` function L2723-2734 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_mixed_param_and_params` function L2737-2751 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_run_no_params` function L2754-2763 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_injection_safe` function L2766-2777 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_builder_backward_compat` function L2780-2785 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_query_builder` function L2788-2798 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_graph_query_without_params_unchanged` function L2801-2806 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_create_with_map_property` function L2813-2823 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_create_with_list_property` function L2826-2836 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_nested_dot_access` function L2839-2848 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_nested_dot_access_deep` function L2851-2860 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_json_map_property` function L2863-2874 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_json_list_property` function L2877-2888 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_replace` function L2891-2905 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_merge` function L2908-2922 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_merge_updates_existing` function L2925-2936 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_edge` function L2939-2954 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_empty_map_clears` function L2957-2972 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_mixed_property_and_bulk_set` function L2975-2986 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_with_builder_params` function L2989-3002 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_single_property_return` function L3005-3014 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_bulk_replace_return` function L3017-3029 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_timestamp_function` function L3032-3043 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_to_upper_function` function L3046-3054 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_merge_on_create_set_timestamp` function L3057-3067 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_merge` function L3070-3086 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_replace` function L3089-3105 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_nested_json` function L3108-3121 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_to_float_function` function L3124-3136 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_set_function_null_result` function L3139-3152 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_float_values` function L3155-3170 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_null_skipped` function L3173-3189 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_bool_false` function L3192-3205 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_nested_array` function L3208-3223 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_non_json_error` function L3226-3234 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_bulk_set_parameter_missing_error` function L3237-3245 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_merge_on_match_set_function` function L3248-3259 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_merge_with_set_return` function L3262-3272 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_merge_with_set_no_return` function L3275-3284 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_merge_with_return_no_set` function L3287-3294 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_remove_property_return` function L3297-3308 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_return_star` function L3315-3324 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_return_star_with_relationship` function L3327-3336 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_isempty` function L3339-3346 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_btrim` function L3349-3353 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_to_integer_or_null` function L3356-3364 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_to_float_or_null` function L3367-3376 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_to_boolean_or_null` function L3379-3387 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_element_id` function L3390-3397 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_nullif` function L3400-3408 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_value_type` function L3411-3421 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_char_length` function L3424-3433 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_slice_range` function L3440-3447 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_slice_from` function L3450-3456 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_list_slice_to` function L3459-3465 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_stdev` function L3468-3480 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_stdevp` function L3483-3493 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_trig_functions` function L3496-3524 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_hyperbolic_functions` function L3527-3548 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_isnan` function L3551-3555 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_date_map_construction` function L3562-3568 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_time_map_construction` function L3571-3577 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_datetime_map_construction` function L3580-3586 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_duration_map` function L3589-3597 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_datetime_from_epoch` function L3600-3604 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_duration_in_days` function L3607-3613 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_duration_in_seconds` function L3616-3622 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_date_add` function L3625-3632 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_date_sub` function L3635-3642 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_date_truncate` function L3645-3651 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_point_cartesian` function L3654-3662 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_point_geographic` function L3665-3673 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_distance_euclidean` function L3676-3684 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_distance_haversine` function L3687-3696 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_within_bbox` function L3699-3710 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_distance_same_point` function L3713-3720 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_date_add_cross_year` function L3723-3730 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_negative_epoch` function L3733-3740 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_clotho_bug1_count_aggregate_with_where_filter` function L3750-3767 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_clotho_bug2_property_match_syntax` function L3770-3782 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_clotho_bug3_optional_match_with_where_filter` function L3785-3823 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_clotho_bug5_undirected_match_bare` function L3826-3847 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_clotho_pattern_predicate_in_where` function L3850-3868 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_standalone` function L3875-3886 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_with_import` function L3889-3901 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_union` function L3904-3914 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_issue_49_unwind_param_create_set` function L3921-3938 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_issue_49_unwind_param_merge` function L3941-3955 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_issue_49_unwind_literal_set` function L3958-3968 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_issue_50_startnode_endnode_same_return` function L3971-3985 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_issue_51_call_merge_scoping` function L3988-4001 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_issue_34b_optional_match_where_null` function L4004-4026 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_with_match_merge` function L4029-4043 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_functions_in_set` function L4046-4058 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_unwind_merge_on_create_set` function L4061-4077 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_count_skips_nulls_from_optional_match` function L4084-4095 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_edge_variable_through_with` function L4098-4110 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_function_call_in_create_property_map` function L4113-4123 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_exports_inner_return` function L4126-4133 — `()` — Integration tests for GraphQLite Rust bindings.
+-  `test_call_subquery_processes_all_inner_match_rows` function L4136-4148 — `()` — Integration tests for GraphQLite Rust bindings.
 
 ### docs/theme
 
@@ -1377,4 +1409,188 @@
 - pub `print_section` function L257-262 — `def print_section(title: str, content: str, width: int = 70)` — Print a section with a header.
 - pub `main` function L265-377 — `def main()`
 -  `_get_communities` method L50-61 — `def _get_communities(self) -> dict[str, int]` — Lazy-load community detection results.
+
+### tests/tck
+
+> *Semantic summary to be generated by AI agent.*
+
+#### tests/tck/__main__.py
+
+- pub `main` function L22-82 — `def main(argv: list[str] | None = None) -> int`
+-  `_select_backends` function L85-110 — `def _select_backends(name: str, debug: bool)`
+-  `_print_summary` function L113-130 — `def _print_summary(outcomes: list[ScenarioOutcome]) -> None`
+-  `_build_parity_matrix` function L133-154 — `def _build_parity_matrix(outcomes: list[ScenarioOutcome], backend_names: list[st...` — Group outcomes by (feature_file, scenario_name) and emit a parity row.
+-  `_print_parity_summary` function L157-169 — `def _print_parity_summary(parity: list[dict]) -> None`
+-  `_rel_to_features` function L172-176 — `def _rel_to_features(p, root) -> str`
+-  `_json_default` function L179-180 — `def _json_default(o)`
+
+#### tests/tck/_extension_worker.py
+
+- pub `main` function L34-94 — `def main() -> int`
+-  `_decode_payload` function L97-160 — `def _decode_payload(raw_payloads: list) -> dict` — Decode the extension's `cypher()` return into the harness wire format:
+-  `_new_conn` function L163-167 — `def _new_conn(ext_path: Path) -> sqlite3.Connection`
+-  `_named_graph_file` function L170-177 — `def _named_graph_file(name: str) -> Path | None` — TCK named-graph fixture: vendor/tck/graphs/<name>/<name>.cypher (preferred)
+-  `_write` function L180-182 — `def _write(proto, msg: dict) -> None`
+-  `_classify` function L185-199 — `def _classify(msg: str) -> str`
+
+#### tests/tck/_python_binding_worker.py
+
+- pub `main` function L22-81 — `def main() -> int`
+-  `_write` function L84-86 — `def _write(proto, msg: dict) -> None`
+-  `_bootstrap_error` function L89-92 — `def _bootstrap_error(msg: str) -> None`
+
+#### tests/tck/gherkin.py
+
+- pub `Step` class L21-26 — `-`
+- pub `Scenario` class L30-38 — `-`
+- pub `Feature` class L42-46 — `-`
+- pub `parse_feature` function L49-148 — `def parse_feature(path: Path) -> Feature`
+- pub `walk_features` function L241-243 — `def walk_features(root: Path) -> Iterable[Feature]`
+-  `_match_step_keyword` function L151-160 — `def _match_step_keyword(line: str) -> tuple[str, str] | None`
+-  `_consume_step_payload` function L163-195 — `def _consume_step_payload(lines: list[str], i: int, step: Step) -> int`
+-  `_substitute_step` function L198-210 — `def _substitute_step(s: Step, subs: dict[str, str]) -> Step` — Return a copy of step `s` with <placeholder> substitutions applied.
+-  `_parse_table_row` function L213-221 — `def _parse_table_row(raw: str) -> list[str]`
+-  `_inline_background` function L224-238 — `def _inline_background(feature: Feature) -> None` — Inline a Background scenario's steps into every real scenario.
+
+#### tests/tck/report.py
+
+- pub `main` function L21-46 — `def main(argv: list[str] | None = None) -> int`
+-  `_render` function L49-155 — `def _render(data: list[dict], title: str) -> str`
+
+#### tests/tck/runner.py
+
+- pub `ScenarioOutcome` class L29-37 — `-`
+- pub `run_feature` function L72-77 — `def run_feature(feature: Feature, backend: Backend) -> list[ScenarioOutcome]`
+- pub `__init__` method L163-166 — `def __init__(self, msg: str, expected: Any = None, actual: Any = None)`
+- pub `__init__` method L172-175 — `def __init__(self, error_class: str, message: str)`
+-  `_State` class L41-44 — `-`
+-  `_rel_to_features_root` function L80-85 — `def _rel_to_features_root(path: Path) -> str`
+-  `_run_scenario` function L88-142 — `def _run_scenario(feature_file: str, sc: Scenario, backend: Backend) -> Scenario...`
+-  `_outcome` function L145-156 — `def _outcome(feature_file: str, sc: Scenario, status: str, backend: Backend, t0:...`
+-  `_Mismatch` class L162-166 — `(Exception) { __init__ }`
+-  `_BackendErrorAtThen` class L169-175 — `(Exception) { __init__ }` — Backend raised/crashed when the scenario expected a successful result table.
+-  `_Marker` class L178 — `-`
+-  `_dispatch` function L183-190 — `def _dispatch(step: Step)`
+-  `_h_empty_graph` function L196-197 — `def _h_empty_graph(step, state, backend, m)`
+-  `_h_named_graph` function L199-201 — `def _h_named_graph(step, state, backend, m)`
+-  `_h_having_executed` function L203-206 — `def _h_having_executed(step, state, backend, m)`
+-  `_h_parameters` function L208-223 — `def _h_parameters(step, state, backend, m)`
+-  `_h_executing_query` function L225-231 — `def _h_executing_query(step, state, backend, m)`
+-  `_h_result_ordered` function L233-235 — `def _h_result_ordered(step, state, backend, m)`
+-  `_h_result_any_order` function L237-239 — `def _h_result_any_order(step, state, backend, m)`
+-  `_h_result_any_order_lists_unordered` function L241-244 — `def _h_result_any_order_lists_unordered(step, state, backend, m)`
+-  `_h_result_ordered_lists_unordered` function L246-249 — `def _h_result_ordered_lists_unordered(step, state, backend, m)`
+-  `_h_result_empty` function L251-256 — `def _h_result_empty(step, state, backend, m)`
+-  `_h_expect_error` function L258-261 — `def _h_expect_error(step, state, backend, m)`
+-  `_h_no_side_effects` function L263-265 — `def _h_no_side_effects(step, state, backend, m)`
+-  `_h_side_effects_table` function L267-273 — `def _h_side_effects_table(step, state, backend, m)`
+-  `_compare_result_table` function L293-337 — `def _compare_result_table(result: QueryResult | None, table: list[list[str]] | N...`
+-  `_rows_equal` function L340-344 — `def _rows_equal(expected: list[Any], actual: list[Any], lists_unordered: bool = ...`
+
+#### tests/tck/values.py
+
+- pub `Node` class L32-34 — `-`
+- pub `Relationship` class L38-40 — `-`
+- pub `Path` class L44-47 — `-`
+- pub `ValueParseError` class L50-51 — `(ValueError)`
+- pub `parse_value` function L54-60 — `def parse_value(text: str) -> Any`
+- pub `values_equal` function L63-111 — `def values_equal(a: Any, b: Any, lists_unordered: bool = False) -> bool`
+- pub `__init__` method L162-164 — `def __init__(self, text: str)`
+- pub `eof` method L166-167 — `def eof(self) -> bool`
+- pub `peek` method L169-170 — `def peek(self) -> str`
+- pub `skip_ws` method L172-174 — `def skip_ws(self) -> None`
+- pub `expect` method L176-180 — `def expect(self, ch: str) -> None`
+- pub `parse_top` method L182-184 — `def parse_top(self) -> Any`
+-  `_coerce_graph_value` function L114-149 — `def _coerce_graph_value(v: Any) -> Any` — Coerce extension-side dict representations to our dataclasses.
+-  `_props_equal` function L152-155 — `def _props_equal(a: tuple[tuple[str, Any], ...], b: tuple[tuple[str, Any], ...])...`
+-  `_Parser` class L161-368 — `{ __init__, eof, peek, skip_ws, expect, parse_top }`
+-  `_parse_value` method L186-203 — `def _parse_value(self) -> Any`
+-  `_parse_node` method L205-218 — `def _parse_node(self) -> Node`
+-  `_parse_list_or_rel` method L220-248 — `def _parse_list_or_rel(self) -> Any`
+-  `_parse_map` method L250-270 — `def _parse_map(self) -> dict[str, Any]`
+-  `_parse_path` method L272-300 — `def _parse_path(self) -> Path`
+-  `_parse_rel_segment` method L302-311 — `def _parse_rel_segment(self) -> Relationship`
+-  `_parse_string` method L313-329 — `def _parse_string(self) -> str`
+-  `_parse_ident` method L331-337 — `def _parse_ident(self) -> str`
+-  `_parse_ident_or_string` method L339-342 — `def _parse_ident_or_string(self) -> str`
+-  `_parse_atom` method L344-368 — `def _parse_atom(self) -> Any`
+-  `_props_from_map` function L371-372 — `def _props_from_map(d: dict[str, Any]) -> tuple[tuple[str, Any], ...]`
+
+### tests/tck/backends
+
+> *Semantic summary to be generated by AI agent.*
+
+#### tests/tck/backends/base.py
+
+- pub `QueryResult` class L10-15 — `-`
+- pub `BackendError` class L18-19 — `(RuntimeError)`
+- pub `Backend` class L22-30 — `(Protocol) { reset, load_named_graph, execute, close }` — All backend adapters implement this surface.
+- pub `reset` method L27 — `def reset(self) -> None`
+- pub `load_named_graph` method L28 — `def load_named_graph(self, name: str) -> None`
+- pub `execute` method L29 — `def execute(self, query: str, parameters: dict[str, Any] | None = None) -> Query...`
+- pub `close` method L30 — `def close(self) -> None`
+
+#### tests/tck/backends/extension.py
+
+- pub `ExtensionBackend` class L26-171 — `(Backend) { __init__, reset, load_named_graph, execute, close }`
+- pub `__init__` method L29-38 — `def __init__(self, extension_path: Path | None = None, debug_log: Path | None = ...`
+- pub `reset` method L42-47 — `def reset(self) -> None`
+- pub `load_named_graph` method L49-59 — `def load_named_graph(self, name: str) -> None`
+- pub `execute` method L61-83 — `def execute(self, query: str, parameters: dict[str, Any] | None = None) -> Query...`
+- pub `close` method L85-97 — `def close(self) -> None`
+-  `_spawn` method L101-123 — `def _spawn(self) -> None`
+-  `_send` method L125-142 — `def _send(self, msg: dict, timeout: float | None = None) -> dict`
+-  `_read_with_timeout` method L144-171 — `def _read_with_timeout(self, timeout: float | None) -> str` — Read one line from worker stdout; SIGKILL the worker on timeout.
+-  `_Timeout` class L174-175 — `(BackendError)`
+-  `_signal_of` function L178-187 — `def _signal_of(rc: int) -> str`
+
+#### tests/tck/backends/python_binding.py
+
+- pub `PythonBindingBackend` class L27-173 — `(Backend) { __init__, reset, load_named_graph, execute, close }`
+- pub `__init__` method L30-38 — `def __init__(self, debug_log: Path | None = None, keep_debug: bool = False, pyth...`
+- pub `reset` method L40-45 — `def reset(self) -> None`
+- pub `load_named_graph` method L47-57 — `def load_named_graph(self, name: str) -> None`
+- pub `execute` method L59-83 — `def execute(self, query: str, parameters: dict[str, Any] | None = None) -> Query...`
+- pub `close` method L85-102 — `def close(self) -> None`
+-  `_spawn` method L106-134 — `def _spawn(self) -> None`
+-  `_send` method L136-151 — `def _send(self, msg: dict, timeout: float | None = None) -> dict`
+-  `_read_with_timeout` method L153-173 — `def _read_with_timeout(self, timeout: float | None) -> str`
+-  `_Timeout` class L176-177 — `(BackendError)`
+
+#### tests/tck/backends/rust_binding.py
+
+- pub `RustBindingBackend` class L28-164 — `(Backend) { __init__, reset, load_named_graph, execute, close }`
+- pub `__init__` method L31-44 — `def __init__(self, runner: Path | None = None, debug_log: Path | None = None, ex...`
+- pub `reset` method L46-51 — `def reset(self) -> None`
+- pub `load_named_graph` method L53-59 — `def load_named_graph(self, name: str) -> None`
+- pub `execute` method L61-81 — `def execute(self, query: str, parameters: dict[str, Any] | None = None) -> Query...`
+- pub `close` method L83-100 — `def close(self) -> None`
+-  `_spawn` method L102-126 — `def _spawn(self) -> None`
+-  `_send` method L128-142 — `def _send(self, msg: dict[str, Any], timeout: float | None = None) -> dict[str, ...`
+-  `_read_with_timeout` method L144-164 — `def _read_with_timeout(self, timeout: float | None) -> str`
+-  `_Timeout` class L167-168 — `(BackendError)`
+
+### tests/tck/tests
+
+> *Semantic summary to be generated by AI agent.*
+
+#### tests/tck/tests/test_gherkin.py
+
+- pub `test_parses_scenario_with_docstring_and_table` function L18-37 — `def test_parses_scenario_with_docstring_and_table(tmp_path)`
+- pub `test_background_inlined` function L40-59 — `def test_background_inlined(tmp_path)`
+-  `_write` function L12-15 — `def _write(tmp_path: Path, body: str) -> Path`
+
+#### tests/tck/tests/test_smoke_extension.py
+
+- pub `test_extension_backend_smoke` function L31-43 — `def test_extension_backend_smoke(feature_file: Path)`
+
+#### tests/tck/tests/test_values.py
+
+- pub `test_scalars` function L10-18 — `def test_scalars()`
+- pub `test_nan_equal` function L21-22 — `def test_nan_equal()`
+- pub `test_list_and_map` function L25-27 — `def test_list_and_map()`
+- pub `test_node_with_labels_and_props` function L30-34 — `def test_node_with_labels_and_props()`
+- pub `test_node_anonymous` function L37-41 — `def test_node_anonymous()`
+- pub `test_relationship` function L44-48 — `def test_relationship()`
+- pub `test_values_equal_handles_node_identity_irrelevant` function L51-54 — `def test_values_equal_handles_node_identity_irrelevant()`
 

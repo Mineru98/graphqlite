@@ -16,6 +16,7 @@
 #include "executor/query_patterns.h"
 #include "executor/graph_algorithms.h"
 #include "parser/cypher_debug.h"
+#include "transform/transform_validate.h"
 
 /* SQLite custom function: REVERSE(string) - reverses a string */
 static void sqlite_reverse_func(sqlite3_context *context, int argc, sqlite3_value **argv)
@@ -52,12 +53,26 @@ static void sqlite_reverse_func(sqlite3_context *context, int argc, sqlite3_valu
     sqlite3_result_text(context, result, len, sqlite3_free);
 }
 
+/* Implemented in src/extension.c. Registers the cache-less helper UDFs
+ * (_gql_bool, _gql_normalize_date, _gql_in, _gql_dyn_add, ...). Without
+ * these, transformed Cypher SQL that uses any of those helpers fails with
+ * "no such function: _gql_*" at prepare time. */
+extern int graphqlite_register_helper_udfs(sqlite3 *db);
+
 /* Register custom SQLite functions needed for Cypher execution */
 static int register_custom_functions(sqlite3 *db)
 {
     int rc = sqlite3_create_function(db, "REVERSE", 1, SQLITE_UTF8, NULL,
                                       sqlite_reverse_func, NULL, NULL);
     if (rc != SQLITE_OK) {
+        return -1;
+    }
+    /* SQLITE_BUSY (5) means we are being called from inside an active
+     * statement (e.g. cypher() invoked from SQL) and the UDFs are already
+     * registered by sqlite3_graphqlite_init. That's the normal case for
+     * the loadable-extension path; just keep going. */
+    int hrc = graphqlite_register_helper_udfs(db);
+    if (hrc != SQLITE_OK && hrc != SQLITE_BUSY) {
         return -1;
     }
     return 0;
@@ -166,7 +181,81 @@ cypher_result* cypher_executor_execute_ast(cypher_executor *executor, ast_node *
             {
                 cypher_query *query = (cypher_query*)ast;
                 CYPHER_DEBUG("Found query node with %d clauses", query->clauses ? query->clauses->count : 0);
-                
+
+                /* GQLITE-T-0230: compile-time argument-type validation.
+                 * Rejects openCypher type violations that the grammar accepts
+                 * (e.g. `RETURN NOT 1`, `RETURN 'a' AND true`) before they
+                 * reach the transform layer. */
+                {
+                    char *validate_err = NULL;
+                    if (transform_validate_query(query, &validate_err) < 0) {
+                        set_result_error(result,
+                                         validate_err ? validate_err
+                                                       : "Validation failed");
+                        if (validate_err) free(validate_err);
+                        return result;
+                    }
+                }
+
+                /* Runtime validation for parameter-driven SKIP/LIMIT
+                 * (openCypher rejects negative or non-integer values).
+                 * Spec violations on literals are caught at compile time
+                 * by transform_validate_query; the parameter path needs
+                 * params_json which only exists at execution. */
+                if (executor->params_json && query->clauses) {
+                    for (int ci = 0; ci < query->clauses->count; ci++) {
+                        ast_node *cl = query->clauses->items[ci];
+                        if (!cl) continue;
+                        ast_node *skip = NULL, *limit = NULL;
+                        if (cl->type == AST_NODE_RETURN) {
+                            cypher_return *r = (cypher_return *)cl;
+                            skip = r->skip; limit = r->limit;
+                        } else if (cl->type == AST_NODE_WITH) {
+                            cypher_with *w = (cypher_with *)cl;
+                            skip = w->skip; limit = w->limit;
+                        }
+                        const char *err_label = NULL;
+                        const char *err_param = NULL;
+                        bool err_neg = false, err_nonint = false;
+                        ast_node *targets[2] = { skip, limit };
+                        const char *labels[2] = { "SKIP", "LIMIT" };
+                        for (int t = 0; t < 2 && !err_label; t++) {
+                            if (!targets[t] || targets[t]->type != AST_NODE_PARAMETER) continue;
+                            cypher_parameter *p = (cypher_parameter *)targets[t];
+                            if (!p->name) continue;
+                            property_type pt;
+                            property_value pv; property_value_init(&pv);
+                            int rc = get_param_value(executor->params_json, p->name, &pt, &pv);
+                            if (rc == 0) {
+                                if (pt == PROP_TYPE_INTEGER) {
+                                    if (pv.as_int < 0) {
+                                        err_label = labels[t]; err_param = p->name; err_neg = true;
+                                    }
+                                } else if (pt == PROP_TYPE_REAL) {
+                                    err_label = labels[t]; err_param = p->name; err_nonint = true;
+                                } else {
+                                    err_label = labels[t]; err_param = p->name; err_nonint = true;
+                                }
+                            }
+                            property_value_free(&pv);
+                        }
+                        if (err_label) {
+                            char buf[256];
+                            if (err_neg) {
+                                snprintf(buf, sizeof(buf),
+                                    "SyntaxError: NegativeIntegerArgument: %s parameter `%s` must be non-negative",
+                                    err_label, err_param ? err_param : "?");
+                            } else {
+                                snprintf(buf, sizeof(buf),
+                                    "SyntaxError: InvalidArgumentType: %s parameter `%s` must be an integer",
+                                    err_label, err_param ? err_param : "?");
+                            }
+                            set_result_error(result, buf);
+                            return result;
+                        }
+                    }
+                }
+
                 if (query->clauses) {
                     /* Handle EXPLAIN - return generated SQL and pattern info */
                     if (query->explain) {
@@ -249,6 +338,16 @@ cypher_result* cypher_executor_execute_ast(cypher_executor *executor, ast_node *
             /* UNION query - transform and execute via the transform layer */
             {
                 CYPHER_DEBUG("Executing UNION query");
+                /* Validate UNION shape (column agreement, no UNION/UNION ALL
+                 * mixing) before transform. */
+                {
+                    char *uerr = NULL;
+                    if (transform_validate_union((cypher_union *)ast, &uerr) < 0) {
+                        set_result_error(result, uerr ? uerr : "UNION validation failed");
+                        if (uerr) free(uerr);
+                        return result;
+                    }
+                }
                 cypher_transform_context *ctx = cypher_transform_create_context(executor->db);
                 if (!ctx) {
                     set_result_error(result, "Failed to create transform context");

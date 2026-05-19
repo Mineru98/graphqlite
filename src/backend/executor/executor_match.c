@@ -31,7 +31,7 @@ int execute_match_clause(cypher_executor *executor, cypher_match *match, cypher_
     }
     
     if (transform_match_clause(ctx, match) < 0) {
-        set_result_error(result, "Failed to transform MATCH clause");
+        set_result_error(result, ctx && ctx->error_message ? ctx->error_message : "Failed to transform MATCH clause");
         cypher_transform_free_context(ctx);
         return -1;
     }
@@ -76,7 +76,7 @@ int execute_match_return_query(cypher_executor *executor, cypher_match *match, c
 
     /* Transform MATCH clause to generate FROM/WHERE */
     if (transform_match_clause(ctx, match) < 0) {
-        set_result_error(result, "Failed to transform MATCH clause");
+        set_result_error(result, ctx && ctx->error_message ? ctx->error_message : "Failed to transform MATCH clause");
         cypher_transform_free_context(ctx);
         return -1;
     }
@@ -112,7 +112,7 @@ int execute_match_return_query(cypher_executor *executor, cypher_match *match, c
 
     /* Transform RETURN clause to generate SELECT projections */
     if (transform_return_clause(ctx, return_clause) < 0) {
-        set_result_error(result, "Failed to transform RETURN clause");
+        set_result_error(result, ctx && ctx->error_message ? ctx->error_message : "Failed to transform RETURN clause");
         cypher_transform_free_context(ctx);
         return -1;
     }
@@ -181,6 +181,28 @@ int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_re
 
     if (!stmt || !return_clause || !result) {
         return -1;
+    }
+
+    /* GQLITE-T-0218: callers from the generic-transform dispatch path (e.g.
+     * MATCH ... WITH ... MATCH ... RETURN *) may arrive here with the AST's
+     * items list never populated — the SQL has been generated and the column
+     * list lives only in the prepared statement. Synthesize identifier items
+     * from sqlite3_column_count/name so the rest of this function works
+     * uniformly. Previously this dereferenced NULL and SIGSEGV'd. */
+    if (!return_clause->items) {
+        int n_cols = sqlite3_column_count(stmt);
+        ast_list *synth = ast_list_create();
+        for (int c = 0; c < n_cols; c++) {
+            const char *col_name = sqlite3_column_name(stmt, c);
+            if (!col_name) col_name = "";
+            ast_node *id_node = (ast_node *)make_identifier(strdup(col_name), -1);
+            if (!id_node) continue;
+            cypher_return_item *ri = make_return_item(id_node, NULL);
+            if (!ri) continue;
+            ast_list_append(synth, (ast_node *)ri);
+        }
+        return_clause->items = synth;
+        return_clause->return_all = false;
     }
 
     /* Get column count from return clause */
@@ -362,8 +384,17 @@ int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_re
 
         for (int col = 0; col < column_count; col++) {
             /* Store SQLite column type for proper JSON formatting */
-            result->data_types[current_row][col] = sqlite3_column_type(stmt, col);
+            int ct = sqlite3_column_type(stmt, col);
+            result->data_types[current_row][col] = ct;
             const char *value = (const char*)sqlite3_column_text(stmt, col);
+            char float_buf[40];
+            if (ct == SQLITE_FLOAT && value) {
+                /* Override SQLite's default text formatting to preserve
+                 * full double precision (matches Cypher TCK expectations). */
+                snprintf(float_buf, sizeof(float_buf), "%.17g",
+                         sqlite3_column_double(stmt, col));
+                value = float_buf;
+            }
             if (value) {
                 result->data[current_row][col] = strdup(value);
                 
@@ -453,8 +484,11 @@ int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_re
                         /* Property access - try to detect the original data type */
                         result->agtype_data[current_row][col] = create_property_agtype_value(value);
                     } else {
-                        /* For other non-entity columns, create string agtype values */
-                        result->agtype_data[current_row][col] = agtype_value_create_string(value);
+                        /* For other non-entity columns (binary ops, NOT,
+                         * function calls, etc.) detect the type from the
+                         * value so booleans, integers, and floats get the
+                         * right agtype rather than being stringified. */
+                        result->agtype_data[current_row][col] = create_property_agtype_value(value);
                     }
                 }
             } else {
@@ -535,6 +569,12 @@ agtype_value* create_property_agtype_value(const char* value)
         }
     }
     
+    /* JSON list/map values get parsed so RETURN of a list-typed property
+     * emits as a JSON array, not as a quoted string. */
+    if (value[0] == '[' || value[0] == '{') {
+        return agtype_value_create_json(value);
+    }
+
     /* Default to string */
     return agtype_value_create_string(value);
 }
@@ -741,7 +781,7 @@ int bind_match_clause_into_varmap(cypher_executor *executor, cypher_match *match
     }
 
     if (transform_match_clause(ctx, match) < 0) {
-        set_result_error(result, "Failed to transform MATCH clause");
+        set_result_error(result, ctx && ctx->error_message ? ctx->error_message : "Failed to transform MATCH clause");
         cypher_transform_free_context(ctx);
         return -1;
     }
@@ -888,7 +928,7 @@ int execute_match_create_query(cypher_executor *executor, cypher_match *match, c
     
     /* Transform MATCH clause to generate SQL */
     if (transform_match_clause(ctx, match) < 0) {
-        set_result_error(result, "Failed to transform MATCH clause");
+        set_result_error(result, ctx && ctx->error_message ? ctx->error_message : "Failed to transform MATCH clause");
         cypher_transform_free_context(ctx);
         return -1;
     }

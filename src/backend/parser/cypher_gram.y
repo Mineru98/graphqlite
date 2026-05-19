@@ -38,8 +38,8 @@ int cypher_yylex(CYPHER_YYSTYPE *yylval, CYPHER_YYLTYPE *yylloc, cypher_parser_c
  * parser can't immediately distinguish a node pattern from a parenthesized
  * expression until it sees more context (e.g., a following rel_pattern).
  */
-%expect 9
-%expect-rr 3  /* One for IDENTIFIER, one for BQIDENT, one for END_P in variable_opt */
+%expect 14
+%expect-rr 3  /* IDENTIFIER, BQIDENT, END_P in variable_opt */
 
 %union {
     int64_t integer;
@@ -139,7 +139,7 @@ int cypher_yylex(CYPHER_YYSTYPE *yylval, CYPHER_YYLTYPE *yylloc, cypher_parser_c
 %type <list> map_pair_list
 
 %type <list> label_opt label_list
-%type <string> variable_opt from_graph_opt
+%type <string> variable_opt from_graph_opt non_reserved_kw
 %type <boolean> optional_opt distinct_opt
 %type <list> order_by_opt order_by_list rel_type_list
 %type <node> skip_opt limit_opt where_opt
@@ -500,6 +500,43 @@ set_item_list:
             ast_list_append($1, (ast_node*)$3);
             $$ = $1;
         }
+    | IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER
+        {
+            /* SET n:L1:L2 — produce two set_items, one per label. */
+            $$ = ast_list_create();
+            {
+              cypher_identifier *v1 = make_identifier($1, @1.first_line);
+              cypher_label_expr *l1 = make_label_expr((ast_node*)v1, $3, @3.first_line);
+              ast_list_append($$, (ast_node*)make_cypher_set_item((ast_node*)l1, NULL, false));
+            }
+            {
+              cypher_identifier *v2 = make_identifier(strdup($1), @1.first_line);
+              cypher_label_expr *l2 = make_label_expr((ast_node*)v2, $5, @5.first_line);
+              ast_list_append($$, (ast_node*)make_cypher_set_item((ast_node*)l2, NULL, false));
+            }
+            free($1);
+        }
+    | IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER
+        {
+            /* SET n:L1:L2:L3 — three labels. */
+            $$ = ast_list_create();
+            {
+              cypher_identifier *v1 = make_identifier($1, @1.first_line);
+              cypher_label_expr *l1 = make_label_expr((ast_node*)v1, $3, @3.first_line);
+              ast_list_append($$, (ast_node*)make_cypher_set_item((ast_node*)l1, NULL, false));
+            }
+            {
+              cypher_identifier *v2 = make_identifier(strdup($1), @1.first_line);
+              cypher_label_expr *l2 = make_label_expr((ast_node*)v2, $5, @5.first_line);
+              ast_list_append($$, (ast_node*)make_cypher_set_item((ast_node*)l2, NULL, false));
+            }
+            {
+              cypher_identifier *v3 = make_identifier(strdup($1), @1.first_line);
+              cypher_label_expr *l3 = make_label_expr((ast_node*)v3, $7, @7.first_line);
+              ast_list_append($$, (ast_node*)make_cypher_set_item((ast_node*)l3, NULL, false));
+            }
+            free($1);
+        }
     ;
 
 set_item:
@@ -624,6 +661,43 @@ remove_item_list:
         {
             ast_list_append($1, (ast_node*)$3);
             $$ = $1;
+        }
+    | IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER
+        {
+            /* REMOVE n:L1:L2 — produce two remove_items, one per label. */
+            $$ = ast_list_create();
+            {
+              cypher_identifier *v1 = make_identifier($1, @1.first_line);
+              cypher_label_expr *l1 = make_label_expr((ast_node*)v1, $3, @3.first_line);
+              ast_list_append($$, (ast_node*)make_remove_item((ast_node*)l1));
+            }
+            {
+              cypher_identifier *v2 = make_identifier(strdup($1), @1.first_line);
+              cypher_label_expr *l2 = make_label_expr((ast_node*)v2, $5, @5.first_line);
+              ast_list_append($$, (ast_node*)make_remove_item((ast_node*)l2));
+            }
+            free($1);
+        }
+    | IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER
+        {
+            /* REMOVE n:L1:L2:L3 — three labels. */
+            $$ = ast_list_create();
+            {
+              cypher_identifier *v1 = make_identifier($1, @1.first_line);
+              cypher_label_expr *l1 = make_label_expr((ast_node*)v1, $3, @3.first_line);
+              ast_list_append($$, (ast_node*)make_remove_item((ast_node*)l1));
+            }
+            {
+              cypher_identifier *v2 = make_identifier(strdup($1), @1.first_line);
+              cypher_label_expr *l2 = make_label_expr((ast_node*)v2, $5, @5.first_line);
+              ast_list_append($$, (ast_node*)make_remove_item((ast_node*)l2));
+            }
+            {
+              cypher_identifier *v3 = make_identifier(strdup($1), @1.first_line);
+              cypher_label_expr *l3 = make_label_expr((ast_node*)v3, $7, @7.first_line);
+              ast_list_append($$, (ast_node*)make_remove_item((ast_node*)l3));
+            }
+            free($1);
         }
     ;
 
@@ -877,6 +951,8 @@ varlen_range_opt:
         { $$ = make_varlen_range($2, -1); }  /* min bounded: *2.. */
     | '*' DOT_DOT INTEGER
         { $$ = make_varlen_range(1, $3); }   /* max bounded: *..3 */
+    | '*' DOT_DOT
+        { $$ = make_varlen_range(1, -1); }   /* unbounded with explicit range: *.. */
     ;
 
 label_opt:
@@ -900,7 +976,21 @@ label_list:
             ast_list_append($$, (ast_node*)label);
             free($2);
         }
+    | ':' non_reserved_kw
+        {
+            $$ = ast_list_create();
+            cypher_literal *label = make_string_literal($2, @2.first_line);
+            ast_list_append($$, (ast_node*)label);
+            free($2);
+        }
     | label_list ':' IDENTIFIER
+        {
+            $$ = $1;
+            cypher_literal *label = make_string_literal($3, @3.first_line);
+            ast_list_append($$, (ast_node*)label);
+            free($3);
+        }
+    | label_list ':' non_reserved_kw
         {
             $$ = $1;
             cypher_literal *label = make_string_literal($3, @3.first_line);
@@ -1059,6 +1149,7 @@ expr:
     | expr '*' expr     { $$ = (ast_node*)make_binary_op(BINARY_OP_MUL, $1, $3, @2.first_line); }
     | expr '/' expr     { $$ = (ast_node*)make_binary_op(BINARY_OP_DIV, $1, $3, @2.first_line); }
     | expr '%' expr     { $$ = (ast_node*)make_binary_op(BINARY_OP_MOD, $1, $3, @2.first_line); }
+    | expr '^' expr     { $$ = (ast_node*)make_binary_op(BINARY_OP_POW, $1, $3, @2.first_line); }
     | expr '=' expr     { $$ = (ast_node*)make_binary_op(BINARY_OP_EQ, $1, $3, @2.first_line); }
     | expr NOT_EQ expr  { $$ = (ast_node*)make_binary_op(BINARY_OP_NEQ, $1, $3, @2.first_line); }
     | expr '<' expr     { $$ = (ast_node*)make_binary_op(BINARY_OP_LT, $1, $3, @2.first_line); }
@@ -1119,6 +1210,11 @@ expr:
             $$ = (ast_node*)make_property($1, $3, @3.first_line);
             free($3);
         }
+    | expr '.' non_reserved_kw
+        {
+            $$ = (ast_node*)make_property($1, $3, @3.first_line);
+            free($3);
+        }
     | expr '[' expr ']'
         {
             $$ = (ast_node*)make_subscript($1, $3, @2.first_line);
@@ -1157,6 +1253,36 @@ primary_expr:
             free($1);
             free($3);
         }
+    | IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER
+        {
+            /* Conjunctive label expression `n:L1:L2` — emit
+             * (n:L1) AND (n:L2). */
+            cypher_identifier *b1 = make_identifier($1, @1.first_line);
+            cypher_identifier *b2 = make_identifier(strdup($1), @1.first_line);
+            cypher_label_expr *l1 = make_label_expr((ast_node*)b1, $3, @3.first_line);
+            cypher_label_expr *l2 = make_label_expr((ast_node*)b2, $5, @5.first_line);
+            $$ = (ast_node*)make_binary_op(BINARY_OP_AND,
+                                            (ast_node*)l1, (ast_node*)l2,
+                                            @1.first_line);
+            free($1); free($3); free($5);
+        }
+    | IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER ':' IDENTIFIER
+        {
+            /* Three-label conjunction. */
+            cypher_identifier *b1 = make_identifier($1, @1.first_line);
+            cypher_identifier *b2 = make_identifier(strdup($1), @1.first_line);
+            cypher_identifier *b3 = make_identifier(strdup($1), @1.first_line);
+            cypher_label_expr *l1 = make_label_expr((ast_node*)b1, $3, @3.first_line);
+            cypher_label_expr *l2 = make_label_expr((ast_node*)b2, $5, @5.first_line);
+            cypher_label_expr *l3 = make_label_expr((ast_node*)b3, $7, @7.first_line);
+            cypher_binary_op *and12 = make_binary_op(BINARY_OP_AND,
+                                                     (ast_node*)l1, (ast_node*)l2,
+                                                     @1.first_line);
+            $$ = (ast_node*)make_binary_op(BINARY_OP_AND,
+                                            (ast_node*)and12, (ast_node*)l3,
+                                            @1.first_line);
+            free($1); free($3); free($5); free($7);
+        }
     ;
 
 literal_expr:
@@ -1164,7 +1290,31 @@ literal_expr:
     ;
 
 function_call:
-    IDENTIFIER '(' ')'
+    /* Qualified function names (e.g. `date.truncate(...)`, `datetime.fromEpoch(...)`)
+     * are concatenated into a single function name so the dispatch table
+     * can look them up. */
+    IDENTIFIER '.' IDENTIFIER '(' argument_list ')'
+        {
+            size_t len = strlen($1) + 1 + strlen($3) + 1;
+            char *qname = malloc(len);
+            if (qname) snprintf(qname, len, "%s.%s", $1, $3);
+            $$ = (ast_node*)make_function_call(qname ? qname : $1, $5, false, @1.first_line);
+            free($1);
+            free($3);
+            if (qname) free(qname);
+        }
+    | IDENTIFIER '.' IDENTIFIER '(' ')'
+        {
+            size_t len = strlen($1) + 1 + strlen($3) + 1;
+            char *qname = malloc(len);
+            if (qname) snprintf(qname, len, "%s.%s", $1, $3);
+            ast_list *args = ast_list_create();
+            $$ = (ast_node*)make_function_call(qname ? qname : $1, args, false, @1.first_line);
+            free($1);
+            free($3);
+            if (qname) free(qname);
+        }
+    | IDENTIFIER '(' ')'
         {
             /* Check if this is EXISTS function call */
             if (strcasecmp($1, "exists") == 0) {
@@ -1536,6 +1686,25 @@ identifier:
         }
     ;
 
+/* Keywords that may serve as identifiers/labels/property-keys outside their
+ * reserved contexts. Returns the string form (caller frees). */
+non_reserved_kw:
+      SINGLE        { $$ = strdup("Single"); }
+    | ANY           { $$ = strdup("Any"); }
+    | NONE          { $$ = strdup("None"); }
+    | ALL           { $$ = strdup("All"); }
+    | EXISTS        { $$ = strdup("exists"); }
+    | CONTAINS      { $$ = strdup("contains"); }
+    | STARTS        { $$ = strdup("starts"); }
+    | ENDS          { $$ = strdup("ends"); }
+    | REDUCE        { $$ = strdup("reduce"); }
+    | END_P         { $$ = strdup("End"); }
+    | ON            { $$ = strdup("On"); }
+    | PATTERN       { $$ = strdup("Pattern"); }
+    | CSV           { $$ = strdup("Csv"); }
+    | LOAD          { $$ = strdup("Load"); }
+    ;
+
 parameter:
     PARAMETER
         {
@@ -1547,7 +1716,13 @@ parameter:
 /* Property map support */
 properties_opt:
     /* empty */         { $$ = NULL; }
-    | '{' '}'           { $$ = NULL; }
+    | '{' '}'           {
+            /* Empty `{}` produces an empty-map node so downstream
+             * validation distinguishes "no properties block written"
+             * (NULL) from "explicit empty map" — the latter counts as
+             * a property predicate for re-bind detection. */
+            $$ = make_map(ast_list_create(), @1.first_line);
+        }
     | '{' map_pair_list '}'
         {
             $$ = make_map($2, @1.first_line);
@@ -1580,6 +1755,10 @@ map_pair:
         {
             $$ = make_map_pair($1, $3, @1.first_line);
         }
+    | non_reserved_kw ':' expr
+        {
+            $$ = make_map_pair($1, $3, @1.first_line);
+        }
     | ASC ':' expr
         {
             $$ = make_map_pair("asc", $3, @1.first_line);
@@ -1596,6 +1775,13 @@ map_pair:
         {
             $$ = make_map_pair("by", $3, @1.first_line);
         }
+    | NULL_P ':' expr
+        {
+            /* `null` and `NULL` are legal map keys per the openCypher
+             * spec (Map2 [5]). The scanner up-cases the keyword, so
+             * preserve the textual form here as `null`. */
+            $$ = make_map_pair(strdup("null"), $3, @1.first_line);
+        }
     ;
 
 %%
@@ -1604,6 +1790,13 @@ map_pair:
 void cypher_yyerror(CYPHER_YYLTYPE *yylloc, cypher_parser_context *context, const char *msg)
 {
     if (!context || !msg) {
+        return;
+    }
+
+    /* If the scanner already raised a specific error (e.g. IntegerOverflow),
+     * keep its message — Bison's generic 'syntax error, unexpected end of
+     * file' would otherwise mask it. */
+    if (context->has_error && context->error_message) {
         return;
     }
 

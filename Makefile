@@ -48,9 +48,18 @@ ifdef RELEASE
 CFLAGS = -Wall -Wextra -O2 -I$(VENDOR_SQLITE_DIR) -I./src/include $(EXTRA_INCLUDES)
 EXTENSION_CFLAGS_BASE = -Wall -Wextra -O2 -I$(VENDOR_SQLITE_DIR) -I./src/include
 else
+# Opt into the noisy CYPHER_DEBUG printf trace by setting DEBUG_LOGS=1 at
+# build time. Without it, debug builds still have -g symbols but the
+# extension stays silent (a full TCK run otherwise produced hundreds of
+# GB of CYPHER_DEBUG output).
+ifdef DEBUG_LOGS
+DEBUG_DEFINES = -DGRAPHQLITE_DEBUG
+else
+DEBUG_DEFINES =
+endif
 # Add -DGRAPHQLITE_PERF_TIMING for detailed query timing instrumentation
-CFLAGS = -Wall -Wextra -g -I$(VENDOR_SQLITE_DIR) -I./src/include -DGRAPHQLITE_DEBUG $(EXTRA_INCLUDES)
-EXTENSION_CFLAGS_BASE = -Wall -Wextra -g -I$(VENDOR_SQLITE_DIR) -I./src/include -DGRAPHQLITE_DEBUG
+CFLAGS = -Wall -Wextra -g -I$(VENDOR_SQLITE_DIR) -I./src/include $(DEBUG_DEFINES) $(EXTRA_INCLUDES)
+EXTENSION_CFLAGS_BASE = -Wall -Wextra -g -I$(VENDOR_SQLITE_DIR) -I./src/include $(DEBUG_DEFINES)
 endif
 LDFLAGS = $(EXTRA_LIBS) -lcunit -lsqlite3 -lm
 
@@ -132,6 +141,7 @@ TRANSFORM_SRCS = \
 	$(TRANSFORM_DIR)/transform_with.c \
 	$(TRANSFORM_DIR)/transform_unwind.c \
 	$(TRANSFORM_DIR)/transform_expr_ops.c \
+	$(TRANSFORM_DIR)/transform_validate.c \
 	$(TRANSFORM_DIR)/sql_builder.c
 
 # Executor sources
@@ -317,6 +327,13 @@ $(BUILD_DIR)/main.o: $(SRC_DIR)/main.c | dirs
 $(BUILD_DIR)/extension.o: $(SRC_DIR)/extension.c | dirs
 	$(CC) $(EXTENSION_CFLAGS_BASE) $(EXTENSION_CFLAGS) -fPIC -c $< -o $@
 
+# Extension object for the unit-test runner. Compiled with -DSQLITE_CORE so
+# SQLITE_EXTENSION_INIT macros become no-ops and sqlite3_create_function and
+# friends bind directly to the linked libsqlite3 (rather than going through
+# the loadable-extension API pointer, which isn't set up in tests).
+$(BUILD_DIR)/extension.test.o: $(SRC_DIR)/extension.c | dirs
+	$(CC) $(CFLAGS) $(COVERAGE_FLAGS) -DSQLITE_CORE -c $< -o $@
+
 # Help target
 help:
 	@echo "GraphQLite Makefile Commands:"
@@ -427,7 +444,7 @@ $(BUILD_TEST_DIR)/%.o: $(TEST_DIR)/%.c $(GRAMMAR_HDR) | dirs
 	$(CC) $(CFLAGS) -I$(BUILD_PARSER_DIR) -c $< -o $@
 
 # Test runner executable
-$(TEST_RUNNER): $(TEST_OBJS) $(PARSER_OBJS_COV) $(TRANSFORM_OBJS_COV) $(EXECUTOR_OBJS_COV) | dirs
+$(TEST_RUNNER): $(TEST_OBJS) $(PARSER_OBJS_COV) $(TRANSFORM_OBJS_COV) $(EXECUTOR_OBJS_COV) $(BUILD_DIR)/extension.test.o | dirs
 	$(CC) $(CFLAGS) $(COVERAGE_FLAGS) $^ -o $@ $(LDFLAGS) $(COVERAGE_LIBS)
 
 # Run constraint tests (expected to fail with specific errors)

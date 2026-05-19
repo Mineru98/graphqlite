@@ -173,7 +173,7 @@ int transform_return_clause(cypher_transform_context *ctx, cypher_return *ret)
                             "(SELECT npt.value FROM node_props_text npt WHERE npt.node_id = %s%s AND npt.key_id = pk.id), "
                             "(SELECT npi.value FROM node_props_int npi WHERE npi.node_id = %s%s AND npi.key_id = pk.id), "
                             "(SELECT npr.value FROM node_props_real npr WHERE npr.node_id = %s%s AND npr.key_id = pk.id), "
-                            "(SELECT npb.value FROM node_props_bool npb WHERE npb.node_id = %s%s AND npb.key_id = pk.id), "
+                            "(SELECT json(CASE WHEN npb.value THEN 'true' ELSE 'false' END) FROM node_props_bool npb WHERE npb.node_id = %s%s AND npb.key_id = pk.id), "
                             "(SELECT json(npj.value) FROM node_props_json npj WHERE npj.node_id = %s%s AND npj.key_id = pk.id))) "
                         "FROM property_keys pk WHERE "
                             "EXISTS (SELECT 1 FROM node_props_text WHERE node_id = %s%s AND key_id = pk.id) OR "
@@ -215,6 +215,15 @@ int transform_return_clause(cypher_transform_context *ctx, cypher_return *ret)
             goto return_star_done;
         }
 
+        /* Defer registration of explicit aliases until after all items are
+         * transformed so an alias name like `RETURN n.num AS n, count(n)`
+         * doesn't shadow the original binding of `n` mid-projection. */
+        const char **deferred_aliases = NULL;
+        int deferred_count = 0;
+        if (ret->items->count > 0) {
+            deferred_aliases = calloc(ret->items->count, sizeof(*deferred_aliases));
+        }
+
         /* Add SELECT columns to unified builder */
         for (int i = 0; i < ret->items->count; i++) {
             cypher_return_item *item = (cypher_return_item*)ret->items->items[i];
@@ -228,6 +237,41 @@ int transform_return_clause(cypher_transform_context *ctx, cypher_return *ret)
                     ctx->error_message = strdup("Failed to transform return item expression");
                 }
                 return -1;
+            }
+
+            /* Boolean-producing expressions: wrap so the output is JSON
+             * true/false rather than SQLite integer 0/1. NULL stays NULL
+             * for openCypher three-valued logic. */
+            if (item->expr && (
+                item->expr->type == AST_NODE_NOT_EXPR ||
+                item->expr->type == AST_NODE_NULL_CHECK ||
+                item->expr->type == AST_NODE_LIST_PREDICATE ||
+                item->expr->type == AST_NODE_EXISTS_EXPR ||
+                (item->expr->type == AST_NODE_BINARY_OP && (
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_AND ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_OR  ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_XOR ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_EQ  ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_NEQ ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_LT  ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_GT  ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_LTE ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_GTE ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_IN  ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_STARTS_WITH ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_ENDS_WITH ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_CONTAINS ||
+                    ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_REGEX_MATCH))))
+            {
+                size_t need = strlen(expr_str) * 2 + 96;
+                char *wrapped = malloc(need);
+                if (wrapped) {
+                    snprintf(wrapped, need,
+                             "(CASE WHEN (%s) IS NULL THEN NULL WHEN (%s) THEN 'true' ELSE 'false' END)",
+                             expr_str, expr_str);
+                    free(expr_str);
+                    expr_str = wrapped;
+                }
             }
 
             /* Determine alias - use explicit alias, or generate one for properties/functions */
@@ -294,13 +338,73 @@ int transform_return_clause(cypher_transform_context *ctx, cypher_return *ret)
             sql_select(ctx->unified_builder, expr_str, alias);
             free(expr_str);
 
-            /* Register alias for ORDER BY reference */
-            if (item->alias) {
-                transform_var_register_projected(ctx->var_ctx, item->alias, item->alias);
+            /* Defer alias registration so subsequent return items can still
+             * resolve identifiers using their original bindings. */
+            if (item->alias && deferred_aliases) {
+                deferred_aliases[deferred_count++] = item->alias;
+            }
+        }
+        for (int i = 0; i < deferred_count; i++) {
+            transform_var_register_projected(ctx->var_ctx, deferred_aliases[i], deferred_aliases[i]);
+        }
+        free(deferred_aliases);
+
+return_star_done:
+        /* Implicit GROUP BY: when RETURN mixes aggregating and
+         * non-aggregating items, the non-aggregating expressions
+         * become grouping keys (Cypher 9 spec). Detect by walking
+         * items: count names like count/sum/avg/min/max/collect/
+         * stdev/stdevp/percentilecont/percentiledisc as aggregating;
+         * emit GROUP BY for the non-aggregating ones. */
+        if (ret->items && ret->items->count > 0) {
+            bool has_agg = false;
+            bool has_non_agg = false;
+            for (int i = 0; i < ret->items->count; i++) {
+                cypher_return_item *it = (cypher_return_item *)ret->items->items[i];
+                bool is_agg = false;
+                if (it && it->expr && it->expr->type == AST_NODE_FUNCTION_CALL) {
+                    cypher_function_call *fc = (cypher_function_call *)it->expr;
+                    if (fc->function_name) {
+                        const char *n = fc->function_name;
+                        if (!strcasecmp(n, "count") || !strcasecmp(n, "sum") ||
+                            !strcasecmp(n, "avg") || !strcasecmp(n, "min") ||
+                            !strcasecmp(n, "max") || !strcasecmp(n, "collect") ||
+                            !strcasecmp(n, "stdev") || !strcasecmp(n, "stdevp") ||
+                            !strcasecmp(n, "percentilecont") ||
+                            !strcasecmp(n, "percentiledisc"))
+                            is_agg = true;
+                    }
+                }
+                if (is_agg) has_agg = true; else has_non_agg = true;
+            }
+            if (has_agg && has_non_agg) {
+                for (int i = 0; i < ret->items->count; i++) {
+                    cypher_return_item *it = (cypher_return_item *)ret->items->items[i];
+                    bool is_agg = false;
+                    if (it && it->expr && it->expr->type == AST_NODE_FUNCTION_CALL) {
+                        cypher_function_call *fc = (cypher_function_call *)it->expr;
+                        if (fc->function_name) {
+                            const char *n = fc->function_name;
+                            if (!strcasecmp(n, "count") || !strcasecmp(n, "sum") ||
+                                !strcasecmp(n, "avg") || !strcasecmp(n, "min") ||
+                                !strcasecmp(n, "max") || !strcasecmp(n, "collect") ||
+                                !strcasecmp(n, "stdev") || !strcasecmp(n, "stdevp") ||
+                                !strcasecmp(n, "percentilecont") ||
+                                !strcasecmp(n, "percentiledisc"))
+                                is_agg = true;
+                        }
+                    }
+                    if (!is_agg) {
+                        char *gb_expr = transform_expression_to_string(ctx, it->expr);
+                        if (gb_expr) {
+                            sql_group_by(ctx->unified_builder, gb_expr);
+                            free(gb_expr);
+                        }
+                    }
+                }
             }
         }
 
-return_star_done:
         /* Add ORDER BY */
         if (ret->order_by && ret->order_by->count > 0) {
             for (int i = 0; i < ret->order_by->count; i++) {
@@ -317,17 +421,33 @@ return_star_done:
         if (ret->limit || ret->skip) {
             int limit_val = -1;
             int offset_val = -1;
+            char *limit_param = NULL;
+            char *offset_param = NULL;
 
             if (ret->limit && ret->limit->type == AST_NODE_LITERAL) {
                 cypher_literal *lit = (cypher_literal*)ret->limit;
                 if (lit->literal_type == LITERAL_INTEGER) {
                     limit_val = (int)lit->value.integer;
                 }
+            } else if (ret->limit && ret->limit->type == AST_NODE_PARAMETER) {
+                cypher_parameter *p = (cypher_parameter*)ret->limit;
+                if (p->name) {
+                    char buf[128]; snprintf(buf, sizeof(buf), ":%s", p->name);
+                    limit_param = strdup(buf);
+                    register_parameter(ctx, p->name);
+                }
             }
             if (ret->skip && ret->skip->type == AST_NODE_LITERAL) {
                 cypher_literal *lit = (cypher_literal*)ret->skip;
                 if (lit->literal_type == LITERAL_INTEGER) {
                     offset_val = (int)lit->value.integer;
+                }
+            } else if (ret->skip && ret->skip->type == AST_NODE_PARAMETER) {
+                cypher_parameter *p = (cypher_parameter*)ret->skip;
+                if (p->name) {
+                    char buf[128]; snprintf(buf, sizeof(buf), ":%s", p->name);
+                    offset_param = strdup(buf);
+                    register_parameter(ctx, p->name);
                 }
             }
 
@@ -337,6 +457,10 @@ return_star_done:
             }
 
             sql_limit(ctx->unified_builder, limit_val, offset_val);
+            if (limit_param || offset_param) {
+                sql_limit_expr(ctx->unified_builder, limit_param, offset_param);
+                free(limit_param); free(offset_param);
+            }
         }
 
         /* Add pending property JOINs from aggregate functions */
@@ -397,6 +521,39 @@ return_star_done:
                         ctx->error_message = strdup("Failed to transform return item expression");
                     }
                     return -1;
+                }
+
+                /* Boolean-producing expressions: emit JSON true/false. */
+                if (item->expr && (
+                    item->expr->type == AST_NODE_NOT_EXPR ||
+                    item->expr->type == AST_NODE_NULL_CHECK ||
+                    item->expr->type == AST_NODE_LIST_PREDICATE ||
+                    item->expr->type == AST_NODE_EXISTS_EXPR ||
+                    (item->expr->type == AST_NODE_BINARY_OP && (
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_AND ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_OR  ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_XOR ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_EQ  ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_NEQ ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_LT  ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_GT  ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_LTE ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_GTE ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_IN  ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_STARTS_WITH ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_ENDS_WITH ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_CONTAINS ||
+                        ((cypher_binary_op*)item->expr)->op_type == BINARY_OP_REGEX_MATCH))))
+                {
+                    size_t need = strlen(expr_str) * 2 + 96;
+                    char *wrapped = malloc(need);
+                    if (wrapped) {
+                        snprintf(wrapped, need,
+                                 "(CASE WHEN (%s) IS NULL THEN NULL WHEN (%s) THEN 'true' ELSE 'false' END)",
+                                 expr_str, expr_str);
+                        free(expr_str);
+                        expr_str = wrapped;
+                    }
                 }
 
                 /* Determine alias - use explicit alias, or generate one for properties/functions */
@@ -466,11 +623,20 @@ return_star_done:
             if (ret->limit || ret->skip) {
                 int limit_val = -1;
                 int offset_val = -1;
+                char *limit_param = NULL;
+                char *offset_param = NULL;
 
                 if (ret->limit && ret->limit->type == AST_NODE_LITERAL) {
                     cypher_literal *lit = (cypher_literal*)ret->limit;
                     if (lit->literal_type == LITERAL_INTEGER) {
                         limit_val = (int)lit->value.integer;
+                    }
+                } else if (ret->limit && ret->limit->type == AST_NODE_PARAMETER) {
+                    cypher_parameter *p = (cypher_parameter*)ret->limit;
+                    if (p->name) {
+                        char buf[128]; snprintf(buf, sizeof(buf), ":%s", p->name);
+                        limit_param = strdup(buf);
+                        register_parameter(ctx, p->name);
                     }
                 }
                 if (ret->skip && ret->skip->type == AST_NODE_LITERAL) {
@@ -478,9 +644,20 @@ return_star_done:
                     if (lit->literal_type == LITERAL_INTEGER) {
                         offset_val = (int)lit->value.integer;
                     }
+                } else if (ret->skip && ret->skip->type == AST_NODE_PARAMETER) {
+                    cypher_parameter *p = (cypher_parameter*)ret->skip;
+                    if (p->name) {
+                        char buf[128]; snprintf(buf, sizeof(buf), ":%s", p->name);
+                        offset_param = strdup(buf);
+                        register_parameter(ctx, p->name);
+                    }
                 }
 
                 sql_limit(ctx->unified_builder, limit_val, offset_val);
+                if (limit_param || offset_param) {
+                    sql_limit_expr(ctx->unified_builder, limit_param, offset_param);
+                    free(limit_param); free(offset_param);
+                }
             }
 
             /* Finalize the unified builder into sql_buffer */
@@ -646,7 +823,7 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                         "(SELECT npt.value FROM node_props_text npt WHERE npt.node_id = %s AND npt.key_id = pk.id), "
                                         "(SELECT npi.value FROM node_props_int npi WHERE npi.node_id = %s AND npi.key_id = pk.id), "
                                         "(SELECT npr.value FROM node_props_real npr WHERE npr.node_id = %s AND npr.key_id = pk.id), "
-                                        "(SELECT npb.value FROM node_props_bool npb WHERE npb.node_id = %s AND npb.key_id = pk.id), "
+                                        "(SELECT json(CASE WHEN npb.value THEN 'true' ELSE 'false' END) FROM node_props_bool npb WHERE npb.node_id = %s AND npb.key_id = pk.id), "
                                         "(SELECT json(npj.value) FROM node_props_json npj WHERE npj.node_id = %s AND npj.key_id = pk.id))) "
                                     "FROM property_keys pk WHERE "
                                         "EXISTS (SELECT 1 FROM node_props_text WHERE node_id = %s AND key_id = pk.id) OR "
@@ -661,8 +838,10 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                 alias, alias, alias, alias, alias);
                             }
                         } else if (transform_var_is_edge(ctx->var_ctx, id->name)) {
-                            /* This is an edge variable - return full relationship object */
-                            append_sql(ctx, "json_object("
+                            /* Edge variable - return full relationship object,
+                             * or NULL when the row came from an OPTIONAL MATCH
+                             * miss (LEFT JOIN with no match → alias.id IS NULL). */
+                            append_sql(ctx, "(CASE WHEN %s.id IS NULL THEN NULL ELSE json_object("
                                 "'id', %s.id, "
                                 "'type', %s.type, "
                                 "'startNodeId', %s.source_id, "
@@ -680,20 +859,23 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                     "EXISTS (SELECT 1 FROM edge_props_bool WHERE edge_id = %s.id AND key_id = pk.id) OR "
                                     "EXISTS (SELECT 1 FROM edge_props_json WHERE edge_id = %s.id AND key_id = pk.id)"
                                 "), json('{}'))"
-                            ")",
+                            ") END)",
+                            alias,
                             alias, alias, alias, alias,
                             alias, alias, alias, alias, alias,
                             alias, alias, alias, alias, alias);
                         } else {
-                            /* This is a node variable - return full node object */
-                            append_sql(ctx, "json_object("
+                            /* This is a node variable - return full node object,
+                             * or NULL when the row came from an OPTIONAL MATCH
+                             * miss (LEFT JOIN with no match → alias.id IS NULL). */
+                            append_sql(ctx, "(CASE WHEN %s.id IS NULL THEN NULL ELSE json_object("
                                 "'id', %s.id, "
                                 "'labels', COALESCE((SELECT json_group_array(label) FROM node_labels WHERE node_id = %s.id), json('[]')), "
                                 "'properties', COALESCE((SELECT json_group_object(pk.key, COALESCE("
                                     "(SELECT npt.value FROM node_props_text npt WHERE npt.node_id = %s.id AND npt.key_id = pk.id), "
                                     "(SELECT npi.value FROM node_props_int npi WHERE npi.node_id = %s.id AND npi.key_id = pk.id), "
                                     "(SELECT npr.value FROM node_props_real npr WHERE npr.node_id = %s.id AND npr.key_id = pk.id), "
-                                    "(SELECT npb.value FROM node_props_bool npb WHERE npb.node_id = %s.id AND npb.key_id = pk.id), "
+                                    "(SELECT json(CASE WHEN npb.value THEN 'true' ELSE 'false' END) FROM node_props_bool npb WHERE npb.node_id = %s.id AND npb.key_id = pk.id), "
                                     "(SELECT json(npj.value) FROM node_props_json npj WHERE npj.node_id = %s.id AND npj.key_id = pk.id))) "
                                 "FROM property_keys pk WHERE "
                                     "EXISTS (SELECT 1 FROM node_props_text WHERE node_id = %s.id AND key_id = pk.id) OR "
@@ -702,7 +884,8 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                     "EXISTS (SELECT 1 FROM node_props_bool WHERE node_id = %s.id AND key_id = pk.id) OR "
                                     "EXISTS (SELECT 1 FROM node_props_json WHERE node_id = %s.id AND key_id = pk.id)"
                                 "), json('{}'))"
-                            ")",
+                            ") END)",
+                            alias,
                             alias, alias,
                             alias, alias, alias, alias, alias,
                             alias, alias, alias, alias, alias);
@@ -760,28 +943,71 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
 
                 /* Handle list slicing: list[start..end] */
                 if (subscript->is_slice) {
-                    /* Generate: (SELECT json_group_array(value) FROM json_each(list)
-                     *            WHERE key >= start AND key < end) */
+                    /* Generate a slice that:
+                     *  - normalizes negative start/end to length+offset
+                     *  - returns NULL if either bound is NULL (Cypher
+                     *    three-valued semantics)
+                     *  - returns json_group_array(value) for matching keys.
+                     *
+                     * Shape:
+                     *   CASE WHEN <start> IS NULL OR <end> IS NULL THEN NULL
+                     *        ELSE (SELECT json_group_array(value)
+                     *              FROM json_each(<list>)
+                     *              WHERE key >= CASE WHEN <start> < 0 THEN
+                     *                          json_array_length(<list>) + <start>
+                     *                        ELSE <start> END
+                     *                AND key < CASE WHEN <end> < 0 THEN
+                     *                          json_array_length(<list>) + <end>
+                     *                        ELSE <end> END)
+                     *   END
+                     */
+                    append_sql(ctx, "(CASE WHEN ");
+                    bool has_start = subscript->slice_start != NULL;
+                    bool has_end = subscript->slice_end != NULL;
+                    if (has_start) {
+                        append_sql(ctx, "(");
+                        if (transform_expression(ctx, subscript->slice_start) < 0) return -1;
+                        append_sql(ctx, ") IS NULL");
+                    }
+                    if (has_start && has_end) append_sql(ctx, " OR ");
+                    if (has_end) {
+                        append_sql(ctx, "(");
+                        if (transform_expression(ctx, subscript->slice_end) < 0) return -1;
+                        append_sql(ctx, ") IS NULL");
+                    }
+                    if (!has_start && !has_end) append_sql(ctx, "0");
+                    append_sql(ctx, " THEN NULL ELSE ");
+
                     append_sql(ctx, "(SELECT json_group_array(value) FROM json_each(");
                     if (transform_expression(ctx, subscript->expr) < 0) return -1;
                     append_sql(ctx, ")");
-                    if (subscript->slice_start || subscript->slice_end) {
+                    if (has_start || has_end) {
                         append_sql(ctx, " WHERE ");
-                        if (subscript->slice_start) {
-                            append_sql(ctx, "key >= (");
+                        if (has_start) {
+                            append_sql(ctx, "key >= (CASE WHEN (");
                             if (transform_expression(ctx, subscript->slice_start) < 0) return -1;
-                            append_sql(ctx, ")");
+                            append_sql(ctx, ") < 0 THEN json_array_length(");
+                            if (transform_expression(ctx, subscript->expr) < 0) return -1;
+                            append_sql(ctx, ") + (");
+                            if (transform_expression(ctx, subscript->slice_start) < 0) return -1;
+                            append_sql(ctx, ") ELSE (");
+                            if (transform_expression(ctx, subscript->slice_start) < 0) return -1;
+                            append_sql(ctx, ") END)");
                         }
-                        if (subscript->slice_start && subscript->slice_end) {
-                            append_sql(ctx, " AND ");
-                        }
-                        if (subscript->slice_end) {
-                            append_sql(ctx, "key < (");
+                        if (has_start && has_end) append_sql(ctx, " AND ");
+                        if (has_end) {
+                            append_sql(ctx, "key < (CASE WHEN (");
                             if (transform_expression(ctx, subscript->slice_end) < 0) return -1;
-                            append_sql(ctx, ")");
+                            append_sql(ctx, ") < 0 THEN json_array_length(");
+                            if (transform_expression(ctx, subscript->expr) < 0) return -1;
+                            append_sql(ctx, ") + (");
+                            if (transform_expression(ctx, subscript->slice_end) < 0) return -1;
+                            append_sql(ctx, ") ELSE (");
+                            if (transform_expression(ctx, subscript->slice_end) < 0) return -1;
+                            append_sql(ctx, ") END)");
                         }
                     }
-                    append_sql(ctx, ")");
+                    append_sql(ctx, ") END)");
                     break;
                 }
 
@@ -803,27 +1029,16 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                     }
                 }
 
-                append_sql(ctx, "json_extract(");
-                if (transform_expression(ctx, subscript->expr) < 0) {
-                    return -1;
-                }
-                append_sql(ctx, ", '$[' || CAST(CASE WHEN (");
-                if (transform_expression(ctx, subscript->index) < 0) {
-                    return -1;
-                }
-                append_sql(ctx, ") < 0 THEN json_array_length(");
-                if (transform_expression(ctx, subscript->expr) < 0) {
-                    return -1;
-                }
-                append_sql(ctx, ") + (");
-                if (transform_expression(ctx, subscript->index) < 0) {
-                    return -1;
-                }
-                append_sql(ctx, ") ELSE (");
-                if (transform_expression(ctx, subscript->index) < 0) {
-                    return -1;
-                }
-                append_sql(ctx, ") END AS INTEGER) || ']')");
+                /* Route through _gql_subscript() which performs runtime
+                 * type checking (TypeError for non-list/map values or
+                 * mismatched index types) and handles negative indices.
+                 * Falls back to plain json_extract semantics when types
+                 * match. */
+                append_sql(ctx, "_gql_subscript(");
+                if (transform_expression(ctx, subscript->expr) < 0) return -1;
+                append_sql(ctx, ", ");
+                if (transform_expression(ctx, subscript->index) < 0) return -1;
+                append_sql(ctx, ")");
             }
             break;
 
@@ -834,9 +1049,29 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                     case LITERAL_INTEGER:
                         append_sql(ctx, "%lld", (long long)lit->value.integer);
                         break;
-                    case LITERAL_DECIMAL:
-                        append_sql(ctx, "%f", lit->value.decimal);
+                    case LITERAL_DECIMAL: {
+                        /* %.17g preserves full double precision while
+                         * avoiding trailing zeros %f would emit. But if
+                         * the result has no '.' or 'e' (whole-number
+                         * decimals like 2.0 → "2"), SQLite parses it as
+                         * an INTEGER and integer arithmetic kicks in
+                         * (1 / 2 = 0 instead of 1 / 2.0 = 0.5). Force a
+                         * decimal point by appending '.0' in that case. */
+                        char buf[64];
+                        snprintf(buf, sizeof(buf), "%.17g", lit->value.decimal);
+                        bool has_dot = false;
+                        for (char *p = buf; *p; p++) {
+                            if (*p == '.' || *p == 'e' || *p == 'E' || *p == 'n') { /* 'n' for nan/inf */
+                                has_dot = true; break;
+                            }
+                        }
+                        if (!has_dot) {
+                            size_t l = strlen(buf);
+                            if (l + 2 < sizeof(buf)) { buf[l] = '.'; buf[l+1] = '0'; buf[l+2] = 0; }
+                        }
+                        append_sql(ctx, "%s", buf);
                         break;
+                    }
                     case LITERAL_STRING:
                         append_string_literal(ctx, lit->value.string);
                         break;
@@ -999,8 +1234,8 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                     /* Use properties() function approach for n{.*} */
                     append_sql(ctx, "(SELECT json_group_object(pk.key, COALESCE("
                                "npt.value, "
-                               "CAST(npi.value AS TEXT), "
-                               "CAST(npr.value AS TEXT), "
+                               "npi.value, "
+                               "npr.value, "
                                "CASE npb.value WHEN 1 THEN 'true' WHEN 0 THEN 'false' END, "
                                "json(npj.value)"
                                ")) FROM property_keys pk "
@@ -1036,11 +1271,11 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                        base_alias, is_projected ? "" : ".id");
                             append_string_literal(ctx, item->property);
                             append_sql(ctx, "), ");
-                            append_sql(ctx, "(SELECT CAST(npi.value AS TEXT) FROM node_props_int npi JOIN property_keys pk ON npi.key_id = pk.id WHERE npi.node_id = %s%s AND pk.key = ",
+                            append_sql(ctx, "(SELECT npi.value FROM node_props_int npi JOIN property_keys pk ON npi.key_id = pk.id WHERE npi.node_id = %s%s AND pk.key = ",
                                        base_alias, is_projected ? "" : ".id");
                             append_string_literal(ctx, item->property);
                             append_sql(ctx, "), ");
-                            append_sql(ctx, "(SELECT CAST(npr.value AS TEXT) FROM node_props_real npr JOIN property_keys pk ON npr.key_id = pk.id WHERE npr.node_id = %s%s AND pk.key = ",
+                            append_sql(ctx, "(SELECT npr.value FROM node_props_real npr JOIN property_keys pk ON npr.key_id = pk.id WHERE npr.node_id = %s%s AND pk.key = ",
                                        base_alias, is_projected ? "" : ".id");
                             append_string_literal(ctx, item->property);
                             append_sql(ctx, "), ");

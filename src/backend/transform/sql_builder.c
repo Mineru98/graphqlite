@@ -288,6 +288,8 @@ void sql_builder_free(sql_builder *b)
     dbuf_free(&b->where);
     dbuf_free(&b->group_by);
     dbuf_free(&b->order_by);
+    free(b->limit_expr);
+    free(b->offset_expr);
 
     free(b);
 }
@@ -306,6 +308,8 @@ void sql_builder_reset(sql_builder *b)
     dbuf_clear(&b->where);
     dbuf_clear(&b->group_by);
     dbuf_clear(&b->order_by);
+    free(b->limit_expr); b->limit_expr = NULL;
+    free(b->offset_expr); b->offset_expr = NULL;
 
     b->limit = -1;
     b->offset = -1;
@@ -453,7 +457,12 @@ void sql_order_by(sql_builder *b, const char *expr, bool desc)
         dbuf_append(&b->order_by, ", ");
     }
 
+    /* Wrap with _gql_order_key() so time/datetime strings sort by UTC
+     * instant rather than local-time lexicographic order, and lists sort
+     * by Cypher list semantics. Pass-through for other types. */
+    dbuf_append(&b->order_by, "_gql_order_key(");
     dbuf_append(&b->order_by, expr);
+    dbuf_append(&b->order_by, ")");
     if (desc) {
         dbuf_append(&b->order_by, " DESC");
     }
@@ -469,6 +478,19 @@ void sql_limit(sql_builder *b, int limit, int offset)
     if (!b) return;
     b->limit = limit;
     b->offset = offset;
+}
+
+void sql_limit_expr(sql_builder *b, const char *limit_expr, const char *offset_expr)
+{
+    if (!b) return;
+    if (limit_expr) {
+        free(b->limit_expr);
+        b->limit_expr = strdup(limit_expr);
+    }
+    if (offset_expr) {
+        free(b->offset_expr);
+        b->offset_expr = strdup(offset_expr);
+    }
 }
 
 /*
@@ -559,15 +581,19 @@ char *sql_builder_to_string(sql_builder *b)
     }
 
     /* LIMIT */
-    if (b->limit >= 0) {
+    if (b->limit_expr) {
+        dbuf_appendf(&result, " LIMIT %s", b->limit_expr);
+    } else if (b->limit >= 0) {
         dbuf_appendf(&result, " LIMIT %d", b->limit);
-    } else if (b->offset >= 0) {
+    } else if (b->offset >= 0 || b->offset_expr) {
         /* SQLite requires LIMIT before OFFSET - use -1 for unlimited */
         dbuf_append(&result, " LIMIT -1");
     }
 
     /* OFFSET */
-    if (b->offset >= 0) {
+    if (b->offset_expr) {
+        dbuf_appendf(&result, " OFFSET %s", b->offset_expr);
+    } else if (b->offset >= 0) {
         dbuf_appendf(&result, " OFFSET %d", b->offset);
     }
 
@@ -636,14 +662,18 @@ char *sql_builder_to_subquery(sql_builder *b)
     }
 
     /* LIMIT */
-    if (b->limit >= 0) {
+    if (b->limit_expr) {
+        dbuf_appendf(&result, " LIMIT %s", b->limit_expr);
+    } else if (b->limit >= 0) {
         dbuf_appendf(&result, " LIMIT %d", b->limit);
-    } else if (b->offset >= 0) {
+    } else if (b->offset >= 0 || b->offset_expr) {
         dbuf_append(&result, " LIMIT -1");
     }
 
     /* OFFSET */
-    if (b->offset >= 0) {
+    if (b->offset_expr) {
+        dbuf_appendf(&result, " OFFSET %s", b->offset_expr);
+    } else if (b->offset >= 0) {
         dbuf_appendf(&result, " OFFSET %d", b->offset);
     }
 
