@@ -163,6 +163,41 @@ expected not to add duplicates).
    transform_return, transform_expr_ops, transform_func_*). The 44
    DML calls in set/delete/remove stay on the legacy trio.
 
+3. **Expression scratchpad — NOT a migration target.** Discovered
+   2026-05-20 during S7 investigation. The bulk of the remaining
+   ~917 trio calls live inside `transform_expression` (in
+   `transform_return.c:714+`) and its dispatched function
+   transforms (`transform_func_*.c`, `transform_expr_ops.c`,
+   `transform_expr_predicate.c`). These calls write into
+   `ctx->sql_buffer` not as the final output destination but as a
+   **swappable scratch buffer** that the calling code redirects via
+   `transform_expression_to_string` (a buffer-swap-and-capture
+   helper that has lived in transform_return.c since the early
+   days).
+
+   The outer `transform_return_clause` function itself has ZERO
+   append_sql calls — it already uses `sql_select() /
+   sql_order_by() / sql_limit_expr()` against `unified_builder`,
+   passing captured expression strings as values. The expression
+   dispatch tree using `append_sql` is the internal scratchpad API
+   for that capture flow, not legacy DML.
+
+   This reframes the inventory: the migration goal should be
+   "move all WRONG-destination writes to sql_builder" rather than
+   "delete every trio call". The wrong-destination writes are the
+   DML-emitting transforms (set/delete/remove/create), which are
+   now done.
+
+   **Practical S5-S12 endpoint:** keep the trio for internal
+   expression-scratchpad use. Either:
+   - Remove the `__attribute__((deprecated))` markers on the trio
+     so the warnings stop, OR
+   - Rename the trio to e.g. `expr_buf_appendf` /
+     `expr_buf_append_id` / `expr_buf_append_str_literal` and
+     re-export under those names without the deprecation. The
+     existing transform_expression machinery uses these via
+     ctx->sql_buffer scratchpad with no need to migrate.
+
 **The macro abstraction in transform_func_temporal.c (EMIT,
 EMIT_TIME_BASE, EMIT_HH/MM/SS)** is currently `append_sql`-based.
 During migration these macros should be rewritten to call into

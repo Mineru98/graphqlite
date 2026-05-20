@@ -131,18 +131,34 @@ char* get_next_default_alias(cypher_transform_context *ctx);
 /* Path variable registration (uses unified transform_var system) */
 int register_path_variable(cypher_transform_context *ctx, const char *name, cypher_path *path);
 
-/* SQL generation helpers — DEPRECATED (I-0039 S4).
+/* SQL generation helpers — see docs/internal/sql-migration-inventory.md
+ * for the I-0039 migration story.
  *
- * The legacy append_sql trio is being migrated to the sql_builder API in
- * sql_builder.h. New code MUST use sql_builder. Existing callers warn at
- * compile time but continue to compile during the per-file migration
- * (S5–S12). See docs/internal/sql-migration-inventory.md for the
- * migration plan and capability mapping. */
-__attribute__((deprecated("use sql_builder; see docs/internal/sql-migration-inventory.md")))
+ * Two valid use cases:
+ *
+ *   1. **Internal expression scratchpad** (transform_expression and
+ *      its dispatched function transforms). These write into
+ *      ctx->sql_buffer as a scratch area that the calling code
+ *      redirects via transform_expression_to_string() to capture the
+ *      resulting expression SQL. This is the *intended* internal
+ *      API. Code in transform_expression / transform_expr_*.c /
+ *      transform_func_*.c uses these heavily and should keep doing
+ *      so until the broader expression machinery is rewritten.
+ *
+ *   2. **Direct DML emission** (transform_set/delete/remove/create —
+ *      already migrated as of I-0039 S5+S6). NEW code in this
+ *      category must use sql_raw() against unified_builder instead.
+ *
+ * The deprecation marker steers (2) toward sql_builder while
+ * still allowing (1) — the existing transform_expression internals
+ * generate warnings but compile cleanly. The eventual rewrite of
+ * transform_expression to a string-returning style is tracked
+ * separately (see I-0039 Phase 5+). */
+__attribute__((deprecated("DML use should go via sql_raw / sql_builder; expression-scratchpad use within transform_expression is OK — see docs/internal/sql-migration-inventory.md")))
 void append_sql(cypher_transform_context *ctx, const char *format, ...);
-__attribute__((deprecated("use sql_builder; see docs/internal/sql-migration-inventory.md")))
+__attribute__((deprecated("DML use should go via sql_raw / sql_builder; expression-scratchpad use within transform_expression is OK — see docs/internal/sql-migration-inventory.md")))
 void append_identifier(cypher_transform_context *ctx, const char *name);
-__attribute__((deprecated("use sql_builder; see docs/internal/sql-migration-inventory.md")))
+__attribute__((deprecated("DML use should go via sql_raw / sql_builder; expression-scratchpad use within transform_expression is OK — see docs/internal/sql-migration-inventory.md")))
 void append_string_literal(cypher_transform_context *ctx, const char *value);
 
 /* Capture transform_expression output into a malloc'd string instead
