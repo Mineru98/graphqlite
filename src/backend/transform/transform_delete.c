@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "transform/cypher_transform.h"
+#include "transform/sql_builder.h"
 #include "parser/cypher_ast.h"
 #include "parser/cypher_debug.h"
 
@@ -68,7 +69,7 @@ static int generate_delete_operations(cypher_transform_context *ctx, cypher_dele
         }
         
         if (i > 0) {
-            append_sql(ctx, "; ");
+            sql_raw(ctx->unified_builder, "; ");
         }
         
         if (is_edge) {
@@ -114,15 +115,15 @@ static int generate_node_delete(cypher_transform_context *ctx, const char *varia
     };
     
     for (int i = 0; i < 4; i++) {
-        append_sql(ctx, "DELETE FROM %s WHERE node_id = %s.id; ", 
+        sql_raw(ctx->unified_builder, "DELETE FROM %s WHERE node_id = %s.id; ", 
                    prop_tables[i], alias);
     }
     
     /* Delete node labels */
-    append_sql(ctx, "DELETE FROM node_labels WHERE node_id = %s.id; ", alias);
+    sql_raw(ctx->unified_builder, "DELETE FROM node_labels WHERE node_id = %s.id; ", alias);
     
     /* Delete the node itself */
-    append_sql(ctx, "DELETE FROM nodes WHERE id = %s.id", alias);
+    sql_raw(ctx->unified_builder, "DELETE FROM nodes WHERE id = %s.id", alias);
     
     return 0;
 }
@@ -149,12 +150,12 @@ static int generate_edge_delete(cypher_transform_context *ctx, const char *varia
     };
     
     for (int i = 0; i < 4; i++) {
-        append_sql(ctx, "DELETE FROM %s WHERE edge_id IN (SELECT %s.id FROM edges AS %s); ", 
+        sql_raw(ctx->unified_builder, "DELETE FROM %s WHERE edge_id IN (SELECT %s.id FROM edges AS %s); ", 
                    prop_tables[i], alias, alias);
     }
     
     /* Delete the edge itself using subquery */
-    append_sql(ctx, "DELETE FROM edges WHERE id IN (SELECT %s.id FROM edges AS %s)", alias, alias);
+    sql_raw(ctx->unified_builder, "DELETE FROM edges WHERE id IN (SELECT %s.id FROM edges AS %s)", alias, alias);
     
     return 0;
 }

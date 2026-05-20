@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "transform/cypher_transform.h"
+#include "transform/sql_builder.h"
 #include "parser/cypher_debug.h"
 
 /* Forward declarations */
@@ -43,7 +44,7 @@ int transform_remove_clause(cypher_transform_context *ctx, cypher_remove *remove
 
         /* Add separator between REMOVE items if not the last one */
         if (i < remove->items->count - 1) {
-            append_sql(ctx, "; ");
+            sql_raw(ctx->unified_builder, "; ");
         }
     }
 
@@ -114,21 +115,24 @@ static int generate_property_remove(cypher_transform_context *ctx,
         return -1;
     }
 
-    /* Start a new statement if needed */
-    if (ctx->sql_size > 0) {
-        append_sql(ctx, "; ");
+    /* Start a new statement if needed (I-0039 migration: check
+     * raw_output instead of legacy sql_size). */
+    if (!dbuf_is_empty(&ctx->unified_builder->raw_output)) {
+        sql_raw(ctx->unified_builder, "; ");
     }
 
-    /* Delete property from all property tables (text, int, real)
-     * We need to delete from all tables since we don't know which type the property is */
-    append_sql(ctx, "DELETE FROM node_props_text WHERE node_id = %s.id AND property_name = ", table_alias);
-    append_string_literal(ctx, property_name);
+    char *escaped_prop = escape_sql_string(property_name);
+    if (!escaped_prop) escaped_prop = strdup(property_name ? property_name : "");
 
-    append_sql(ctx, "; DELETE FROM node_props_int WHERE node_id = %s.id AND property_name = ", table_alias);
-    append_string_literal(ctx, property_name);
-
-    append_sql(ctx, "; DELETE FROM node_props_real WHERE node_id = %s.id AND property_name = ", table_alias);
-    append_string_literal(ctx, property_name);
+    /* Delete property from all property tables (text, int, real). */
+    sql_raw(ctx->unified_builder,
+        "DELETE FROM node_props_text WHERE node_id = %s.id AND property_name = '%s'"
+        "; DELETE FROM node_props_int WHERE node_id = %s.id AND property_name = '%s'"
+        "; DELETE FROM node_props_real WHERE node_id = %s.id AND property_name = '%s'",
+        table_alias, escaped_prop,
+        table_alias, escaped_prop,
+        table_alias, escaped_prop);
+    free(escaped_prop);
 
     CYPHER_DEBUG("Generated property remove SQL");
     return 0;
@@ -148,14 +152,19 @@ static int generate_label_remove(cypher_transform_context *ctx,
         return -1;
     }
 
-    /* Start a new statement if needed */
-    if (ctx->sql_size > 0) {
-        append_sql(ctx, "; ");
+    /* Start a new statement if needed. */
+    if (!dbuf_is_empty(&ctx->unified_builder->raw_output)) {
+        sql_raw(ctx->unified_builder, "; ");
     }
 
+    char *escaped_label = escape_sql_string(label_name);
+    if (!escaped_label) escaped_label = strdup(label_name ? label_name : "");
+
     /* Generate DELETE statement to remove the label */
-    append_sql(ctx, "DELETE FROM node_labels WHERE node_id = %s.id AND label = ", table_alias);
-    append_string_literal(ctx, label_name);
+    sql_raw(ctx->unified_builder,
+        "DELETE FROM node_labels WHERE node_id = %s.id AND label = '%s'",
+        table_alias, escaped_label);
+    free(escaped_label);
 
     CYPHER_DEBUG("Generated label remove SQL");
     return 0;

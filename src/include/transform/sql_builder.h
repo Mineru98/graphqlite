@@ -140,6 +140,11 @@ typedef struct {
     dynamic_buffer where;     /* WHERE conditions */
     dynamic_buffer group_by;  /* GROUP BY */
     dynamic_buffer order_by;  /* ORDER BY */
+    /* Raw-output: compound DML and other content that doesn't fit the
+     * typed SELECT model. Emitted by sql_builder_to_string AFTER the
+     * typed sections so "SELECT ... ; DELETE ..." flows preserve their
+     * relative order. I-0039 Extension A. */
+    dynamic_buffer raw_output;
     int limit;                /* LIMIT value, -1 if not set */
     int offset;               /* OFFSET value, -1 if not set */
     char *limit_expr;         /* Raw SQL expression for LIMIT (overrides limit when non-NULL). Owned. */
@@ -247,6 +252,14 @@ void sql_limit_expr(sql_builder *b, const char *limit_expr, const char *offset_e
  * recursive: true if this CTE is recursive
  */
 void sql_cte(sql_builder *b, const char *name, const char *query, bool recursive);
+
+/* Append a printf-style formatted string into the raw_output buffer
+ * (emitted after the typed SELECT sections in sql_builder_to_string).
+ * Use for compound DML statements (DELETE / UPDATE / SET sequences
+ * emitted by transform_set/delete/remove.c) and other escape-hatch
+ * appends. I-0039 Extension A. */
+void sql_raw(sql_builder *b, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
 
 /*
  * Build the final SQL string.

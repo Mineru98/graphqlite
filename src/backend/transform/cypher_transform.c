@@ -535,12 +535,23 @@ cypher_query_result* cypher_transform_query(cypher_transform_context *ctx, cyphe
         goto error;
     }
 
+    /* I-0039 Extension A: drain raw_output (compound DML from
+     * transform_set/delete/remove) into sql_buffer for paths that
+     * didn't go through transform_return_clause's finalize. */
+    if (ctx->unified_builder &&
+        !dbuf_is_empty(&ctx->unified_builder->raw_output) &&
+        ctx->sql_size == 0) {
+        const char *raw = dbuf_get(&ctx->unified_builder->raw_output);
+        append_sql(ctx, "%s", raw);
+        dbuf_clear(&ctx->unified_builder->raw_output);
+    }
+
     /* Prepend CTE prefix if we have variable-length relationships */
     prepend_cte_to_sql(ctx);
 
     /* Prepare the SQL statement */
     CYPHER_DEBUG("Generated SQL: %s", ctx->sql_buffer);
-    
+
     int rc = sqlite3_prepare_v2(ctx->db, ctx->sql_buffer, -1, &result->stmt, NULL);
     if (rc != SQLITE_OK) {
         result->has_error = true;
@@ -738,6 +749,17 @@ int cypher_transform_generate_sql(cypher_transform_context *ctx, cypher_query *q
     /* Standard single query transformation */
     if (transform_single_query_sql(ctx, query) < 0) {
         return -1;
+    }
+
+    /* I-0039 Extension A: drain raw_output into sql_buffer if no
+     * RETURN clause triggered finalize. (Same logic as in
+     * cypher_transform_query.) */
+    if (ctx->unified_builder &&
+        !dbuf_is_empty(&ctx->unified_builder->raw_output) &&
+        ctx->sql_size == 0) {
+        const char *raw = dbuf_get(&ctx->unified_builder->raw_output);
+        append_sql(ctx, "%s", raw);
+        dbuf_clear(&ctx->unified_builder->raw_output);
     }
 
     /* Prepend CTE prefix if we have variable-length relationships */

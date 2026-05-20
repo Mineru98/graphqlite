@@ -261,6 +261,7 @@ sql_builder *sql_builder_create(void)
     dbuf_init(&b->where);
     dbuf_init(&b->group_by);
     dbuf_init(&b->order_by);
+    dbuf_init(&b->raw_output);
 
     b->limit = -1;
     b->offset = -1;
@@ -288,6 +289,7 @@ void sql_builder_free(sql_builder *b)
     dbuf_free(&b->where);
     dbuf_free(&b->group_by);
     dbuf_free(&b->order_by);
+    dbuf_free(&b->raw_output);
     free(b->limit_expr);
     free(b->offset_expr);
 
@@ -308,6 +310,7 @@ void sql_builder_reset(sql_builder *b)
     dbuf_clear(&b->where);
     dbuf_clear(&b->group_by);
     dbuf_clear(&b->order_by);
+    dbuf_clear(&b->raw_output);
     free(b->limit_expr); b->limit_expr = NULL;
     free(b->offset_expr); b->offset_expr = NULL;
 
@@ -517,6 +520,19 @@ void sql_cte(sql_builder *b, const char *name, const char *query, bool recursive
 }
 
 /*
+ * Append a printf-formatted fragment into raw_output. Emitted after
+ * the typed SELECT sections in sql_builder_to_string. (I-0039 Ext A.)
+ */
+void sql_raw(sql_builder *b, const char *fmt, ...)
+{
+    if (!b || !fmt) return;
+    va_list args;
+    va_start(args, fmt);
+    dbuf_vappendf(&b->raw_output, fmt, args);
+    va_end(args);
+}
+
+/*
  * Build the final SQL string.
  *
  * NOTE: CTEs are NOT included here. They are handled separately by
@@ -595,6 +611,12 @@ char *sql_builder_to_string(sql_builder *b)
         dbuf_appendf(&result, " OFFSET %s", b->offset_expr);
     } else if (b->offset >= 0) {
         dbuf_appendf(&result, " OFFSET %d", b->offset);
+    }
+
+    /* Raw-output appendage (I-0039 Extension A) — compound DML
+     * statements emitted by transform_set/delete/remove. */
+    if (!dbuf_is_empty(&b->raw_output)) {
+        dbuf_appendf(&result, "%s", dbuf_get(&b->raw_output));
     }
 
     b->finalized = true;
