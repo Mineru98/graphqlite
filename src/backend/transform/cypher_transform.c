@@ -167,11 +167,7 @@ void append_sql(cypher_transform_context *ctx, const char *format, ...)
     CYPHER_DEBUG("SQL buffer now: %s", ctx->sql_buffer);
 }
 
-void append_identifier(cypher_transform_context *ctx, const char *name)
-{
-    /* SQLite uses double quotes for identifiers */
-    append_sql(ctx, "\"%s\"", name);
-}
+/* append_identifier removed 2026-05-20 — it had no remaining callers. */
 
 void append_string_literal(cypher_transform_context *ctx, const char *value)
 {

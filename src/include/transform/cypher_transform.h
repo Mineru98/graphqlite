@@ -156,8 +156,12 @@ int register_path_variable(cypher_transform_context *ctx, const char *name, cyph
  * separately (see I-0039 Phase 5+). */
 __attribute__((deprecated("DML use should go via sql_raw / sql_builder; expression-scratchpad use within transform_expression is OK — see docs/internal/sql-migration-inventory.md")))
 void append_sql(cypher_transform_context *ctx, const char *format, ...);
-__attribute__((deprecated("DML use should go via sql_raw / sql_builder; expression-scratchpad use within transform_expression is OK — see docs/internal/sql-migration-inventory.md")))
-void append_identifier(cypher_transform_context *ctx, const char *name);
+/* append_identifier was unused as of 2026-05-20 — removed.
+ * If you need to append a quoted SQL identifier, use
+ *   sql_raw(ctx->unified_builder, "\"%s\"", name)
+ * for DML emission, or compose into the expression scratchpad with
+ *   append_sql(ctx, "\"%s\"", name)
+ * (which routes through ctx->sql_buffer like the rest of the trio). */
 __attribute__((deprecated("DML use should go via sql_raw / sql_builder; expression-scratchpad use within transform_expression is OK — see docs/internal/sql-migration-inventory.md")))
 void append_string_literal(cypher_transform_context *ctx, const char *value);
 
