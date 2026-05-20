@@ -305,8 +305,12 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
                             /* Numeric value - output without quotes */
                             size_t slen = strlen(val);
                             if (offset + slen < buffer_size) { memcpy(json_result + offset, val, slen); offset += slen; }
-                        } else if (strcmp(val, "true") == 0 || strcmp(val, "false") == 0) {
-                            /* Boolean literal - output without quotes (GQLITE-T-0227) */
+                        } else if (col_type == GQL_COL_TYPE_BOOLEAN) {
+                            /* UDF-tagged boolean — emit unquoted JSON
+                             * true/false. Replaces the historical
+                             * strcmp(val, "true") heuristic which mis-tagged
+                             * legitimate string values "true"/"false"
+                             * (e.g. toString(true) result). I-0040 M13. */
                             size_t slen = strlen(val);
                             if (offset + slen < buffer_size) { memcpy(json_result + offset, val, slen); offset += slen; }
                         } else {

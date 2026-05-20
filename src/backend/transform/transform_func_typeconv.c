@@ -53,13 +53,18 @@ int transform_tostring_function(cypher_transform_context *ctx, cypher_function_c
         }
     }
     if (is_bool_ast) {
-        /* Wrap as ('"' || (CASE WHEN expr THEN 'true' ELSE 'false' END) || '"')
-         * so the JSON formatter sees the quoted-string form. */
-        append_sql(ctx, "('\"' || (CASE WHEN ");
+        /* Boolean → text "true"/"false". Emit a plain CASE WHEN — the
+         * result has no boolean subtype, so the JSON renderer correctly
+         * quotes it. This used to be wrapped as ('"' || … || '"') so
+         * the renderer's "starts with quote" fast-path passed it through,
+         * but with M13 the subtype-based renderer no longer needs the
+         * hack — strings without the boolean subtype are already
+         * quoted/escaped. */
+        append_sql(ctx, "(CASE WHEN ");
         if (transform_expression(ctx, arg) < 0) return -1;
         append_sql(ctx, " IS NULL THEN NULL WHEN ");
         if (transform_expression(ctx, arg) < 0) return -1;
-        append_sql(ctx, " THEN 'true' ELSE 'false' END) || '\"')");
+        append_sql(ctx, " THEN 'true' ELSE 'false' END)");
         return 0;
     }
 

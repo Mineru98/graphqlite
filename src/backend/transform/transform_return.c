@@ -277,7 +277,7 @@ int transform_return_clause(cypher_transform_context *ctx, cypher_return *ret)
                 char *wrapped = malloc(need);
                 if (wrapped) {
                     snprintf(wrapped, need,
-                             "(CASE WHEN (%s) IS NULL THEN NULL WHEN (%s) THEN 'true' ELSE 'false' END)",
+                             "_gql_bool_str(CASE WHEN (%s) IS NULL THEN NULL WHEN (%s) THEN 1 ELSE 0 END)",
                              expr_str, expr_str);
                     free(expr_str);
                     expr_str = wrapped;
@@ -559,7 +559,7 @@ return_star_done:
                     char *wrapped = malloc(need);
                     if (wrapped) {
                         snprintf(wrapped, need,
-                                 "(CASE WHEN (%s) IS NULL THEN NULL WHEN (%s) THEN 'true' ELSE 'false' END)",
+                                 "_gql_bool_str(CASE WHEN (%s) IS NULL THEN NULL WHEN (%s) THEN 1 ELSE 0 END)",
                                  expr_str, expr_str);
                         free(expr_str);
                         expr_str = wrapped;

@@ -54,6 +54,7 @@ static void sqlite_reverse_func(sqlite3_context *context, int argc, sqlite3_valu
 }
 
 #include "runtime/udf_register.h"
+#include "runtime/gql_error.h"
 
 /* Register custom SQLite functions needed for Cypher execution */
 static int register_custom_functions(sqlite3 *db)
@@ -416,8 +417,18 @@ cypher_result* cypher_executor_execute_ast(cypher_executor *executor, ast_node *
                         }
 
                         for (int c = 0; c < result->column_count; c++) {
-                            /* Store the SQLite type */
-                            result->data_types[result->row_count][c] = sqlite3_column_type(transform_result->stmt, c);
+                            /* Store the SQLite type. If the UDF that
+                             * produced this cell tagged it with the
+                             * boolean subtype, override the type with
+                             * GQL_COL_TYPE_BOOLEAN so the JSON renderer
+                             * emits an unquoted JSON boolean (I-0040 M13). */
+                            sqlite3_value *vv = sqlite3_column_value(transform_result->stmt, c);
+                            unsigned int sub = vv ? sqlite3_value_subtype(vv) : 0;
+                            if (sub == GQL_SUBTYPE_BOOLEAN) {
+                                result->data_types[result->row_count][c] = GQL_COL_TYPE_BOOLEAN;
+                            } else {
+                                result->data_types[result->row_count][c] = sqlite3_column_type(transform_result->stmt, c);
+                            }
                             const char *val = (const char*)sqlite3_column_text(transform_result->stmt, c);
                             result->data[result->row_count][c] = val ? strdup(val) : NULL;
                         }

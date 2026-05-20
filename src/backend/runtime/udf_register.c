@@ -48,8 +48,10 @@ int graphqlite_register_helper_udfs(sqlite3 *db)
                          gql_bool_func, 0, 0);
   if (rc != SQLITE_OK) return rc;
 
+  /* _gql_bool_str tags its result with the boolean subtype (I-0040
+   * M13), which requires the SQLITE_RESULT_SUBTYPE function property. */
   rc = sqlite3_create_function(db, "_gql_bool_str", 1,
-                         SQLITE_UTF8 | SQLITE_DETERMINISTIC, 0,
+                         SQLITE_UTF8 | SQLITE_DETERMINISTIC | SQLITE_RESULT_SUBTYPE, 0,
                          gql_bool_str_func, 0, 0);
   if (rc != SQLITE_OK) return rc;
 

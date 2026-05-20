@@ -526,7 +526,12 @@ void gql_to_string_strict_func(
         return;
     }
     if (t == SQLITE_TEXT) {
-        sqlite3_result_value(context, argv[0]); return;
+        /* Copy the text without preserving subtype — toString() always
+         * produces a plain string, even when fed a boolean-tagged value
+         * (e.g. toString(m.bool_prop)). (I-0040 M13.) */
+        const char *s = (const char*)sqlite3_value_text(argv[0]);
+        sqlite3_result_text(context, s ? s : "", -1, SQLITE_TRANSIENT);
+        return;
     }
     if (t == SQLITE_INTEGER) {
         char buf[32]; snprintf(buf, sizeof(buf), "%lld", (long long)sqlite3_value_int64(argv[0]));
@@ -554,12 +559,18 @@ void gql_bool_str_func(
     if (t == SQLITE_INTEGER || t == SQLITE_FLOAT) {
         long long v = sqlite3_value_int64(argv[0]);
         sqlite3_result_text(context, v ? "true" : "false", -1, SQLITE_STATIC);
+        sqlite3_result_subtype(context, GQL_SUBTYPE_BOOLEAN);
         return;
     }
-    /* Already text — pass through if it's 'true'/'false', else NULL. */
+    /* Already text — pass through if it's 'true'/'false', else NULL.
+     * Preserve the boolean subtype if the source value carried it; also
+     * apply the subtype unconditionally for the canonical literals so a
+     * comparison whose result was already converted to text once still
+     * renders as a JSON boolean. */
     const char *s = (const char*)sqlite3_value_text(argv[0]);
     if (s && (strcmp(s, "true") == 0 || strcmp(s, "false") == 0)) {
         sqlite3_result_text(context, s, -1, SQLITE_TRANSIENT);
+        sqlite3_result_subtype(context, GQL_SUBTYPE_BOOLEAN);
     } else {
         sqlite3_result_null(context);
     }

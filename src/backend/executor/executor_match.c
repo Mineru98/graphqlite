@@ -13,6 +13,7 @@
 #include "executor/cypher_executor.h"
 #include "parser/cypher_debug.h"
 #include "transform/transform_variables.h"
+#include "runtime/gql_error.h"
 
 /* Functions will be migrated here one by one */
 
@@ -383,8 +384,15 @@ int build_query_results(cypher_executor *executor, sqlite3_stmt *stmt, cypher_re
         }
 
         for (int col = 0; col < column_count; col++) {
-            /* Store SQLite column type for proper JSON formatting */
+            /* Store SQLite column type for proper JSON formatting.
+             * If the UDF that produced this cell tagged it with the
+             * boolean subtype, override with GQL_COL_TYPE_BOOLEAN so
+             * the renderer emits unquoted JSON booleans (I-0040 M13). */
             int ct = sqlite3_column_type(stmt, col);
+            sqlite3_value *cv = sqlite3_column_value(stmt, col);
+            if (cv && sqlite3_value_subtype(cv) == GQL_SUBTYPE_BOOLEAN) {
+                ct = GQL_COL_TYPE_BOOLEAN;
+            }
             result->data_types[current_row][col] = ct;
             const char *value = (const char*)sqlite3_column_text(stmt, col);
             char float_buf[40];
