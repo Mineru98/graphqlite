@@ -36,4 +36,7 @@ Allocate `transform_output` in `cypher_transform_create_context`; free it in `cy
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Blocked on S16
+
+Follows S16's struct extraction. Same fate — likely trivial or
+unnecessary after GQLITE-I-0043 cleans up the context fields.

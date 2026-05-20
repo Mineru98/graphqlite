@@ -35,4 +35,25 @@ Per-category Cypher function transforms. Each file in its own commit. Care with 
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Subsumed by GQLITE-I-0043
+
+These are the function-transform dispatch targets called by
+`transform_func_dispatch.c` from inside transform_expression's
+AST_NODE_FUNCTION_CALL handling. Per-file call counts:
+
+| File                          | Trio calls |
+| ----------------------------- | ---------: |
+| transform_func_math.c         |         56 |
+| transform_func_string.c       |         40 |
+| transform_func_aggregate.c    |         40 |
+| transform_func_entity.c       |         20 |
+| transform_func_path.c         |         15 |
+| transform_func_graph.c        |          7 |
+| transform_func_dispatch.c     |          0 (dispatcher; clean) |
+
+All write into the shared scratchpad. Migration plan lives in
+**GQLITE-I-0043 Phase 3** (X3.2–X3.16), one per task with smallest
+first.
+
+**Recommendation:** archive this S11 wrapper task; the work is
+covered by I-0043's per-file tasks when they get decomposed.

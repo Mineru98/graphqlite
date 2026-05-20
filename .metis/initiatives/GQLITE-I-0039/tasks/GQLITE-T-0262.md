@@ -35,4 +35,9 @@ Migrate the WITH transform. Coordinates with `transform_match.c` (S7) since WITH
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Blocked on GQLITE-I-0043
+
+Same blocker as S7 (GQLITE-T-0261): file is part of the
+expression-tree scratchpad ecosystem. Per-file migration requires
+transform_expression to be string-returning first
+(GQLITE-I-0043). Stay todo until I-0043 lands.

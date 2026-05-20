@@ -36,4 +36,25 @@ Largest single non-function file. RETURN handles aggregates, ORDER BY, SKIP/LIMI
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Outer is already done; inner is blocked on GQLITE-I-0043
+
+Investigation 2026-05-20: `transform_return_clause` (the outer
+function, lines 131-712) has **zero append_sql calls**. All 112 calls
+in transform_return.c are inside `transform_expression` (line 714+).
+The "104 call sites" headline number is the expression body, not the
+outer clause-emission code.
+
+The outer clause uses sql_select / sql_order_by / sql_limit_expr
+against unified_builder, passing captured expression strings as
+values. That work is **already complete**.
+
+The remaining 112 calls inside transform_expression are part of the
+expression-scratchpad ecosystem — they move when GQLITE-I-0043 lands.
+
+**This task is split in spirit:**
+- Outer transform_return_clause sql_builder migration: DONE
+- Inner transform_expression body: covered by I-0043
+
+Marking the original "S9" intent as covered — the heavy lifting was
+done as part of the M13 boolean-rendering work and earlier
+unified_builder adoption.

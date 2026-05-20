@@ -35,4 +35,16 @@ Capture `build/tck-results.json` immediately before S1 lands; compare against th
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Defer until I-0043 lands
+
+Final verification step for the original I-0039 scope. Should run
+after GQLITE-I-0043 lands its Phase 5 (deletion of legacy
+transform_expression and trio). The baseline reference point is the
+TCK pass count at I-0039 start (3346) — current state is 3352-3357
+band (within ±6 noise), so we have slight positive movement but
+nothing dramatic from the migration itself.
+
+When picked up: capture pre-/post- TCK results via
+`tests/tck/baseline.json` and `tools/tck/report.py` (if exists) or
+the equivalent JSON diff. Document the final delta in this task's
+status, transition to completed, then close I-0039.

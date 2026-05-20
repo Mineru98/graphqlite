@@ -36,4 +36,19 @@ Add a typed "pending CTE / prepend" clause section to `sql_builder` so `pending_
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Still valid, prerequisite for S14-S15
+
+This task is independent of the I-0042/I-0043 work and can be done
+standalone. It adds infrastructure for the eventual
+`pending_prop_joins` migration without requiring expression-tree
+changes.
+
+Suggested when picked up:
+- Add a `dynamic_buffer pre_cte;` (or similar) section to
+  sql_builder
+- Update sql_builder_to_string to emit pre_cte before cte before
+  select
+- Add `sql_pre_cte(b, name, query)` API to write into it
+- Unit tests in test_sql_builder.c
+
+Then S14 can migrate add_pending_prop_join callers to use it.

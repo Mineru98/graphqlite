@@ -37,4 +37,6 @@ After S14 has migrated all writes, delete `pending_prop_joins` / `pending_prop_j
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Blocked on S14
+
+Mechanical cleanup after S14 lands. Independent of I-0042/I-0043.

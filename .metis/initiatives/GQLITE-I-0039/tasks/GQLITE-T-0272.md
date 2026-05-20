@@ -36,4 +36,20 @@ Final cleanup. Delete `append_sql`, `append_identifier`, `append_string_literal`
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Subsumed by GQLITE-I-0043 Phase 5
+
+**Partial progress already:**
+- `append_identifier` deleted (commit a91c32f, 2026-05-20). Had zero
+  callers — pure dead code.
+- `append_sql` + `append_string_literal` still in use across the
+  expression-tree scratchpad.
+
+The full deletion is **GQLITE-I-0043 Phase 5 (X5.1-X5.4)** which:
+1. Confirms zero callers of the old transform_expression + trio
+2. Deletes the function bodies + decls
+3. Deletes ctx->sql_buffer/sql_size/sql_capacity fields
+4. Deletes transform_expression_to_string + the raw_output drain
+   shim added during I-0039 S5+S6 work
+
+**This task is subsumed by I-0043 Phase 5.** Worth archiving in
+favor of the I-0043 tasks once I-0043 is decomposed.

@@ -37,4 +37,20 @@ Introduce `typedef struct { sql_builder *builder; ... } transform_output;` and r
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Blocked on GQLITE-I-0043
+
+This task wants to extract the output-related fields from
+cypher_transform_context into a `transform_output` sub-struct. The
+fields involved are `unified_builder` (immediate target) plus
+`sql_buffer` / `sql_size` / `sql_capacity` (legacy buffer that
+I-0043 deletes).
+
+Cleanest order:
+1. GQLITE-I-0043 deletes ctx->sql_buffer/size/capacity entirely
+2. Then this task moves unified_builder into a sub-struct (or just
+   renames it — at that point the context only has the one output
+   field, no need for a sub-struct)
+
+In other words: if I-0043 lands cleanly, this task may become a
+trivial rename or be archived as unnecessary cleanup. Worth
+revisiting after I-0043.

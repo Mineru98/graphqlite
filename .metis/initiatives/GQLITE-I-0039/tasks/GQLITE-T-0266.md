@@ -36,4 +36,25 @@ Largest single file in the migration. Strongly preferred to do AFTER I-0040 M8-M
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-20 — Subsumed by GQLITE-I-0043
+
+I-0040 M8-M11 dependency is **satisfied** (transform_func_list.c
+was split into temporal / geo / json / typeconv / list-core during
+the structural-debt push). Per-file call counts post-split:
+
+| File                          | Trio calls |
+| ----------------------------- | ---------: |
+| transform_func_temporal.c     |        285 |
+| transform_func_list.c (core)  |         38 |
+| transform_func_geo.c          |         38 |
+| transform_func_typeconv.c     |         28 |
+| transform_func_json.c         |         14 |
+
+But all of these are part of the expression-tree scratchpad and
+need GQLITE-I-0043 first.
+
+**Recommendation:** archive this task; covered by I-0043 per-file
+tasks. Note that transform_func_temporal.c is the **biggest single
+migration target** in the codebase (285 calls + heavy use of
+EMIT/EMIT_TIME_BASE macros that themselves wrap append_sql). Its
+migration alone is a significant piece of work.
