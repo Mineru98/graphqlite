@@ -52,4 +52,12 @@ void gql_temporal_diff_ns_func(sqlite3_context *ctx, int argc, sqlite3_value **a
 void regexp_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void cypher_validate_func(sqlite3_context *context, int argc, sqlite3_value **argv);
 
+/* Percentile aggregates (M15) — register as aggregates with these
+ * step+final pairs. percentileCont = linear interp; percentileDisc =
+ * nearest-rank. Second argument is the percentile in [0,1]. */
+void gql_percentile_cont_step(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void gql_percentile_cont_final(sqlite3_context *ctx);
+void gql_percentile_disc_step(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void gql_percentile_disc_final(sqlite3_context *ctx);
+
 #endif /* RUNTIME_UDF_HELPERS_H */

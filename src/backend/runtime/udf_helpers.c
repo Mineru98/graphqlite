@@ -2705,3 +2705,148 @@ void cypher_validate_func(sqlite3_context *context, int argc, sqlite3_value **ar
 
     cypher_parse_result_free(parse_result);
 }
+
+/* ============================================================================
+ * Percentile aggregates — percentileCont / percentileDisc
+ *
+ * Cypher signatures:
+ *   percentileCont(expr, p)  -- linear interpolation between adjacent values
+ *   percentileDisc(expr, p)  -- discrete: smallest value where cum frac >= p
+ *
+ * Implementation: collect every non-null numeric value into a dynamically
+ * grown double[] in the aggregate context. xFinal sorts the array and
+ * computes the result. Percentile (second arg) must be the same constant
+ * for every row in a group — we read it from each xStep call but only
+ * keep the last; openCypher requires it constant.
+ *
+ * Memory: sqlite3_aggregate_context() allocates a small header that
+ * survives the lifetime of the aggregate group. The values array is
+ * allocated separately with sqlite3_malloc and freed in xFinal.
+ * ========================================================================= */
+
+typedef struct {
+    double *values;
+    int count;
+    int capacity;
+    double percentile;
+    int have_percentile;
+} percentile_agg;
+
+static int percentile_cmp(const void *a, const void *b) {
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    if (da < db) return -1;
+    if (da > db) return  1;
+    return 0;
+}
+
+static void percentile_step_common(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
+    if (argc < 2) return;
+    percentile_agg *agg = (percentile_agg*)sqlite3_aggregate_context(ctx, sizeof(*agg));
+    if (!agg) return;
+
+    /* Record percentile (constant per group; last write wins, openCypher
+     * requires the parameter be a literal/constant). */
+    int p_type = sqlite3_value_type(argv[1]);
+    if (p_type == SQLITE_INTEGER || p_type == SQLITE_FLOAT) {
+        agg->percentile = sqlite3_value_double(argv[1]);
+        agg->have_percentile = 1;
+    }
+
+    /* Skip null input values per openCypher aggregate semantics. */
+    int v_type = sqlite3_value_type(argv[0]);
+    if (v_type == SQLITE_NULL) return;
+    if (v_type != SQLITE_INTEGER && v_type != SQLITE_FLOAT) {
+        /* Type error — openCypher requires numeric input for percentile aggregates.
+         * Defer error to xFinal so the row count is still meaningful in tests. */
+        return;
+    }
+
+    /* Grow buffer geometrically. */
+    if (agg->count == agg->capacity) {
+        int new_cap = agg->capacity ? agg->capacity * 2 : 16;
+        double *new_buf = (double*)sqlite3_realloc(agg->values, new_cap * sizeof(double));
+        if (!new_buf) return; /* out of memory; result will be partial */
+        agg->values = new_buf;
+        agg->capacity = new_cap;
+    }
+    agg->values[agg->count++] = sqlite3_value_double(argv[0]);
+}
+
+static void percentile_cont_final(sqlite3_context *ctx) {
+    percentile_agg *agg = (percentile_agg*)sqlite3_aggregate_context(ctx, 0);
+    if (!agg || agg->count == 0 || !agg->have_percentile) {
+        sqlite3_result_null(ctx);
+        if (agg && agg->values) sqlite3_free(agg->values);
+        return;
+    }
+    double p = agg->percentile;
+    if (p < 0.0 || p > 1.0) {
+        sqlite3_result_error(ctx, "percentileCont: percentile must be in [0,1]", -1);
+        sqlite3_free(agg->values);
+        return;
+    }
+    qsort(agg->values, agg->count, sizeof(double), percentile_cmp);
+    int n = agg->count;
+    double idx = p * (n - 1);
+    int lo = (int)idx;
+    int hi = lo + 1;
+    double frac = idx - lo;
+    double result;
+    if (hi >= n) {
+        result = agg->values[n - 1];
+    } else {
+        result = agg->values[lo] + frac * (agg->values[hi] - agg->values[lo]);
+    }
+    sqlite3_result_double(ctx, result);
+    sqlite3_free(agg->values);
+}
+
+static void percentile_disc_final(sqlite3_context *ctx) {
+    percentile_agg *agg = (percentile_agg*)sqlite3_aggregate_context(ctx, 0);
+    if (!agg || agg->count == 0 || !agg->have_percentile) {
+        sqlite3_result_null(ctx);
+        if (agg && agg->values) sqlite3_free(agg->values);
+        return;
+    }
+    double p = agg->percentile;
+    if (p < 0.0 || p > 1.0) {
+        sqlite3_result_error(ctx, "percentileDisc: percentile must be in [0,1]", -1);
+        sqlite3_free(agg->values);
+        return;
+    }
+    qsort(agg->values, agg->count, sizeof(double), percentile_cmp);
+    int n = agg->count;
+    /* Nearest-rank: smallest index i in [0,n-1] such that (i+1)/n >= p.
+     * Equivalent to ceil(p*n) - 1, clamped to [0, n-1]. p==0 -> 0. */
+    int i;
+    if (p == 0.0) {
+        i = 0;
+    } else {
+        double k = p * (double)n;
+        i = (int)k;
+        if ((double)i < k) i++;       /* ceil */
+        i -= 1;
+        if (i < 0) i = 0;
+        if (i >= n) i = n - 1;
+    }
+    /* Return INTEGER if the original value is integral and exact, else REAL.
+     * SQLite already preserves int-ness via storage class, but we coerced to
+     * double in xStep. Just return as double; the JSON renderer will
+     * format trailing zeros — that's fine for openCypher. */
+    sqlite3_result_double(ctx, agg->values[i]);
+    sqlite3_free(agg->values);
+}
+
+void gql_percentile_cont_step(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
+    percentile_step_common(ctx, argc, argv);
+}
+void gql_percentile_cont_final(sqlite3_context *ctx) {
+    percentile_cont_final(ctx);
+}
+void gql_percentile_disc_step(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
+    percentile_step_common(ctx, argc, argv);
+}
+void gql_percentile_disc_final(sqlite3_context *ctx) {
+    percentile_disc_final(ctx);
+}

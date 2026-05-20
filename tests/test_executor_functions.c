@@ -1684,13 +1684,14 @@ static void test_func_coth(void)
 
 static void test_func_percentile_error(void)
 {
-    /* percentileCont/Disc currently return error — verify graceful handling */
+    /* percentileCont/Disc are now implemented as SQLite custom aggregates
+     * (I-0040 M15). Verify a normal call succeeds against an empty match
+     * (returns NULL median) instead of erroring as it did pre-M15. */
     cypher_result *result = cypher_executor_execute(executor,
         "MATCH (n:Person) RETURN percentileDisc(n.age, 0.5) AS median");
     CU_ASSERT_PTR_NOT_NULL(result);
     if (result) {
-        /* Should fail gracefully with error, not crash */
-        CU_ASSERT_FALSE(result->success);
+        CU_ASSERT_TRUE(result->success);
         cypher_result_free(result);
     }
 }

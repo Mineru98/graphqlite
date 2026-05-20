@@ -4,14 +4,14 @@ level: task
 title: "M15: Implement percentileCont() and percentileDisc() aggregates (unblocks 6 TCK; depends on M5)"
 short_code: "GQLITE-T-0300"
 created_at: 2026-05-19T14:50:22.803577+00:00
-updated_at: 2026-05-19T14:50:22.803577+00:00
+updated_at: 2026-05-20T01:37:20.468132+00:00
 parent: GQLITE-I-0040
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -27,6 +27,10 @@ initiative_id: GQLITE-I-0040
 ## Objective
 
 Aggregation6 [1] (`percentileDisc`) and [2] (`percentileCont`) currently error with "is not yet fully supported in SQLite". Both are aggregates over a sorted numeric column with a 0..1 percentile parameter. Implement as SQLite aggregate functions in `runtime/udf_temporal.c` (or a new `udf_aggregate.c` if the temporal split feels wrong) once M5 is in place. Disc takes the value at floor(p*N), Cont linearly interpolates between adjacent sorted values.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 

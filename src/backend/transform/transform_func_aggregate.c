@@ -400,17 +400,13 @@ int transform_percentile_function(cypher_transform_context *ctx, cypher_function
     bool is_continuous = (strcasecmp(func_call->function_name, "percentileCont") == 0 ||
                          strcasecmp(func_call->function_name, "percentilecont") == 0);
 
-    /* Percentile is not straightforward as a pure SQL expression in SQLite.
-     * json_group_array() is an aggregate that can't be nested in correlated subqueries.
-     * For now, return an error directing users to use alternative approaches. */
-    ctx->has_error = true;
-    char error[256];
-    snprintf(error, sizeof(error),
-             "%s() is not yet fully supported in SQLite. "
-             "Use ORDER BY with LIMIT/OFFSET as a workaround.",
-             func_call->function_name);
-    ctx->error_message = strdup(error);
-    (void)is_continuous;
-
+    /* Emit as a SQLite custom aggregate (registered in runtime/udf_register.c
+     * during I-0040 M15). The aggregate collects all numeric values during
+     * xStep and computes the percentile in xFinal. */
+    append_sql(ctx, is_continuous ? "percentileCont(" : "percentileDisc(");
+    if (transform_expression(ctx, func_call->args->items[0]) < 0) return -1;
+    append_sql(ctx, ", ");
+    if (transform_expression(ctx, func_call->args->items[1]) < 0) return -1;
+    append_sql(ctx, ")");
     return 0;
 }

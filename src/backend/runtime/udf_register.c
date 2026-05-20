@@ -169,6 +169,22 @@ int graphqlite_register_helper_udfs(sqlite3 *db)
                          cypher_validate_func, 0, 0);
   if (rc != SQLITE_OK) return rc;
 
+  /* Percentile aggregates (M15). Registered under both the Cypher
+   * names (percentileCont/percentileDisc) and an internal SQL alias
+   * (_gql_percentile_cont/_disc) so the transform layer can choose. */
+  rc = sqlite3_create_function(db, "percentileCont", 2, SQLITE_UTF8, 0,
+                         0, gql_percentile_cont_step, gql_percentile_cont_final);
+  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "percentileDisc", 2, SQLITE_UTF8, 0,
+                         0, gql_percentile_disc_step, gql_percentile_disc_final);
+  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "_gql_percentile_cont", 2, SQLITE_UTF8, 0,
+                         0, gql_percentile_cont_step, gql_percentile_cont_final);
+  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "_gql_percentile_disc", 2, SQLITE_UTF8, 0,
+                         0, gql_percentile_disc_step, gql_percentile_disc_final);
+  if (rc != SQLITE_OK) return rc;
+
   return SQLITE_OK;
 }
 
