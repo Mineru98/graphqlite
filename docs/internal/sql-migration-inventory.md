@@ -134,6 +134,35 @@ expected not to add duplicates).
    the DML files. Estimated: 1 day for Extension A including TCK
    verification.
 
+   **Extension A implementation attempt (2026-05-19):** Added
+   `dbuf raw_output` to sql_builder, `sql_raw()` API, and migrated
+   transform_delete.c's 6 calls. Result: TCK regressed -181
+   (3358 → 3177), error count tripled. **Root cause** is deeper than
+   the API gap: the executor's per-clause handlers
+   (handle_match_delete, handle_match_set, etc. in query_dispatch.c)
+   call `finalize_sql_generation` AFTER transforming each clause that
+   produces typed SQL (MATCH), then expect subsequent clauses
+   (DELETE/SET/REMOVE) to append onto the already-finalized
+   `sql_buffer` via `append_sql`. Routing DML through unified_builder's
+   raw_output instead means the DML statements stay in unified_builder
+   AFTER finalize has already serialized the SELECT into sql_buffer —
+   so they never reach the executed SQL.
+
+   **Full fix shape:** defer finalize_sql_generation until ALL clauses
+   are transformed. Each handler in query_dispatch.c must change to
+   "transform all clauses → finalize once → execute". Currently
+   handlers interleave transform/execute per clause, which is
+   incompatible with structured assembly.
+
+   This is a non-trivial executor refactor — touching every
+   handle_match_* function. Estimated: 3-5 days including TCK
+   regression hunting on the per-handler flow changes.
+
+   Until the executor refactor lands, **S5–S12 should target
+   SELECT-shaped files only** (transform_match, transform_with,
+   transform_return, transform_expr_ops, transform_func_*). The 44
+   DML calls in set/delete/remove stay on the legacy trio.
+
 **The macro abstraction in transform_func_temporal.c (EMIT,
 EMIT_TIME_BASE, EMIT_HH/MM/SS)** is currently `append_sql`-based.
 During migration these macros should be rewritten to call into
