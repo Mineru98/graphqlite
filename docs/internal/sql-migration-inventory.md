@@ -97,10 +97,42 @@ expected not to add duplicates).
 |                                           | (see S13 of I-0039)                                 |        |
 | INSERT/UPDATE/DELETE shapes               | `write_builder_*` API in sql_builder.{c,h}          | ✓      |
 
-**Remaining gaps:** only the pending_prop_joins CTE-prepend. Adding a
-typed CTE-prepend section to `sql_builder` (S13) closes the last gap;
-all 977 trio calls can otherwise migrate to existing `sql_builder`
-APIs.
+**Remaining gaps (updated after S5 pre-flight, 2026-05-19):**
+
+1. **pending_prop_joins CTE-prepend** — already known; closed by S13.
+
+2. **DML statement emission** — discovered during the S5 pre-flight.
+   `transform_delete.c` (6 calls), `transform_remove.c` (11), and
+   `transform_set.c` (27) emit compound DML statements separated by
+   `; ` (e.g. `DELETE FROM node_props_text WHERE ...; DELETE FROM
+   nodes WHERE ...`). The `sql_builder` typed sections (select/from/
+   joins/where/group_by/order_by/limit/cte) model SELECT-shape
+   queries; they have no notion of multi-statement output, nor do
+   they cleanly express compound semicolon-separated DML.
+
+   The `write_builder` API in sql_builder.h covers single DML
+   statements (write_insert_values, write_delete, write_delete_where_in,
+   write_raw) but writes to its own buffer, not the unified builder.
+   Three resolution paths:
+
+   - **Extension A (recommended):** add a `sql_raw(sb, fmt, ...)`
+     API writing into a new "raw output" dbuf section, with
+     `sql_builder_to_string` emitting it after the typed sections.
+     This is the "thin shim" pattern the initiative spec rejected
+     — but DML emission doesn't fit the typed model, so a raw
+     output channel is unavoidable for these files.
+   - **Extension B:** route DML through write_builder per-statement;
+     concat its output after the SELECT-shaped output during
+     finalize. Requires plumbing write_builders into
+     cypher_transform_context.
+   - **Extension C:** keep DML files on the legacy trio and only
+     target SELECT-shaped files (transform_match, transform_with,
+     transform_return, transform_expr_ops, transform_func_*) in
+     S5–S12. Legacy `append_sql` stays for the 44 DML calls.
+
+   This gap MUST be resolved before S5 can execute meaningfully on
+   the DML files. Estimated: 1 day for Extension A including TCK
+   verification.
 
 **The macro abstraction in transform_func_temporal.c (EMIT,
 EMIT_TIME_BASE, EMIT_HH/MM/SS)** is currently `append_sql`-based.
