@@ -9,6 +9,7 @@
 
 #include "transform/cypher_transform.h"
 #include "transform/transform_helpers.h"
+#include "transform/sql_builder.h"
 #include "parser/cypher_debug.h"
 
 /* Forward declarations */
@@ -108,17 +109,17 @@ static int generate_node_create(cypher_transform_context *ctx, cypher_node_patte
                  first_label ? first_label : "<no label>",
                  node->labels ? node->labels->count : 0);
 
-    /* Start a new statement if needed */
-    if (ctx->sql_size > 0) {
-        append_sql(ctx, "; ");
+    /* Start a new statement if needed (I-0039 migration). */
+    if (!dbuf_is_empty(&ctx->unified_builder->raw_output)) {
+        sql_raw(ctx->unified_builder, "; ");
     }
 
     /* Insert into nodes table */
-    append_sql(ctx, "INSERT INTO nodes DEFAULT VALUES");
+    sql_raw(ctx->unified_builder, "INSERT INTO nodes DEFAULT VALUES");
 
     /* If we need to track the node ID for labels or properties */
     if (has_labels(node) || node->properties || node->variable) {
-        append_sql(ctx, "; ");
+        sql_raw(ctx->unified_builder, "; ");
 
         /* Get the last inserted node ID */
         /* In a real implementation, we'd need to handle this better,
@@ -129,10 +130,15 @@ static int generate_node_create(cypher_transform_context *ctx, cypher_node_patte
             for (int i = 0; i < node->labels->count; i++) {
                 const char *label = get_label_string(node->labels->items[i]);
                 if (label) {
-                    if (i > 0) append_sql(ctx, "; ");
-                    append_sql(ctx, "INSERT INTO node_labels (node_id, label) VALUES (last_insert_rowid(), ");
-                    append_string_literal(ctx, label);
-                    append_sql(ctx, ")");
+                    if (i > 0) sql_raw(ctx->unified_builder, "; ");
+                    {
+                        char *_e_lbl = escape_sql_string(label);
+                        if (!_e_lbl) _e_lbl = strdup(label ? label : "");
+                        sql_raw(ctx->unified_builder,
+                            "INSERT INTO node_labels (node_id, label) VALUES (last_insert_rowid(), '%s')",
+                            _e_lbl);
+                        free(_e_lbl);
+                    }
                 }
             }
         }
@@ -169,7 +175,7 @@ static int generate_relationship_create(cypher_transform_context *ctx, cypher_re
     /* In a more sophisticated implementation, we'd track created node IDs properly */
     
     /* Start a new statement */
-    append_sql(ctx, "; ");
+    sql_raw(ctx->unified_builder, "; ");
     
     /* Create temporary variables for source and target node IDs */
     /* This is a simplified approach - in reality we'd need better ID tracking */
@@ -191,27 +197,30 @@ static int generate_relationship_create(cypher_transform_context *ctx, cypher_re
     /* This needs improvement for real-world usage */
     
     /* Insert into edges table */
-    append_sql(ctx, "INSERT INTO edges (source_id, target_id, type) VALUES (");
+    sql_raw(ctx->unified_builder, "INSERT INTO edges (source_id, target_id, type) VALUES (");
     
     /* Handle direction - if left arrow only, reverse source/target */
     if (rel->left_arrow && !rel->right_arrow) {
         /* <-[:TYPE]- means target -> source */
-        append_sql(ctx, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid() - 1), ");
-        append_sql(ctx, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid()), ");
+        sql_raw(ctx->unified_builder, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid() - 1), ");
+        sql_raw(ctx->unified_builder, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid()), ");
     } else {
         /* -[:TYPE]-> or -[:TYPE]- (forward or undirected, treat as forward) */
-        append_sql(ctx, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid()), ");
-        append_sql(ctx, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid() - 1), ");
+        sql_raw(ctx->unified_builder, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid()), ");
+        sql_raw(ctx->unified_builder, "(SELECT id FROM nodes WHERE rowid = last_insert_rowid() - 1), ");
     }
     
     /* Add relationship type */
     if (rel->type) {
-        append_string_literal(ctx, rel->type);
+        char *_e_t = escape_sql_string(rel->type);
+        if (!_e_t) _e_t = strdup(rel->type);
+        sql_raw(ctx->unified_builder, "'%s'", _e_t);
+        free(_e_t);
     } else {
-        append_sql(ctx, "''"); /* Empty string for no type */
+        sql_raw(ctx->unified_builder, "''"); /* Empty string for no type */
     }
     
-    append_sql(ctx, ")");
+    sql_raw(ctx->unified_builder, ")");
     
     /* Register relationship variable if present */
     if (rel->variable) {

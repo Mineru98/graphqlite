@@ -48,7 +48,7 @@ int transform_set_clause(cypher_transform_context *ctx, cypher_set *set)
         
         /* Add separator between SET items if not the last one */
         if (i < set->items->count - 1) {
-            append_sql(ctx, "; ");
+            sql_raw(ctx->unified_builder, "; ");
         }
     }
     
@@ -141,9 +141,9 @@ static int generate_property_update(cypher_transform_context *ctx,
         return -1;
     }
 
-    /* Start a new statement if needed */
-    if (ctx->sql_size > 0) {
-        append_sql(ctx, "; ");
+    /* Start a new statement if needed (I-0039 migration). */
+    if (!dbuf_is_empty(&ctx->unified_builder->raw_output)) {
+        sql_raw(ctx->unified_builder, "; ");
     }
     
     /* Determine the property type from the value expression */
@@ -191,42 +191,37 @@ static int generate_property_update(cypher_transform_context *ctx,
         prop_table = "node_props_text";
     }
     
-    /* Generate INSERT ... SELECT statement using unified builder context */
-    /* Use key_id from property_keys table lookup */
-    append_sql(ctx, "INSERT OR REPLACE INTO %s (node_id, key_id, value) ", prop_table);
-    append_sql(ctx, "SELECT ");
+    /* Capture the value expression's SQL via the transitional helper —
+     * transform_expression still writes through append_sql, so we
+     * swap-capture it into a string and inline-emit via sql_raw. */
+    char *value_sql = cypher_transform_capture_expression(ctx, value_expr);
+    if (!value_sql) return -1;
 
-    /* Get node ID from table alias */
-    append_sql(ctx, "%s.id", table_alias);
+    char *escaped_prop = escape_sql_string(property_name);
+    if (!escaped_prop) escaped_prop = strdup(property_name ? property_name : "");
 
-    /* Get key_id via subquery from property_keys table */
-    append_sql(ctx, ", (SELECT id FROM property_keys WHERE key = ");
-    append_string_literal(ctx, property_name);
-    append_sql(ctx, "), ");
+    /* Generate INSERT ... SELECT statement using unified builder context. */
+    sql_raw(ctx->unified_builder,
+        "INSERT OR REPLACE INTO %s (node_id, key_id, value) SELECT %s.id, "
+        "(SELECT id FROM property_keys WHERE key = '%s'), %s",
+        prop_table, table_alias, escaped_prop, value_sql);
+    free(escaped_prop);
+    free(value_sql);
 
-    /* Transform the value expression */
-    if (transform_expression(ctx, value_expr) < 0) {
-        return -1;
-    }
-
-    /* Add FROM clause from unified builder if available */
+    /* Add FROM / JOINs / WHERE from unified builder. */
     if (ctx->unified_builder && !dbuf_is_empty(&ctx->unified_builder->from)) {
-        append_sql(ctx, " FROM %s", dbuf_get(&ctx->unified_builder->from));
-
-        /* Add JOINs if any */
+        sql_raw(ctx->unified_builder, " FROM %s", dbuf_get(&ctx->unified_builder->from));
         if (!dbuf_is_empty(&ctx->unified_builder->joins)) {
-            append_sql(ctx, " %s", dbuf_get(&ctx->unified_builder->joins));
+            sql_raw(ctx->unified_builder, " %s", dbuf_get(&ctx->unified_builder->joins));
         }
-
-        /* Add WHERE clause if any */
         if (!dbuf_is_empty(&ctx->unified_builder->where)) {
-            append_sql(ctx, " WHERE %s", dbuf_get(&ctx->unified_builder->where));
+            sql_raw(ctx->unified_builder, " WHERE %s", dbuf_get(&ctx->unified_builder->where));
         }
     } else {
         /* Fallback for non-builder mode - shouldn't happen after migration */
-        append_sql(ctx, " FROM nodes AS %s", table_alias);
+        sql_raw(ctx->unified_builder, " FROM nodes AS %s", table_alias);
     }
-    
+
     CYPHER_DEBUG("Generated property update SQL");
     return 0;
 }
@@ -257,23 +252,23 @@ static int generate_bulk_property_update(cypher_transform_context *ctx,
         const char **tables = is_edge ? edge_tables : node_tables;
 
         for (int i = 0; i < 5; i++) {
-            if (ctx->sql_size > 0) {
-                append_sql(ctx, "; ");
+            if (!dbuf_is_empty(&ctx->unified_builder->raw_output)) {
+                sql_raw(ctx->unified_builder, "; ");
             }
-            append_sql(ctx, "DELETE FROM %s WHERE %s = ", tables[i], entity_col);
+            sql_raw(ctx->unified_builder, "DELETE FROM %s WHERE %s = ", tables[i], entity_col);
 
             /* Get entity ID — use subquery from unified builder */
             if (ctx->unified_builder && !dbuf_is_empty(&ctx->unified_builder->from)) {
-                append_sql(ctx, "(SELECT %s.id FROM %s", table_alias, dbuf_get(&ctx->unified_builder->from));
+                sql_raw(ctx->unified_builder, "(SELECT %s.id FROM %s", table_alias, dbuf_get(&ctx->unified_builder->from));
                 if (!dbuf_is_empty(&ctx->unified_builder->joins)) {
-                    append_sql(ctx, " %s", dbuf_get(&ctx->unified_builder->joins));
+                    sql_raw(ctx->unified_builder, " %s", dbuf_get(&ctx->unified_builder->joins));
                 }
                 if (!dbuf_is_empty(&ctx->unified_builder->where)) {
-                    append_sql(ctx, " WHERE %s", dbuf_get(&ctx->unified_builder->where));
+                    sql_raw(ctx->unified_builder, " WHERE %s", dbuf_get(&ctx->unified_builder->where));
                 }
-                append_sql(ctx, ")");
+                sql_raw(ctx->unified_builder, ")");
             } else {
-                append_sql(ctx, "%s.id", table_alias);
+                sql_raw(ctx->unified_builder, "%s.id", table_alias);
             }
         }
     }
@@ -309,32 +304,31 @@ static int generate_label_add(cypher_transform_context *ctx,
         return -1;
     }
     
-    /* Start a new statement if needed */
-    if (ctx->sql_size > 0) {
-        append_sql(ctx, "; ");
+    /* Start a new statement if needed (I-0039 migration). */
+    if (!dbuf_is_empty(&ctx->unified_builder->raw_output)) {
+        sql_raw(ctx->unified_builder, "; ");
     }
     
-    /* Generate INSERT OR IGNORE to add the label using unified builder context */
-    append_sql(ctx, "INSERT OR IGNORE INTO node_labels (node_id, label) ");
-    append_sql(ctx, "SELECT %s.id, ", table_alias);
-    append_string_literal(ctx, label_name);
+    {
+        char *escaped_lbl = escape_sql_string(label_name);
+        if (!escaped_lbl) escaped_lbl = strdup(label_name ? label_name : "");
+        sql_raw(ctx->unified_builder,
+            "INSERT OR IGNORE INTO node_labels (node_id, label) SELECT %s.id, '%s'",
+            table_alias, escaped_lbl);
+        free(escaped_lbl);
+    }
 
     /* Add FROM clause from unified builder if available */
     if (ctx->unified_builder && !dbuf_is_empty(&ctx->unified_builder->from)) {
-        append_sql(ctx, " FROM %s", dbuf_get(&ctx->unified_builder->from));
-
-        /* Add JOINs if any */
+        sql_raw(ctx->unified_builder, " FROM %s", dbuf_get(&ctx->unified_builder->from));
         if (!dbuf_is_empty(&ctx->unified_builder->joins)) {
-            append_sql(ctx, " %s", dbuf_get(&ctx->unified_builder->joins));
+            sql_raw(ctx->unified_builder, " %s", dbuf_get(&ctx->unified_builder->joins));
         }
-
-        /* Add WHERE clause if any */
         if (!dbuf_is_empty(&ctx->unified_builder->where)) {
-            append_sql(ctx, " WHERE %s", dbuf_get(&ctx->unified_builder->where));
+            sql_raw(ctx->unified_builder, " WHERE %s", dbuf_get(&ctx->unified_builder->where));
         }
     } else {
-        /* Fallback for non-builder mode */
-        append_sql(ctx, " FROM nodes AS %s", table_alias);
+        sql_raw(ctx->unified_builder, " FROM nodes AS %s", table_alias);
     }
     
     CYPHER_DEBUG("Generated label add SQL");

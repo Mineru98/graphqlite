@@ -246,6 +246,58 @@ int register_parameter(cypher_transform_context *ctx, const char *name)
     return ctx->param_count++;
 }
 
+/* Capture transform_expression output into a malloc'd string
+ * (I-0039 transitional helper). Swaps ctx->sql_buffer state around
+ * the call so legacy append_sql writes happen into a temporary
+ * buffer the caller takes ownership of. Restores prior buffer state
+ * on both success and failure paths. Returns NULL on transform error.
+ *
+ * Used by DML transforms (transform_set.c) that need to splice an
+ * expression's SQL into a sql_raw() emission without polluting the
+ * main sql_buffer. */
+extern int transform_expression(cypher_transform_context *ctx, ast_node *expr);
+char *cypher_transform_capture_expression(cypher_transform_context *ctx, ast_node *expr)
+{
+    if (!ctx || !expr) return NULL;
+
+    /* Save current sql_buffer state. */
+    size_t saved_size = ctx->sql_size;
+    char *saved_buf = NULL;
+    if (saved_size > 0 && ctx->sql_buffer) {
+        saved_buf = malloc(saved_size + 1);
+        if (!saved_buf) return NULL;
+        memcpy(saved_buf, ctx->sql_buffer, saved_size);
+        saved_buf[saved_size] = '\0';
+    }
+
+    /* Reset sql_buffer so transform_expression's append_sql writes
+     * land at the start of a fresh buffer. */
+    ctx->sql_size = 0;
+    if (ctx->sql_buffer) ctx->sql_buffer[0] = '\0';
+
+    int rc = transform_expression(ctx, expr);
+
+    /* Capture (or null on failure) and restore. */
+    char *captured = NULL;
+    if (rc == 0 && ctx->sql_buffer && ctx->sql_size > 0) {
+        captured = malloc(ctx->sql_size + 1);
+        if (captured) {
+            memcpy(captured, ctx->sql_buffer, ctx->sql_size);
+            captured[ctx->sql_size] = '\0';
+        }
+    }
+
+    /* Restore prior sql_buffer state. */
+    ctx->sql_size = 0;
+    if (ctx->sql_buffer) ctx->sql_buffer[0] = '\0';
+    if (saved_buf) {
+        append_sql(ctx, "%s", saved_buf);
+        free(saved_buf);
+    }
+
+    return (rc == 0) ? (captured ? captured : strdup("")) : NULL;
+}
+
 /* SQL finalization - assembles unified_builder content into sql_buffer */
 
 int finalize_sql_generation(cypher_transform_context *ctx)

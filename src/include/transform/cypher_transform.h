@@ -145,6 +145,16 @@ void append_identifier(cypher_transform_context *ctx, const char *name);
 __attribute__((deprecated("use sql_builder; see docs/internal/sql-migration-inventory.md")))
 void append_string_literal(cypher_transform_context *ctx, const char *value);
 
+/* Capture transform_expression output into a malloc'd string instead
+ * of writing into ctx->sql_buffer. Swaps sql_buffer around the call so
+ * the expression's append_sql writes go into a temporary buffer that
+ * the caller takes ownership of. Use this in DML-emitting transforms
+ * (transform_set.c value expressions, etc.) that need to splice the
+ * expression SQL into a sql_raw() emission without polluting
+ * sql_buffer. Returns NULL on error; sql_buffer is restored either way.
+ * I-0039 transitional helper. */
+char *cypher_transform_capture_expression(cypher_transform_context *ctx, ast_node *expr);
+
 /* Pending property joins for aggregation optimization */
 void add_pending_prop_join(cypher_transform_context *ctx, const char *join_sql);
 const char* get_pending_prop_joins(cypher_transform_context *ctx);
