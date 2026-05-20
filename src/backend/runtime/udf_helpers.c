@@ -1728,14 +1728,21 @@ void gql_date_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv)
     int y = 0, mo = 1, d = 1;
     bool have_y = false;
     bool year_from_base = false;
+    bool has_base = false;
     /* Year/month/day defaults from base value. */
     const char *base = NULL;
     if (sqlite3_value_type(argv[8]) != SQLITE_NULL) base = (const char*)sqlite3_value_text(argv[8]);
     else if (sqlite3_value_type(argv[9]) != SQLITE_NULL) base = (const char*)sqlite3_value_text(argv[9]);
+    int base_y = 0, base_mo = 1, base_d = 1;
     if (base && strlen(base) >= 10) {
         y = atoi(base); mo = atoi(base + 5); d = atoi(base + 8);
         have_y = (y > 0);
         year_from_base = have_y;
+        has_base = have_y;
+        /* Snapshot the base calendar BEFORE any scalar override of y, so
+         * the dayOfWeek-inheritance path below uses the actual base
+         * date's weekday. */
+        base_y = y; base_mo = mo; base_d = d;
     }
     /* Scalar overrides. */
     if (sqlite3_value_type(argv[0]) != SQLITE_NULL) { y = sqlite3_value_int(argv[0]); have_y = true; year_from_base = false; }
@@ -1750,11 +1757,11 @@ void gql_date_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv)
      * week-year of the base, not its calendar year. (E.g., 1816-12-30 is
      * Mon of ISO week 1 of 1817 even though calendar year is 1816.) */
     if (year_from_base && sqlite3_value_type(argv[3]) != SQLITE_NULL) {
-        int base_dow = weekday_of(y, mo, d);
+        int base_dow = weekday_of(base_y, base_mo, base_d);
         /* Thursday of week = base + (3 - ((base_dow-1+7)%7)). */
         int wd_iso = (base_dow + 6) % 7;  /* 0=Mon..6=Sun */
         int days_to_thu = 3 - wd_iso;
-        long base_days = days_from_civil(y, mo, d);
+        long base_days = days_from_civil(base_y, base_mo, base_d);
         int ty, tmo, td;
         civil_from_days(base_days + days_to_thu, &ty, &tmo, &td);
         y = ty;
@@ -1769,10 +1776,13 @@ void gql_date_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv)
         int dow;
         if (sqlite3_value_type(argv[4]) != SQLITE_NULL) {
             dow = sqlite3_value_int(argv[4]);
-        } else if (year_from_base) {
-            /* Inherit dayOfWeek from base — '{date: other, week: N}' should
-             * resolve to the same dayOfWeek as the base date in the new week. */
-            int base_dow = weekday_of(y, mo, d);
+        } else if (has_base) {
+            /* Inherit dayOfWeek from base — '{date: other, week: N}' or
+             * '{date: other, year: Y, week: N}' should resolve to the same
+             * dayOfWeek as the base date in the new week. Use the
+             * *original* base (base_y/mo/d), not the overwritten
+             * ISO-year y. (M14 bugfix.) */
+            int base_dow = weekday_of(base_y, base_mo, base_d);
             dow = (base_dow + 6) % 7 + 1;  /* Mon=1..Sun=7 */
         } else {
             dow = 1;
