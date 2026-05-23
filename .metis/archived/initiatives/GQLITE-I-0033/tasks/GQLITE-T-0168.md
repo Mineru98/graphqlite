@@ -45,6 +45,8 @@ Eliminate code duplication between `extension.c` and `bundled_init.c` by extract
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] No duplicated function handler code between extension entry points
 - [ ] Both build configurations (if applicable) compile and pass tests
 - [ ] If `bundled_init.c` is unused, it is deleted with a note in the commit message

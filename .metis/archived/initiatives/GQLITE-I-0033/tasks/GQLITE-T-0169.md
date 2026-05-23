@@ -49,6 +49,8 @@ Migrate static/global transform state into a `cypher_transform_context` struct, 
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] No static/global mutable state remains in transform layer
 - [ ] `cypher_transform_context` passed through all transform call chains
 - [ ] `push_buffer()` / `pop_buffer()` API exists and is used

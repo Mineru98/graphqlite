@@ -7,7 +7,7 @@ created_at: 2026-01-08T14:35:13.680145+00:00
 updated_at: 2026-01-08T14:35:13.680145+00:00
 parent: GQLITE-V-0001
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#initiative"
@@ -16,7 +16,6 @@ tags:
 
 exit_criteria_met: false
 estimated_complexity: XL
-strategy_id: NULL
 initiative_id: gpu-accelerated-graph-algorithms
 ---
 

@@ -7,7 +7,7 @@ created_at: 2026-01-13T02:40:54.710885+00:00
 updated_at: 2026-01-13T02:40:54.710885+00:00
 parent: GQLITE-V-0001
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#initiative"
@@ -16,7 +16,6 @@ tags:
 
 exit_criteria_met: false
 estimated_complexity: XL
-strategy_id: NULL
 initiative_id: graph-neural-network-integration
 ---
 

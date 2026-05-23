@@ -7,7 +7,7 @@ created_at: 2026-01-09T19:25:48.400813+00:00
 updated_at: 2026-01-09T19:25:48.400813+00:00
 parent: GQLITE-V-0001
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#initiative"
@@ -16,7 +16,6 @@ tags:
 
 exit_criteria_met: false
 estimated_complexity: M
-strategy_id: NULL
 initiative_id: cpu-graph-caching-for-algorithm
 ---
 

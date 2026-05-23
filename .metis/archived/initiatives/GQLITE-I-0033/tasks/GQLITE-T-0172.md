@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:42.956995+00:00
 updated_at: 2026-03-28T13:59:42.956995+00:00
 parent: GQLITE-I-0033
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -46,6 +46,8 @@ Normalize API inconsistencies across Rust, Python, and SQLite layers. Addresses 
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] Rust return types are consistent across node/edge query methods
 - [ ] `CacheStatus` is an enum, not a string
 - [ ] Single `_find_extension()` in Python codebase
@@ -60,4 +62,3 @@ Normalize API inconsistencies across Rust, Python, and SQLite layers. Addresses 
 ## Status Updates
 
 *To be added during implementation*
-
