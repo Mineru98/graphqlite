@@ -315,6 +315,12 @@ foreach_clause:
             $$ = (ast_node*)make_cypher_foreach($3, $5, $7, @1.first_line);
             free($3);
         }
+    | FOREACH '(' BQIDENT IN expr '|' foreach_update_list ')'
+        {
+            /* T-0329: backtick-quoted loop variable. */
+            $$ = (ast_node*)make_cypher_foreach($3, $5, $7, @1.first_line);
+            free($3);
+        }
     ;
 
 /* CALL {} subquery clause
@@ -825,8 +831,22 @@ path:
             /* Free the anonymous path structure, but keep its elements */
             free($3);
         }
+    | BQIDENT '=' simple_path
+        {
+            /* T-0329: backtick-quoted named-path variable. */
+            $$ = make_path_with_var($1, $3->elements);
+            free($3);
+        }
     | IDENTIFIER '=' SHORTESTPATH '(' simple_path ')'
         {
+            cypher_path *sp = make_shortest_path($5->elements, PATH_TYPE_SHORTEST);
+            sp->var_name = $1;
+            $$ = sp;
+            free($5);
+        }
+    | BQIDENT '=' SHORTESTPATH '(' simple_path ')'
+        {
+            /* T-0329: backtick-quoted variable on shortestPath. */
             cypher_path *sp = make_shortest_path($5->elements, PATH_TYPE_SHORTEST);
             sp->var_name = $1;
             $$ = sp;
@@ -839,6 +859,14 @@ path:
         }
     | IDENTIFIER '=' ALLSHORTESTPATHS '(' simple_path ')'
         {
+            cypher_path *sp = make_shortest_path($5->elements, PATH_TYPE_ALL_SHORTEST);
+            sp->var_name = $1;
+            $$ = sp;
+            free($5);
+        }
+    | BQIDENT '=' ALLSHORTESTPATHS '(' simple_path ')'
+        {
+            /* T-0329: backtick-quoted variable on allShortestPaths. */
             cypher_path *sp = make_shortest_path($5->elements, PATH_TYPE_ALL_SHORTEST);
             sp->var_name = $1;
             $$ = sp;
@@ -881,6 +909,12 @@ rel_pattern:
             $$ = make_rel_pattern_varlen($3, $5, (ast_node*)$7, false, true, (ast_node*)$6);
             free($5);
         }
+    | '-' '[' variable_opt ':' non_reserved_kw varlen_range_opt properties_opt ']' '-' '>'
+        {
+            /* T-0326: keyword-named rel types (CONTAINS/STARTS/ENDS/etc.). */
+            $$ = make_rel_pattern_varlen($3, $5, (ast_node*)$7, false, true, (ast_node*)$6);
+            free($5);
+        }
     | '-' '[' variable_opt ':' rel_type_list varlen_range_opt properties_opt ']' '-' '>'
         {
             cypher_rel_pattern *p = make_rel_pattern_multi_type($3, $5, (ast_node*)$7, false, true);
@@ -902,6 +936,12 @@ rel_pattern:
             $$ = make_rel_pattern_varlen($4, $6, (ast_node*)$8, true, false, (ast_node*)$7);
             free($6);
         }
+    | '<' '-' '[' variable_opt ':' non_reserved_kw varlen_range_opt properties_opt ']' '-'
+        {
+            /* T-0326: keyword-named rel types (CONTAINS/STARTS/ENDS/etc.). */
+            $$ = make_rel_pattern_varlen($4, $6, (ast_node*)$8, true, false, (ast_node*)$7);
+            free($6);
+        }
     | '<' '-' '[' variable_opt ':' rel_type_list varlen_range_opt properties_opt ']' '-'
         {
             cypher_rel_pattern *p = make_rel_pattern_multi_type($4, $6, (ast_node*)$8, true, false);
@@ -920,6 +960,12 @@ rel_pattern:
         }
     | '-' '[' variable_opt ':' BQIDENT varlen_range_opt properties_opt ']' '-'
         {
+            $$ = make_rel_pattern_varlen($3, $5, (ast_node*)$7, false, false, (ast_node*)$6);
+            free($5);
+        }
+    | '-' '[' variable_opt ':' non_reserved_kw varlen_range_opt properties_opt ']' '-'
+        {
+            /* T-0326: keyword-named rel types (CONTAINS/STARTS/ENDS/etc.). */
             $$ = make_rel_pattern_varlen($3, $5, (ast_node*)$7, false, false, (ast_node*)$6);
             free($5);
         }
