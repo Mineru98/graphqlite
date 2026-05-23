@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:40.511775+00:00
 updated_at: 2026-03-28T13:59:40.511775+00:00
 parent: GQLITE-I-0033
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -40,6 +40,8 @@ Normalize the dual result serialization paths (AGType vs legacy `data`) into a s
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] `cypher_result_to_json()` is a standalone, testable function
 - [ ] AGType is the canonical internal representation
 - [ ] Legacy `data` format still works via shim
@@ -52,4 +54,3 @@ Normalize the dual result serialization paths (AGType vs legacy `data`) into a s
 ## Status Updates
 
 *To be added during implementation*
-

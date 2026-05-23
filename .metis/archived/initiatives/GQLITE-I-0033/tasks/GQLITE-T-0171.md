@@ -7,7 +7,7 @@ created_at: 2026-03-28T13:59:41.882297+00:00
 updated_at: 2026-03-28T13:59:41.882297+00:00
 parent: GQLITE-I-0033
 blocked_by: []
-archived: false
+archived: true
 
 tags:
   - "#task"
@@ -39,6 +39,8 @@ Add runtime observability: callback-based logging, version introspection, EXPLAI
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
 - [ ] `graphqlite_log_func` callback can be registered and receives log messages
 - [ ] `SELECT graphqlite_version()` returns valid JSON with version info
 - [ ] EXPLAIN prefix on algorithm queries returns SQL plan
@@ -53,4 +55,3 @@ Add runtime observability: callback-based logging, version introspection, EXPLAI
 ## Status Updates
 
 *To be added during implementation*
-
