@@ -4,14 +4,14 @@ level: initiative
 title: "TCK Conformance Push II — 91.5% → 95%+ via clustered semantic fixes"
 short_code: "GQLITE-I-0044"
 created_at: 2026-05-23T04:07:55.417944+00:00
-updated_at: 2026-05-23T04:07:55.417944+00:00
+updated_at: 2026-05-23T10:53:00.058386+00:00
 parent: GQLITE-V-0001
 blocked_by: []
 archived: false
 
 tags:
   - "#initiative"
-  - "#phase/discovery"
+  - "#phase/decompose"
 
 
 exit_criteria_met: false
@@ -215,6 +215,12 @@ double-count) since they share emission code.
 
 Pre-existing Windows-only `timestamp()` returns 0 in some
 MATCH+SET / MERGE paths. Tracked as backlog T-0205.
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
 
 ## Acceptance Criteria
 
