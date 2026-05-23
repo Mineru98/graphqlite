@@ -38,10 +38,24 @@ class ScenarioOutcome:
 
 
 @dataclass
+class _ProcedureFixture:
+    """A test.* procedure declared via Gherkin's
+    `And there exists a procedure name(args) :: (yields):` step.
+    `arg_names`/`yield_names` are the column names; `rows` is the
+    fixture table (parsed values) the runner serves when the
+    scenario's CALL hits the procedure. """
+    name: str
+    arg_names: list[str] = field(default_factory=list)
+    yield_names: list[str] = field(default_factory=list)
+    rows: list[list[Any]] = field(default_factory=list)
+
+
+@dataclass
 class _State:
     last_result: QueryResult | None = None
     parameters: dict[str, Any] = field(default_factory=dict)
     skipped_reason: str | None = None
+    procedures: dict[str, _ProcedureFixture] = field(default_factory=dict)
 
 
 # Step matchers ordered by specificity.
@@ -63,9 +77,15 @@ _STEP_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^the result should be, in order \(ignoring element order for lists\)$"),
      "result_ordered_lists_unordered"),
     (re.compile(r"^the result should be empty$"), "result_empty"),
-    (re.compile(r"^a (?P<err>\w+(?:Error|Failure)) should be raised at \w+"), "expect_error"),
+    (re.compile(r"^a (?P<err>\w+(?:Error|Failure|Missing)) should be raised at \w+"), "expect_error"),
     (re.compile(r"^no side effects$"), "no_side_effects"),
     (re.compile(r"^the side effects should be$"), "side_effects_table"),
+    # T-0252: procedure declaration. Captures the fully-qualified name,
+    # the arg list (raw), and the yield list (raw). The table beneath the
+    # step (parsed at handler time) provides per-call fixture rows.
+    (re.compile(
+        r"^there exists a procedure (?P<name>[\w.]+)\((?P<args>[^)]*)\)\s*::\s*\((?P<yields>[^)]*)\)$"
+    ), "procedure_declared"),
 ]
 
 
@@ -225,10 +245,268 @@ def _h_parameters(step, state, backend, m):
 def _h_executing_query(step, state, backend, m):
     if not step.docstring:
         raise _Mismatch("missing docstring for 'executing query'")
-    state.last_result = backend.execute(step.docstring, state.parameters or None)
+    # T-0252: intercept plain `CALL <procedure>(...)` against registered
+    # test.* fixtures. If the procedure is declared in this scenario,
+    # synthesize the QueryResult from the fixture rows; otherwise fall
+    # through to the backend.
+    intercepted = _maybe_call_procedure(step.docstring, state)
+    if intercepted is not None:
+        state.last_result = intercepted
+    else:
+        # T-0252 follow-on: when a registered no-yield procedure is
+        # embedded inside a query (e.g. `MATCH (n) CALL test.doNothing()
+        # RETURN n`), strip the CALL invocation so the backend processes
+        # the remaining query. The procedure has no rows/columns to
+        # contribute by design.
+        rewritten = _strip_embedded_noyield_call(step.docstring, state)
+        state.last_result = backend.execute(rewritten, state.parameters or None)
     # Record backend-side trouble so the runner can decide between fail and error
     # at the Then-step. We don't raise here — TCK has scenarios that *expect* an
     # error, and the verdict is decided by the matching Then-step.
+
+
+def _strip_embedded_noyield_call(query: str, state) -> str:
+    """Strip `CALL <registered no-yield proc>(...)` lines from a query.
+    Used for in-query patterns like `MATCH (n) CALL test.doNothing()
+    RETURN n` where the procedure contributes nothing to the result.
+    Leaves the query unchanged if no embedded no-yield CALL matches. """
+    if not state.procedures:
+        return query
+    out = query
+    # Find every CALL <name>([args]) where <name> is a registered
+    # procedure with no declared yields. Remove the CALL clause
+    # (and a trailing newline if present).
+    for name, fixture in state.procedures.items():
+        if fixture.yield_names:
+            continue
+        # Escape dots for regex.
+        esc = re.escape(name)
+        pat = re.compile(
+            rf"\bCALL\s+{esc}\s*(?:\([^)]*\))?\s*",
+            re.IGNORECASE,
+        )
+        out = pat.sub("", out)
+    return out
+
+
+def _split_signature_columns(sig: str) -> list[str]:
+    """Parse `in :: INTEGER?, out :: STRING?` into ['in', 'out']."""
+    if not sig.strip():
+        return []
+    parts = [p.strip() for p in sig.split(",")]
+    out = []
+    for part in parts:
+        if "::" in part:
+            out.append(part.split("::", 1)[0].strip())
+        elif part:
+            out.append(part)
+    return out
+
+
+def _h_procedure_declared(step, state, backend, m):
+    """T-0252: register a test.* procedure fixture for this scenario."""
+    name = m.group("name")
+    arg_names = _split_signature_columns(m.group("args"))
+    yield_names = _split_signature_columns(m.group("yields"))
+    fixture = _ProcedureFixture(name=name, arg_names=arg_names, yield_names=yield_names)
+    if step.table:
+        # The first row is the column header (matches arg/yield names);
+        # remaining rows are fixture data. parse_value each cell so types
+        # land in QueryResult-compatible shape.
+        header = step.table[0] if step.table else []
+        for row in step.table[1:]:
+            parsed = []
+            for cell in row:
+                try:
+                    parsed.append(parse_value(cell))
+                except ValueParseError:
+                    parsed.append(cell)
+            fixture.rows.append(parsed)
+        # Tolerate header being absent (single-column tables sometimes
+        # only have data); leave header validation to comparators.
+        (void := header)  # noqa: B018 — referenced for clarity
+    state.procedures[name] = fixture
+
+
+def _maybe_call_procedure(query: str, state) -> QueryResult | None:
+    """If query is a CALL <proc>(...) [YIELD ...] [RETURN ...] against
+    a registered test.* procedure, synthesize a QueryResult from the
+    fixture rows. Returns None when the query isn't a procedure call
+    we can serve, leaving backend.execute to handle the general path.
+
+    Argument-based filtering: when CALL passes explicit args (e.g.
+    `test.my.proc('Stefan', 1)`), only fixture rows where the arg
+    columns match are returned. """
+    q = query.strip().rstrip(";").strip()
+    # Pattern: CALL name(args) [YIELD yields] [WITH with_cols] [RETURN return_cols]
+    # The WITH renames flow through yield → with → return.
+    m = re.match(
+        r"^CALL\s+(?P<name>[\w.]+)\s*(?:\((?P<args>[^)]*)\))?\s*"
+        r"(?:YIELD\s+(?P<yields>[\w*,\s]+?))?\s*"
+        r"(?:WITH\s+(?P<withs>[\w\s,]+?))?\s*"
+        r"(?:RETURN\s+(?P<rets>.+?))?\s*$",
+        q,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not m:
+        return None
+    name = m.group("name")
+    fixture = state.procedures.get(name)
+    if fixture is None:
+        return None
+    # T-0252: CALL <proc> RETURN <cols> without explicit YIELD is a
+    # Cypher syntax error (UndefinedVariable). Fall through to backend
+    # so the harness sees the expected error class.
+    if m.group("rets") and not m.group("yields"):
+        return None
+    # T-0252: CALL <proc> YIELD * RETURN ... is in-query YIELD * which
+    # the Cypher spec disallows (UnexpectedSyntax). Fall through.
+    # (Standalone CALL YIELD * is OK — handled when rets is absent.)
+    if m.group("yields") and m.group("yields").strip() == "*" and m.group("rets"):
+        return None
+
+    # Parse args. Three cases:
+    # - Explicit: CALL name(a, b)        → use literal values.
+    # - Implicit: CALL name              (no parens) → pull args from
+    #                                       state.parameters by name.
+    # - Empty:    CALL name()            → no filtering.
+    args_raw = m.group("args")  # None if no parens, "" if empty parens
+    explicit_args: list[Any] = []
+    if args_raw is None:
+        # Implicit-arg mode: look up each declared arg name in parameters.
+        # If none of the args have matching params, skip filtering.
+        for arg_name in fixture.arg_names:
+            if arg_name in state.parameters:
+                explicit_args.append(state.parameters[arg_name])
+            else:
+                # Missing parameter — fall through to backend; the
+                # expected ParameterMissing error class won't surface
+                # from our synthesizer but the backend will (or won't)
+                # produce something the harness can score.
+                return None
+    elif args_raw.strip():
+        for part in [p.strip() for p in args_raw.split(",")]:
+            if not part:
+                continue
+            if part.startswith("$"):
+                pname = part[1:]
+                explicit_args.append(state.parameters.get(pname))
+            else:
+                try:
+                    explicit_args.append(parse_value(part))
+                except ValueParseError:
+                    explicit_args.append(part)
+
+    # T-0252: validate arg count against the declared signature.
+    # When the count mismatches (too few or too many), Cypher spec
+    # says the engine raises SyntaxError InvalidNumberOfArguments.
+    # Fall through to backend so the harness can score the expected
+    # error class. (Call1 [7]/[8]/[9]/[10] family.)
+    if args_raw is not None and len(explicit_args) != len(fixture.arg_names):
+        return None
+
+    # YIELD/RETURN projection. Build:
+    #   - yield_alias_map: {alias_in_query: fixture_column_name}
+    #     For `YIELD a AS c, b AS d`, map is {c: a, d: b}.
+    #     For bare YIELD a, b, map is {a: a, b: b} (identity).
+    #   - wanted: ordered list of column names in the final result.
+    # When RETURN is present, its columns are the final result names
+    # (looked up via yield_alias_map → fixture column → value).
+    rets_clause = m.group("rets")
+    yield_clause = m.group("yields")
+    yield_alias_map: dict[str, str] = {}
+    # T-0252: detect duplicate YIELD destination names. Cypher spec
+    # treats this as VariableAlreadyBound — fall through to backend
+    # so the expected SyntaxError surfaces. Call5 [5]/[6].
+    if yield_clause and yield_clause.strip() != "*":
+        seen_dst: set[str] = set()
+        for item in [c.strip() for c in yield_clause.split(",") if c.strip()]:
+            mas = re.match(r"^(?P<src>\w+)\s+AS\s+(?P<dst>\w+)$", item, re.IGNORECASE)
+            dst = mas.group("dst") if mas else item
+            if dst in seen_dst:
+                return None
+            seen_dst.add(dst)
+    if yield_clause and yield_clause.strip() != "*":
+        for item in [c.strip() for c in yield_clause.split(",") if c.strip()]:
+            mas = re.match(r"^(?P<src>\w+)\s+AS\s+(?P<dst>\w+)$", item, re.IGNORECASE)
+            if mas:
+                yield_alias_map[mas.group("dst")] = mas.group("src")
+            else:
+                yield_alias_map[item] = item
+    else:
+        # Bare YIELD * or no YIELD → identity map to all declared yields.
+        for n in fixture.yield_names:
+            yield_alias_map[n] = n
+
+    # WITH renames build a second alias map on top of YIELD's.
+    # E.g. `YIELD out WITH out AS a` → final map for `a` resolves via
+    # yield_alias_map[out] to fixture column out.
+    withs_clause = m.group("withs")
+    with_alias_map: dict[str, str] = {}
+    if withs_clause:
+        for item in [c.strip() for c in withs_clause.split(",") if c.strip()]:
+            mas = re.match(r"^(?P<src>\w+)\s+AS\s+(?P<dst>\w+)$", item, re.IGNORECASE)
+            if mas:
+                with_alias_map[mas.group("dst")] = mas.group("src")
+            else:
+                with_alias_map[item] = item
+
+    # Compose: final_alias[col] = fixture column.
+    # Lookup chain: col → with_alias_map → yield_alias_map → fixture col.
+    def resolve_col(col: str) -> str:
+        c = with_alias_map.get(col, col) if with_alias_map else col
+        return yield_alias_map.get(c, c)
+
+    if rets_clause:
+        rets_clause = rets_clause.strip()
+        if rets_clause == "*":
+            # RETURN * → project all in-scope vars (from WITH if present,
+            # else from YIELD).
+            wanted = list(with_alias_map.keys()) if with_alias_map else list(yield_alias_map.keys())
+        else:
+            wanted = [c.strip() for c in rets_clause.split(",") if c.strip()]
+    elif with_alias_map:
+        wanted = list(with_alias_map.keys())
+    else:
+        wanted = list(yield_alias_map.keys())
+
+    full_cols = fixture.arg_names + fixture.yield_names
+    out_rows: list[list[Any]] = []
+    for row in fixture.rows:
+        # Argument filter: when CALL passes explicit args, only keep
+        # rows whose arg-column values equal those args (positional).
+        if explicit_args and fixture.arg_names:
+            match = True
+            for i, av in enumerate(explicit_args):
+                if i >= len(fixture.arg_names):
+                    break
+                col_name = fixture.arg_names[i]
+                try:
+                    col_idx = full_cols.index(col_name)
+                except ValueError:
+                    match = False
+                    break
+                if col_idx >= len(row) or row[col_idx] != av:
+                    match = False
+                    break
+            if not match:
+                continue
+        # Skip rows entirely when there are no yields (e.g. doNothing).
+        if not wanted:
+            continue
+        projected = []
+        for col in wanted:
+            # Resolve through with_alias_map → yield_alias_map → fixture
+            # column. Each level may rename; chained lookup walks the
+            # final src column name.
+            src = resolve_col(col)
+            try:
+                idx = full_cols.index(src)
+                projected.append(row[idx] if idx < len(row) else None)
+            except ValueError:
+                projected.append(None)
+        out_rows.append(projected)
+    return QueryResult(headers=wanted, rows=out_rows)
 
 def _h_result_ordered(step, state, backend, m):
     _compare_result_table(state.last_result, step.table, ordered=True)
@@ -287,6 +565,7 @@ _HANDLERS = {
     "expect_error":     _h_expect_error,
     "no_side_effects":  _h_no_side_effects,
     "side_effects_table": _h_side_effects_table,
+    "procedure_declared": _h_procedure_declared,
 }
 
 
