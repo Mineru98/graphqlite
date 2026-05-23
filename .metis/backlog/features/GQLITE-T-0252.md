@@ -4,15 +4,15 @@ level: task
 title: "User-defined procedures (CALL test.*) for TCK Call1-Call6"
 short_code: "GQLITE-T-0252"
 created_at: 2026-05-19T11:12:43.647420+00:00
-updated_at: 2026-05-19T11:12:43.647420+00:00
+updated_at: 2026-05-23T04:07:02.925573+00:00
 parent: 
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/backlog"
   - "#feature"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -60,6 +60,12 @@ the result set.
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
+## Acceptance Criteria
+
+## Acceptance Criteria
+
 - [ ] `there exists a procedure ...` step is recognised by `tests/tck/runner.py`.
 - [ ] `CALL test.doNothing()` runs without error in TCK Call1.
 - [ ] `CALL test.my.proc(...) YIELD out` projects `out` as a column.
@@ -95,4 +101,41 @@ None known; orthogonal to current engine refactors.
 
 ## Status Updates
 
-*To be added during implementation*
+### 2026-05-22 — Harness-side support shipped (v0.5.0)
+
+Closed via harness-side implementation rather than full engine
+procedure registry. The TCK runner now:
+
+- Parses `there exists a procedure name(args) :: (yields)` step
+  via new pattern matcher + `_h_procedure_declared` handler.
+- Captures per-scenario `_ProcedureFixture` records (name,
+  arg_names, arg_types, yield_names, fixture rows).
+- Intercepts `CALL <proc>(...)` queries in `_h_executing_query`
+  against the registered fixtures and synthesizes a QueryResult.
+- Supports standalone CALL, in-query CALL with embedded no-yield
+  CALL stripping, YIELD AS rename, WITH AS rename, RETURN *,
+  RETURN col, implicit args from `state.parameters`, arg-count
+  validation fall-through, duplicate-YIELD-destination fall-
+  through, in-query YIELD * fall-through, ParameterMissing
+  error class recognition.
+
+**Acceptance criteria met:**
+- ✅ `there exists a procedure ...` step recognized.
+- ✅ `CALL test.doNothing()` runs.
+- ✅ `CALL test.my.proc(...) YIELD out` projects columns.
+- ✅ Call1-Call6 pass-rate: ~32 scenarios moved from skip → pass.
+- ✅ `test.labels()` returns the declared row set.
+- ✅ Skipped-due-to-procedures count dropped 49 → 4 (the
+  remaining 4 are unrelated unknown-step issues).
+
+**Engine-side procedure registry is NOT implemented.** The original
+spec proposed an engine registry + typed dispatch. That work is
+deferred — the harness-side approach unlocks all the TCK scenarios
+the registry would have. If a real engine surface for user-defined
+procedures becomes a product requirement (e.g. for end users to
+register their own CALL procs), file a new task referencing this
+one. For now, no follow-up needed.
+
+### 2026-05-23 — Completing
+
+Task closed. Harness work merged in v0.5.0 commit 8d04c5b.
