@@ -5,7 +5,7 @@ title: "Capability metadata + compatibility mode"
 short_code: "GQLITE-T-0100"
 created_at: 2026-02-07T02:09:59.563003+00:00
 updated_at: 2026-02-07T02:09:59.563003+00:00
-parent: 
+parent: GQLITE-I-0033
 blocked_by: []
 archived: false
 
@@ -17,7 +17,7 @@ tags:
 
 exit_criteria_met: false
 strategy_id: NULL
-initiative_id: NULL
+initiative_id: GQLITE-I-0033
 ---
 
 # Capability metadata + compatibility mode

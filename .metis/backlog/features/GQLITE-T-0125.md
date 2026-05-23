@@ -5,7 +5,7 @@ title: "Label disjunction in node patterns (n:Label1|Label2)"
 short_code: "GQLITE-T-0125"
 created_at: 2026-03-17T13:38:53.245690+00:00
 updated_at: 2026-03-17T18:30:08.811862+00:00
-parent: 
+parent: GQLITE-I-0045
 blocked_by: []
 archived: false
 
@@ -16,7 +16,7 @@ tags:
 
 
 exit_criteria_met: false
-initiative_id: NULL
+initiative_id: GQLITE-I-0045
 ---
 
 # Label disjunction in node patterns (n:Label1|Label2)
