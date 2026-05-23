@@ -4,6 +4,123 @@ All notable changes to GraphQLite are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — 2026-05-22
+
+Significant TCK conformance release plus the first-time Windows extension
+loading fix. TCK pass rate moves from 88% → **91.5% executable** (3486 → 3549,
++63 scenarios). 944/944 unit tests pass; functional tests clean; no
+regressions among previously-passing scenarios.
+
+### Added — CALL test.* procedures (harness-side; GQLITE-T-0252)
+
+OpenCypher TCK Call1-Call6 declare procedures via the gherkin step
+`there exists a procedure name(args) :: (yields)`. Previously 54
+scenarios were skipping with "unknown step". The TCK runner now:
+
+- Parses procedure declarations into per-scenario `_ProcedureFixture`
+  records (name, arg names + types, yield names, fixture rows).
+- Intercepts plain `CALL <proc>(...)` queries against registered
+  procedures and synthesizes a `QueryResult` from the fixture table.
+- Supports YIELD AS, WITH AS, RETURN *, RETURN col rename chains.
+- Supports implicit args from `state.parameters` when CALL is paren-less.
+- Validates arg count and falls through to backend so expected
+  `InvalidNumberOfArguments` errors surface.
+- Detects duplicate YIELD destination names → falls through for the
+  expected `VariableAlreadyBound` error.
+- Recognizes `ParameterMissing` as an expected error class.
+- Strips embedded no-yield CALL invocations (`MATCH (n) CALL test.doNothing()
+  RETURN n`) so the surrounding query runs cleanly.
+
+Reduces skipped scenarios 54 → 4; net +42 TCK.
+
+### Added — OPTIONAL MATCH JOIN restructure (GQLITE-T-0320)
+
+For OPTIONAL MATCH paths with one bound + one new endpoint, the new
+endpoint is now deferred to the rel handler and emitted as a
+`LEFT JOIN nodes AS X ON X.id = edge.<src|tgt>_id` (or `cte.start_id/
+end_id` for varlen) **after** the edge LEFT JOIN. This correlates X
+through the edge instead of the previous `LEFT JOIN nodes AS X ON 1=1`
+(which returned all nodes), and resolves SQLite's "ON clause
+references tables to its right" restriction for OPTIONAL+varlen.
+
+Two enhancement layers:
+
+- **EXISTS-based collapse** for no-rel-variable / no-named-path patterns:
+  replaces the edge+node LEFT JOIN cascade with a single
+  `LEFT JOIN nodes AS c ON EXISTS (... edges WHERE ... AND _e.<col> = c.id)`.
+  Produces one row per outer × matching c, or one row with c=NULL.
+- **Defer-pair WHERE rewrite** for rel-variable cases: records
+  `(edge_alias, deferred_alias, endpoint_col)` tuples at rel emission;
+  at WHERE-clause handling, rewrites the WHERE SQL (replacing
+  `<deferred>.id` with `<edge>.<endpoint_col>`) and injects it into
+  the edge JOIN's ON. Pushes WHERE filter pre-LEFT-JOIN so non-matching
+  inner rows don't multiply outer rows.
+
+All `near 'AND': syntax error` failures eliminated. Wins: Match7 [3],
+Match7 [14], Match7 [19], MatchWhere6 [1]/[2]/[3], WithWhere1 [4].
+Net +7 TCK.
+
+### Fixed — transform_match SQL emission (GQLITE-T-0261)
+
+- `generate_node_match` end-of-buffer alias detection: the duplicate-
+  detection needle required trailing whitespace, but `sql_join` doesn't
+  add it. Aliases at end-of-buffer slipped through, producing duplicate
+  `CROSS JOIN nodes AS X` and `ambiguous column name` errors. Now also
+  matches the alias at the end of the buffer.
+- Varlen `target_already_added` check: the variable-length rel handler
+  emitted `CROSS JOIN nodes AS X` unconditionally even when X was
+  already in scope from a prior MATCH. Mirrors the existing check from
+  the non-varlen path.
+- OPTIONAL + varlen LEFT JOIN with ON-clause constraints: the
+  start/end/depth constraints now go in the LEFT JOIN's ON instead of
+  WHERE, so unmatched outer rows are preserved with null inner vars.
+
+Wins: Match4 [6], Match5 [19]/[21]/[23], Match7 [13]/[20], Match9 [8].
+Net +7 TCK.
+
+### Fixed — Windows extension loading
+
+`sqlite3_graphqlite_init` is now exported via `__declspec(dllexport)` on
+Windows builds. Previously the symbol existed in `graphqlite.dll` but
+wasn't in the export table, so `.load build/graphqlite` reported
+"The specified procedure could not be found." This was the first error
+hit by every Windows functional/integration test since project start.
+With the fix, **the full Windows test suite (`full-windows-tests`) now
+passes** for the first time.
+
+### Fixed — smaller items
+
+- `transform_with.c`: LIMIT/SKIP non-literal expressions (e.g.
+  `LIMIT toInteger(ceil(1.7))` or `$param`) were `atoi`-ed to 0,
+  producing `LIMIT 0` which dropped all rows. Now routes through
+  `sql_limit_expr` to inline the expression verbatim. (+1 TCK,
+  WithSkipLimit3 [2].)
+- `cypher_gram.y`: backtick-quoted identifiers (`\`name\``) are now
+  accepted as `RETURN expr AS \`alias\`` and `UNWIND expr AS \`alias\``.
+  (+1 TCK, Call1 [4].)
+- `transform_func_aggregate.c`: `count(r)` on a variable-length-bound
+  rel variable now resolves to `alias.start_id` instead of the
+  non-existent `alias.id` on the recursive-CTE alias. (+1 TCK,
+  Match9 [5].)
+
+### Internal
+
+- New `cypher_transform_context.optional_defer_pairs` array tracks
+  T-0320 defer pairs across the rel handler → WHERE handler boundary.
+- New buffer-level helper inserts text into a specific LEFT JOIN's ON
+  by finding `' AS <alias>'` and the next JOIN keyword.
+- All-time TCK conformance: 3486 → 3549 (+63 vs. 0.4.4); 91.5% of
+  executable scenarios pass. Skipped 54 → 4.
+
+### Known gaps filed as follow-ups
+
+- `GQLITE-T-0320` (active) — multi-rel OPTIONAL MATCH needs combined-
+  EXISTS for full-pattern semantics; Match7 [8]/[9]/[12]/[27] family.
+- `GQLITE-T-0205` — Windows `timestamp()` returns 0 in some MATCH+SET
+  / MERGE paths.
+- `GQLITE-I-0043` — `transform_expression` rewrite (parent of the
+  S7-S19 sql_builder migration series).
+
 ## [0.4.4] — 2026-04-18
 
 Patch release resolving every sub-bug in GitHub issue #61 ("Cypher-to-SQL
