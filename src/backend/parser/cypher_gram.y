@@ -300,6 +300,12 @@ unwind_clause:
             $$ = (ast_node*)make_cypher_unwind($2, $4, @1.first_line);
             free($4);
         }
+    | UNWIND expr AS BQIDENT
+        {
+            /* Backtick-quoted alias (scanner stripped the backticks). */
+            $$ = (ast_node*)make_cypher_unwind($2, $4, @1.first_line);
+            free($4);
+        }
     ;
 
 /* FOREACH clause - iterate over list and apply update clauses */
@@ -484,6 +490,14 @@ return_item:
         }
     | expr AS IDENTIFIER
         {
+            $$ = make_return_item($1, $3);
+            free($3);
+        }
+    | expr AS BQIDENT
+        {
+            /* Backtick-quoted alias (e.g. RETURN x AS `name`) — the
+             * scanner has already stripped the surrounding backticks.
+             * Same shape as IDENTIFIER. */
             $$ = make_return_item($1, $3);
             free($3);
         }

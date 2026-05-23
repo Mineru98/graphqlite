@@ -1,6 +1,6 @@
 # Code Index
 
-> Generated: 2026-05-21T14:45:10Z | 73 files | JavaScript, Python, Rust
+> Generated: 2026-05-23T02:15:29Z | 73 files | JavaScript, Python, Rust
 
 ## Project Structure
 
@@ -1462,32 +1462,37 @@
 #### tests/tck/runner.py
 
 - pub `ScenarioOutcome` class L29-37 — `-`
-- pub `run_feature` function L72-77 — `def run_feature(feature: Feature, backend: Backend) -> list[ScenarioOutcome]`
-- pub `__init__` method L163-166 — `def __init__(self, msg: str, expected: Any = None, actual: Any = None)`
-- pub `__init__` method L172-175 — `def __init__(self, error_class: str, message: str)`
--  `_State` class L41-44 — `-`
--  `_rel_to_features_root` function L80-85 — `def _rel_to_features_root(path: Path) -> str`
--  `_run_scenario` function L88-142 — `def _run_scenario(feature_file: str, sc: Scenario, backend: Backend) -> Scenario...`
--  `_outcome` function L145-156 — `def _outcome(feature_file: str, sc: Scenario, status: str, backend: Backend, t0:...`
--  `_Mismatch` class L162-166 — `(Exception) { __init__ }`
--  `_BackendErrorAtThen` class L169-175 — `(Exception) { __init__ }` — Backend raised/crashed when the scenario expected a successful result table.
--  `_Marker` class L178 — `-`
--  `_dispatch` function L183-190 — `def _dispatch(step: Step)`
--  `_h_empty_graph` function L196-197 — `def _h_empty_graph(step, state, backend, m)`
--  `_h_named_graph` function L199-201 — `def _h_named_graph(step, state, backend, m)`
--  `_h_having_executed` function L203-206 — `def _h_having_executed(step, state, backend, m)`
--  `_h_parameters` function L208-223 — `def _h_parameters(step, state, backend, m)`
--  `_h_executing_query` function L225-231 — `def _h_executing_query(step, state, backend, m)`
--  `_h_result_ordered` function L233-235 — `def _h_result_ordered(step, state, backend, m)`
--  `_h_result_any_order` function L237-239 — `def _h_result_any_order(step, state, backend, m)`
--  `_h_result_any_order_lists_unordered` function L241-244 — `def _h_result_any_order_lists_unordered(step, state, backend, m)`
--  `_h_result_ordered_lists_unordered` function L246-249 — `def _h_result_ordered_lists_unordered(step, state, backend, m)`
--  `_h_result_empty` function L251-256 — `def _h_result_empty(step, state, backend, m)`
--  `_h_expect_error` function L258-261 — `def _h_expect_error(step, state, backend, m)`
--  `_h_no_side_effects` function L263-265 — `def _h_no_side_effects(step, state, backend, m)`
--  `_h_side_effects_table` function L267-273 — `def _h_side_effects_table(step, state, backend, m)`
--  `_compare_result_table` function L293-337 — `def _compare_result_table(result: QueryResult | None, table: list[list[str]] | N...`
--  `_rows_equal` function L340-344 — `def _rows_equal(expected: list[Any], actual: list[Any], lists_unordered: bool = ...`
+- pub `run_feature` function L92-97 — `def run_feature(feature: Feature, backend: Backend) -> list[ScenarioOutcome]`
+- pub `__init__` method L183-186 — `def __init__(self, msg: str, expected: Any = None, actual: Any = None)`
+- pub `__init__` method L192-195 — `def __init__(self, error_class: str, message: str)`
+-  `_ProcedureFixture` class L41-50 — `-` — A test.* procedure declared via Gherkin's
+-  `_State` class L54-58 — `-`
+-  `_rel_to_features_root` function L100-105 — `def _rel_to_features_root(path: Path) -> str`
+-  `_run_scenario` function L108-162 — `def _run_scenario(feature_file: str, sc: Scenario, backend: Backend) -> Scenario...`
+-  `_outcome` function L165-176 — `def _outcome(feature_file: str, sc: Scenario, status: str, backend: Backend, t0:...`
+-  `_Mismatch` class L182-186 — `(Exception) { __init__ }`
+-  `_BackendErrorAtThen` class L189-195 — `(Exception) { __init__ }` — Backend raised/crashed when the scenario expected a successful result table.
+-  `_Marker` class L198 — `-`
+-  `_dispatch` function L203-210 — `def _dispatch(step: Step)`
+-  `_h_empty_graph` function L216-217 — `def _h_empty_graph(step, state, backend, m)`
+-  `_h_named_graph` function L219-221 — `def _h_named_graph(step, state, backend, m)`
+-  `_h_having_executed` function L223-226 — `def _h_having_executed(step, state, backend, m)`
+-  `_h_parameters` function L228-243 — `def _h_parameters(step, state, backend, m)`
+-  `_h_executing_query` function L245-265 — `def _h_executing_query(step, state, backend, m)`
+-  `_strip_embedded_noyield_call` function L268-289 — `def _strip_embedded_noyield_call(query: str, state) -> str` — Strip `CALL <registered no-yield proc>(...)` lines from a query.
+-  `_split_signature_columns` function L292-303 — `def _split_signature_columns(sig: str) -> list[str]` — Parse `in :: INTEGER?, out :: STRING?` into ['in', 'out'].
+-  `_h_procedure_declared` function L306-328 — `def _h_procedure_declared(step, state, backend, m)` — T-0252: register a test.* procedure fixture for this scenario.
+-  `_maybe_call_procedure` function L331-509 — `def _maybe_call_procedure(query: str, state) -> QueryResult | None` — If query is a CALL <proc>(...) [YIELD ...] [RETURN ...] against
+-  `_h_result_ordered` function L511-513 — `def _h_result_ordered(step, state, backend, m)`
+-  `_h_result_any_order` function L515-517 — `def _h_result_any_order(step, state, backend, m)`
+-  `_h_result_any_order_lists_unordered` function L519-522 — `def _h_result_any_order_lists_unordered(step, state, backend, m)`
+-  `_h_result_ordered_lists_unordered` function L524-527 — `def _h_result_ordered_lists_unordered(step, state, backend, m)`
+-  `_h_result_empty` function L529-534 — `def _h_result_empty(step, state, backend, m)`
+-  `_h_expect_error` function L536-539 — `def _h_expect_error(step, state, backend, m)`
+-  `_h_no_side_effects` function L541-543 — `def _h_no_side_effects(step, state, backend, m)`
+-  `_h_side_effects_table` function L545-551 — `def _h_side_effects_table(step, state, backend, m)`
+-  `_compare_result_table` function L572-616 — `def _compare_result_table(result: QueryResult | None, table: list[list[str]] | N...`
+-  `_rows_equal` function L619-623 — `def _rows_equal(expected: list[Any], actual: list[Any], lists_unordered: bool = ...`
 
 #### tests/tck/values.py
 

@@ -17,7 +17,21 @@ static int transform_match_pattern(cypher_transform_context *ctx, ast_node *patt
 static int generate_node_match(cypher_transform_context *ctx, cypher_node_pattern *node, const char *alias, bool optional);
 static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel_pattern *rel,
                                      cypher_node_pattern *source_node, cypher_node_pattern *target_node,
-                                     int rel_index, bool optional, path_type ptype);
+                                     int rel_index, bool optional, path_type ptype,
+                                     bool src_deferred, bool tgt_deferred);
+/* T-0320 transitional alias: the previous call sites used the no-defer
+ * variant. Keep a thin wrapper for clarity at the path-loop call site
+ * that already computed the flags. */
+static inline int generate_relationship_match_with_defer(
+    cypher_transform_context *ctx, cypher_rel_pattern *rel,
+    cypher_node_pattern *source_node, cypher_node_pattern *target_node,
+    int rel_index, bool optional, path_type ptype,
+    bool src_deferred, bool tgt_deferred)
+{
+    return generate_relationship_match(ctx, rel, source_node, target_node,
+                                       rel_index, optional, ptype,
+                                       src_deferred, tgt_deferred);
+}
 
 /*
  * Generate the proper node id reference for join conditions.
@@ -548,10 +562,112 @@ handle_where_clause:
         if (ctx->sql_size > 0) {
             if (match->optional) {
                 sql_join_append_on(ctx->unified_builder, ctx->sql_buffer);
+
+                /* T-0320: for each defer pair recorded by the rel
+                 * handler, produce a rewritten copy of the WHERE
+                 * (replacing `<deferred_alias>.id` with
+                 * `<edge_alias>.<endpoint_col>`) and inject it
+                 * into the edge JOIN's ON clause. This pushes the
+                 * predicate filter PRE-LEFT-JOIN so non-matching
+                 * inner rows don't multiply outer rows.
+                 * MatchWhere6 [1]/[2]/[3] family. */
+                for (int dp = 0; dp < ctx->optional_defer_pairs_count; dp++) {
+                    const char *def_alias = ctx->optional_defer_pairs[dp].deferred_alias;
+                    const char *edge_a = ctx->optional_defer_pairs[dp].edge_alias;
+                    const char *col = ctx->optional_defer_pairs[dp].endpoint_col;
+                    /* Build needle `<def_alias>.id` and replacement
+                     * `<edge_a>.<col>`. Scan the WHERE SQL and
+                     * produce a rewritten copy. */
+                    char needle[80];
+                    snprintf(needle, sizeof(needle), "%s.id", def_alias);
+                    size_t nlen = strlen(needle);
+                    char repl[80];
+                    snprintf(repl, sizeof(repl), "%s.%s", edge_a, col);
+                    size_t rlen = strlen(repl);
+                    const char *src_buf = ctx->sql_buffer;
+                    size_t src_len = strlen(src_buf);
+                    /* Count occurrences for sizing. */
+                    int n_occ = 0;
+                    for (const char *p = src_buf; (p = strstr(p, needle)) != NULL; p += nlen) {
+                        n_occ++;
+                    }
+                    if (n_occ == 0) continue;
+                    size_t out_cap = src_len + n_occ * (rlen - nlen) + 1;
+                    char *rewritten = malloc(out_cap);
+                    if (!rewritten) continue;
+                    char *out_p = rewritten;
+                    const char *cur = src_buf;
+                    while (1) {
+                        const char *hit = strstr(cur, needle);
+                        if (!hit) {
+                            strcpy(out_p, cur);
+                            break;
+                        }
+                        size_t prefix_len = hit - cur;
+                        memcpy(out_p, cur, prefix_len);
+                        out_p += prefix_len;
+                        memcpy(out_p, repl, rlen);
+                        out_p += rlen;
+                        cur = hit + nlen;
+                    }
+                    /* Inject into the edge JOIN's ON. Find ` AS
+                     * <edge_a> ` in the joins buffer; the end of
+                     * that JOIN's ON is the position of the next
+                     * " LEFT JOIN" / " JOIN" / " CROSS JOIN" or
+                     * end-of-buffer. Insert " AND <rewritten>" there. */
+                    sql_builder *b = ctx->unified_builder;
+                    const char *jbuf = dbuf_get(&b->joins);
+                    if (!jbuf) { free(rewritten); continue; }
+                    char marker[80];
+                    snprintf(marker, sizeof(marker), " AS %s", edge_a);
+                    const char *anchor = NULL;
+                    /* Find last occurrence of the marker. */
+                    for (const char *p = jbuf; (p = strstr(p, marker)) != NULL; p++) {
+                        anchor = p;
+                    }
+                    if (!anchor) { free(rewritten); continue; }
+                    /* Move past the marker. */
+                    anchor += strlen(marker);
+                    /* Find the start of the next JOIN keyword. */
+                    const char *next_left = strstr(anchor, " LEFT JOIN ");
+                    const char *next_inner = strstr(anchor, " JOIN ");
+                    const char *next_cross = strstr(anchor, " CROSS JOIN ");
+                    const char *insertion = NULL;
+                    if (next_left) insertion = next_left;
+                    if (next_inner && (!insertion || next_inner < insertion)) insertion = next_inner;
+                    if (next_cross && (!insertion || next_cross < insertion)) insertion = next_cross;
+                    if (!insertion) {
+                        /* End of buffer — just append. */
+                        dbuf_appendf(&b->joins, " AND %s", rewritten);
+                    } else {
+                        /* Build replacement: prefix + " AND <rewritten>" + suffix. */
+                        size_t prefix_len = insertion - jbuf;
+                        size_t old_jlen = strlen(jbuf);
+                        size_t inj_len = 5 + strlen(rewritten); /* " AND " */
+                        char *new_jbuf = malloc(old_jlen + inj_len + 1);
+                        if (new_jbuf) {
+                            memcpy(new_jbuf, jbuf, prefix_len);
+                            memcpy(new_jbuf + prefix_len, " AND ", 5);
+                            memcpy(new_jbuf + prefix_len + 5, rewritten, strlen(rewritten));
+                            memcpy(new_jbuf + prefix_len + inj_len,
+                                   jbuf + prefix_len, old_jlen - prefix_len);
+                            new_jbuf[old_jlen + inj_len] = '\0';
+                            /* Replace the joins buffer. */
+                            dbuf_clear(&b->joins);
+                            dbuf_append(&b->joins, new_jbuf);
+                            free(new_jbuf);
+                        }
+                    }
+                    free(rewritten);
+                }
             } else {
                 sql_where(ctx->unified_builder, ctx->sql_buffer);
             }
         }
+
+        /* T-0320: clear defer-pair tracking after WHERE is processed
+         * so subsequent MATCH clauses don't see stale pairs. */
+        cypher_transform_clear_defer_pairs(ctx);
 
         /* Restore sql_buffer */
         ctx->sql_size = saved_size;
@@ -603,7 +719,100 @@ static int transform_match_pattern(cypher_transform_context *ctx, ast_node *patt
     /* For now, handle simple node patterns */
     /* TODO: Handle relationship patterns */
 
+    /* T-0320: for OPTIONAL MATCH paths, compute per-element "defer to
+     * rel handler" flags. A node element is deferred when:
+     *   - this MATCH is OPTIONAL,
+     *   - the node is NEW in this MATCH (not bound by prior clause),
+     *   - the node is adjacent to a non-varlen relationship pattern,
+     *   - AT LEAST ONE other endpoint of that rel IS bound.
+     *
+     * Deferred nodes are NOT emitted by the path-element loop —
+     * the rel handler emits them as `LEFT JOIN nodes AS X ON X.id
+     * = edge.<src|tgt>_id` AFTER the edge LEFT JOIN, so X is
+     * correlated through the edge (preserves OPTIONAL semantics:
+     * X is null when no edge match). The varlen path uses a
+     * separate code path (already restructured for some shapes). */
+    bool *defer_to_rel = NULL;
+    if (optional && path->elements && path->elements->count > 0) {
+        defer_to_rel = calloc(path->elements->count, sizeof(bool));
+        if (!defer_to_rel) {
+            ctx->has_error = true;
+            ctx->error_message = strdup("Out of memory in path emission analysis");
+            return -1;
+        }
+        for (int j = 0; j < path->elements->count; j++) {
+            ast_node *el = path->elements->items[j];
+            if (el->type != AST_NODE_REL_PATTERN) continue;
+            if (j == 0 || j + 1 >= path->elements->count) continue;
+            cypher_rel_pattern *r = (cypher_rel_pattern *)el;
+            /* Bound rels (e.g. `WITH r ... OPTIONAL MATCH ...-[r]-...`)
+             * use a WHERE-based constraint emission, not a fresh edge
+             * JOIN. The endpoint node JOINs must come from the path
+             * loop's generate_node_match — don't defer them. */
+            if (r->variable &&
+                transform_var_alias_is_id(ctx->var_ctx, r->variable)) {
+                continue;
+            }
+            ast_node *prev = path->elements->items[j - 1];
+            ast_node *next = path->elements->items[j + 1];
+            if (prev->type != AST_NODE_NODE_PATTERN ||
+                next->type != AST_NODE_NODE_PATTERN) continue;
+            cypher_node_pattern *src = (cypher_node_pattern *)prev;
+            cypher_node_pattern *tgt = (cypher_node_pattern *)next;
+
+            /* An endpoint is "available" for the edge JOIN's ON if it
+             * is either (a) bound by a prior clause OR (b) has been
+             * deferred by an earlier rel in THIS path (which will be
+             * in scope by the time this rel handler runs). */
+            bool src_avail = false, tgt_avail = false;
+            if (src->variable) {
+                transform_var *v = transform_var_lookup(ctx->var_ctx, src->variable);
+                src_avail = (v != NULL);
+            }
+            if (tgt->variable) {
+                transform_var *v = transform_var_lookup(ctx->var_ctx, tgt->variable);
+                tgt_avail = (v != NULL);
+            }
+            /* Pre-deferred from an earlier rel in this same path:
+             * a deferred node is emitted by the previous rel
+             * handler, so it's in scope for the next rel. */
+            if (!src_avail && defer_to_rel[j - 1]) src_avail = true;
+            if (!tgt_avail && defer_to_rel[j + 1]) tgt_avail = true;
+
+            /* Defer the unavailable endpoint when the OTHER endpoint
+             * is available (so this rel's ON can anchor to it). */
+            if (!src_avail && tgt_avail) {
+                defer_to_rel[j - 1] = true;
+            }
+            if (src_avail && !tgt_avail) {
+                defer_to_rel[j + 1] = true;
+            }
+        }
+    }
+
     for (int i = 0; i < path->elements->count; i++) {
+        if (defer_to_rel && defer_to_rel[i]) {
+            /* T-0320: this node will be emitted by the rel handler
+             * via the edge JOIN. Still need to register the variable
+             * so downstream lookups resolve to the alias the rel
+             * handler will use. */
+            ast_node *el = path->elements->items[i];
+            if (el->type == AST_NODE_NODE_PATTERN) {
+                cypher_node_pattern *n = (cypher_node_pattern *)el;
+                if (n->variable) {
+                    transform_var *v = transform_var_lookup(ctx->var_ctx, n->variable);
+                    if (!v) {
+                        char *gen_alias = get_next_default_alias(ctx);
+                        if (gen_alias) {
+                            const char *label = has_labels(n) ? get_label_string(n->labels->items[0]) : NULL;
+                            transform_var_register_node(ctx->var_ctx, n->variable, gen_alias, label);
+                            free(gen_alias);
+                        }
+                    }
+                }
+            }
+            continue;
+        }
         ast_node *element = path->elements->items[i];
         
         if (element->type == AST_NODE_NODE_PATTERN) {
@@ -778,13 +987,21 @@ static int transform_match_pattern(cypher_transform_context *ctx, ast_node *patt
                 /* Note: This modifies the AST, ensuring consistent naming across passes */
             }
             
-            /* Generate relationship match SQL */
-            if (generate_relationship_match(ctx, rel, source_node, target_node, i, optional, path->type) < 0) {
+            /* Generate relationship match SQL.
+             * T-0320: pass the defer flags so the rel handler knows
+             * to emit deferred-source/target node LEFT JOINs after
+             * the edge LEFT JOIN. */
+            bool src_deferred = defer_to_rel ? defer_to_rel[i - 1] : false;
+            bool tgt_deferred = defer_to_rel ? defer_to_rel[i + 1] : false;
+            if (generate_relationship_match_with_defer(ctx, rel, source_node, target_node, i, optional,
+                                                       path->type, src_deferred, tgt_deferred) < 0) {
+                free(defer_to_rel);
                 return -1;
             }
         }
     }
-    
+
+    free(defer_to_rel);
     return 0;
 }
 
@@ -811,7 +1028,14 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
     /* If this alias has already been added to FROM/joins by an earlier
      * generate_relationship_match call (OPTIONAL MATCH joins the target
      * node through the edge), skip re-adding it to avoid duplicate-alias
-     * SQL errors. */
+     * SQL errors.
+     *
+     * T-0261: also catch the case where the alias is at the END of the
+     * joins buffer (no trailing space/newline). The varlen rel handler
+     * emits `CROSS JOIN nodes AS n_3` via sql_join which doesn't add a
+     * trailing separator; the path loop then runs generate_node_match
+     * for the same anon node and previously emitted a duplicate join.
+     * Match4 [6] / Match5 [19]/[21]/[23]/[28]/[29] family. */
     {
         const char *from_str = dbuf_get(&ctx->unified_builder->from);
         const char *joins_str = dbuf_get(&ctx->unified_builder->joins);
@@ -819,8 +1043,25 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
         snprintf(needle, sizeof(needle), " AS %s ", alias);
         char needle_end[80];
         snprintf(needle_end, sizeof(needle_end), " AS %s\n", alias);
-        if ((from_str && (strstr(from_str, needle) || strstr(from_str, needle_end))) ||
-            (joins_str && (strstr(joins_str, needle) || strstr(joins_str, needle_end)))) {
+        size_t alias_len = strlen(alias);
+        char suffix[80];
+        snprintf(suffix, sizeof(suffix), " AS %s", alias);
+        size_t suffix_len = strlen(suffix);
+        bool found = false;
+        if (from_str) {
+            if (strstr(from_str, needle) || strstr(from_str, needle_end)) found = true;
+            size_t flen = strlen(from_str);
+            if (!found && flen >= suffix_len &&
+                strcmp(from_str + flen - suffix_len, suffix) == 0) found = true;
+        }
+        if (!found && joins_str) {
+            if (strstr(joins_str, needle) || strstr(joins_str, needle_end)) found = true;
+            size_t jlen = strlen(joins_str);
+            if (!found && jlen >= suffix_len &&
+                strcmp(joins_str + jlen - suffix_len, suffix) == 0) found = true;
+        }
+        (void)alias_len;
+        if (found) {
             CYPHER_DEBUG("Skipping duplicate node match for %s", alias);
             return 0;
         }
@@ -1030,11 +1271,25 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
     return 0;
 }
 
-/* Generate SQL for matching a relationship pattern */
+/* Generate SQL for matching a relationship pattern.
+ *
+ * T-0320: src_deferred / tgt_deferred indicate that the corresponding
+ * endpoint node was NOT emitted by the path-element loop (because
+ * the pattern is OPTIONAL MATCH with one bound + one new endpoint,
+ * and the path-loop chose to defer the new endpoint to be emitted
+ * VIA the edge join here). When set, this handler:
+ *   1. Builds the edge JOIN's ON referencing ONLY the bound endpoint(s).
+ *   2. After the edge JOIN, emits `LEFT JOIN nodes AS X ON X.id =
+ *      edge.<src|tgt>_id` so X correlates through the edge —
+ *      preserves OPTIONAL semantics (X is null when no edge matched).
+ *
+ * Both flags are zero on the non-OPTIONAL / non-deferred path. */
 static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel_pattern *rel,
                                      cypher_node_pattern *source_node, cypher_node_pattern *target_node,
-                                     int rel_index, bool optional, path_type ptype)
+                                     int rel_index, bool optional, path_type ptype,
+                                     bool src_deferred, bool tgt_deferred)
 {
+    (void)src_deferred; (void)tgt_deferred;  /* TODO: wire into emission */
     CYPHER_DEBUG("Generating %s match for relationship %s between nodes (varlen=%s)",
                  optional ? "OPTIONAL" : "regular",
                  rel->type ? rel->type : "<no type>",
@@ -1198,8 +1453,18 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
                      "_vp_tgt_%d", rel_index);
         }
 
-        /* Join the main query with the CTE result using unified builder */
-        sql_join(ctx->unified_builder, SQL_JOIN_CROSS, cte_name, edge_alias, NULL);
+        /* Join the main query with the CTE result using unified builder.
+         * T-0261: for OPTIONAL MATCH, use LEFT JOIN with a placeholder
+         * ON `1=1` so that (1) the no-match outer row is preserved and
+         * (2) subsequent constraint emission can use sql_join_append_on
+         * to attach to this JOIN's ON clause (CROSS JOIN has no ON, so
+         * append_on previously produced malformed SQL like
+         * `CROSS JOIN ... AS alias AND (...)`). */
+        if (optional) {
+            sql_join(ctx->unified_builder, SQL_JOIN_LEFT, cte_name, edge_alias, "1=1");
+        } else {
+            sql_join(ctx->unified_builder, SQL_JOIN_CROSS, cte_name, edge_alias, NULL);
+        }
 
         /* T-0306 follow-on: skip the target-node JOIN entirely when the
          * target var is bound via WITH (its column-ref IS the id; no
@@ -1208,6 +1473,45 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
          * directly. */
         if (target_alias_is_colref) {
             goto skip_target_node_join;
+        }
+
+        /* T-0320: when the path-loop deferred the target endpoint to
+         * this handler (OPTIONAL+varlen with unbound target), the
+         * target-node LEFT JOIN is emitted AFTER constraints below
+         * via `LEFT JOIN nodes AS target ON target.id = cte.end_id`.
+         * Skip the existing in-handler target-node JOIN to avoid
+         * a duplicate `CROSS JOIN nodes AS target` (with no ON). */
+        if (tgt_deferred) {
+            goto skip_target_node_join;
+        }
+
+        /* T-0261: also skip when the target alias is already in FROM/
+         * joins (e.g. previously bound by a sibling MATCH clause). The
+         * varlen path otherwise emits a duplicate `CROSS JOIN nodes
+         * AS <alias>` that SQLite rejects with `ambiguous column name`.
+         * Match7 [13]/[20] family. */
+        {
+            const char *from_str = dbuf_get(&ctx->unified_builder->from);
+            const char *joins_str = dbuf_get(&ctx->unified_builder->joins);
+            char needle1[80], needle2[80], suffix[80];
+            snprintf(needle1, sizeof(needle1), " AS %s ", target_alias);
+            snprintf(needle2, sizeof(needle2), " AS %s\n", target_alias);
+            snprintf(suffix, sizeof(suffix), " AS %s", target_alias);
+            size_t slen = strlen(suffix);
+            bool target_in_scope = false;
+            if (from_str) {
+                if (strstr(from_str, needle1) || strstr(from_str, needle2)) target_in_scope = true;
+                size_t flen = strlen(from_str);
+                if (!target_in_scope && flen >= slen &&
+                    strcmp(from_str + flen - slen, suffix) == 0) target_in_scope = true;
+            }
+            if (!target_in_scope && joins_str) {
+                if (strstr(joins_str, needle1) || strstr(joins_str, needle2)) target_in_scope = true;
+                size_t jlen = strlen(joins_str);
+                if (!target_in_scope && jlen >= slen &&
+                    strcmp(joins_str + jlen - slen, suffix) == 0) target_in_scope = true;
+            }
+            if (target_in_scope) goto skip_target_node_join;
         }
 
         /* Add target node to FROM clause - needed for the CTE join */
@@ -1301,7 +1605,13 @@ skip_target_node_join:
         CYPHER_DEBUG("Added varlen CTE join: %s for relationship between %s and %s",
                      cte_name, source_alias, target_alias);
 
-        /* Add WHERE constraints for the CTE join using unified builder */
+        /* Add WHERE constraints for the CTE join using unified builder.
+         * T-0320: when the target is deferred (OPTIONAL+varlen with
+         * unbound target), the target alias isn't yet in scope —
+         * skip the end_id constraint here, and emit a target-node
+         * LEFT JOIN tied via CTE.end_id AFTER the CTE join (below).
+         * Same applies to src_deferred for OPTIONAL+varlen with
+         * unbound source. */
         char src_id_ref[256], tgt_id_ref[256];
         snprintf(src_id_ref, sizeof(src_id_ref), "%s",
                  get_node_id_ref(ctx, source_alias, source_node->variable));
@@ -1309,8 +1619,22 @@ skip_target_node_join:
                  get_node_id_ref(ctx, target_alias, target_node->variable));
 
         dbuf_init(&on_cond);
-        dbuf_appendf(&on_cond, "%s.start_id = %s AND %s.end_id = %s",
-                     edge_alias, src_id_ref, edge_alias, tgt_id_ref);
+        bool varlen_first_cond = true;
+        if (!src_deferred) {
+            dbuf_appendf(&on_cond, "%s.start_id = %s", edge_alias, src_id_ref);
+            varlen_first_cond = false;
+        }
+        if (!tgt_deferred) {
+            if (varlen_first_cond) {
+                dbuf_appendf(&on_cond, "%s.end_id = %s", edge_alias, tgt_id_ref);
+                varlen_first_cond = false;
+            } else {
+                dbuf_appendf(&on_cond, " AND %s.end_id = %s", edge_alias, tgt_id_ref);
+            }
+        }
+        if (varlen_first_cond) {
+            dbuf_append(&on_cond, "1=1");
+        }
 
         /* Always honor min_hops (zero-hop rows come from the CTE base case
          * we just added; bound-1 paths are excluded if min > 1). */
@@ -1334,8 +1658,64 @@ skip_target_node_join:
                          edge_alias, cte_name, src_id_ref, tgt_id_ref);
         }
 
-        sql_where(ctx->unified_builder, dbuf_get(&on_cond));
+        /* T-0261: for OPTIONAL, attach varlen constraints to the LEFT
+         * JOIN's ON clause so unmatched outer rows are preserved.
+         * Non-optional uses WHERE (post-CROSS-JOIN filter). */
+        if (optional) {
+            sql_join_append_on(ctx->unified_builder, dbuf_get(&on_cond));
+        } else {
+            sql_where(ctx->unified_builder, dbuf_get(&on_cond));
+        }
         dbuf_free(&on_cond);
+
+        /* T-0320: emit deferred endpoint-node LEFT JOINs tied via the
+         * CTE row's start_id / end_id. Preserves OPTIONAL semantics:
+         * when no path matches, CTE row is NULL → endpoint node is
+         * NULL too. */
+        if (optional && src_deferred) {
+            const char *fs0 = dbuf_get(&ctx->unified_builder->from);
+            const char *js0 = dbuf_get(&ctx->unified_builder->joins);
+            char needle[80], suffix[80];
+            snprintf(needle, sizeof(needle), " AS %s ", source_alias);
+            snprintf(suffix, sizeof(suffix), " AS %s", source_alias);
+            size_t slen = strlen(suffix);
+            bool already = false;
+            if (fs0 && (strstr(fs0, needle) ||
+                        (strlen(fs0) >= slen &&
+                         strcmp(fs0 + strlen(fs0) - slen, suffix) == 0))) already = true;
+            if (!already && js0 && (strstr(js0, needle) ||
+                        (strlen(js0) >= slen &&
+                         strcmp(js0 + strlen(js0) - slen, suffix) == 0))) already = true;
+            if (!already) {
+                char src_cond[256];
+                snprintf(src_cond, sizeof(src_cond),
+                         "%s.id = %s.start_id", source_alias, edge_alias);
+                sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
+                         get_graph_table(ctx, "nodes"), source_alias, src_cond);
+            }
+        }
+        if (optional && tgt_deferred) {
+            const char *fs0 = dbuf_get(&ctx->unified_builder->from);
+            const char *js0 = dbuf_get(&ctx->unified_builder->joins);
+            char needle[80], suffix[80];
+            snprintf(needle, sizeof(needle), " AS %s ", target_alias);
+            snprintf(suffix, sizeof(suffix), " AS %s", target_alias);
+            size_t slen = strlen(suffix);
+            bool already = false;
+            if (fs0 && (strstr(fs0, needle) ||
+                        (strlen(fs0) >= slen &&
+                         strcmp(fs0 + strlen(fs0) - slen, suffix) == 0))) already = true;
+            if (!already && js0 && (strstr(js0, needle) ||
+                        (strlen(js0) >= slen &&
+                         strcmp(js0 + strlen(js0) - slen, suffix) == 0))) already = true;
+            if (!already) {
+                char tgt_cond[256];
+                snprintf(tgt_cond, sizeof(tgt_cond),
+                         "%s.id = %s.end_id", target_alias, edge_alias);
+                sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
+                         get_graph_table(ctx, "nodes"), target_alias, tgt_cond);
+            }
+        }
 
         return 0; /* Skip the rest of the relationship handling */
     }
@@ -1420,6 +1800,157 @@ skip_target_node_join:
             /* For OPTIONAL MATCH, we LEFT JOIN edges first, then target through edge */
             /* This ensures we get NULLs for unmatched patterns, not cartesian products */
 
+            /* T-0320: when the rel has no user-visible variable AND we
+             * have exactly one bound + one deferred endpoint AND no
+             * named-path captures the rel, use an EXISTS-based LEFT
+             * JOIN nodes shape so we get 1 row per outer binding
+             * (matching c) or 1 row with c=NULL (no match). This is
+             * the correct Cypher OPTIONAL MATCH semantics — WHERE
+             * filters inner matches; outer rows are preserved per
+             * (a, b, ...) NOT per outer×edge.
+             *
+             * The existing edge+node LEFT JOIN cascade multiplied rows
+             * by the number of candidate edges, which produced extra
+             * rows even when WHERE filtered out c. MatchWhere6 family.
+             *
+             * Named paths (e.g. `MATCH p = (a)-[:X]->(b)`) need the
+             * edge as a real binding so the path projector can
+             * recover it — skip the EXISTS shortcut in that case. */
+            bool synthetic_rel = (rel->variable && strncmp(rel->variable, "_gql_default_alias_", 19) == 0);
+            bool no_user_rel_var = (synthetic_rel || !rel->variable);
+            bool path_is_named = transform_var_lookup(ctx->var_ctx, NULL) != NULL;
+            /* The above is wrong placeholder — actually check if any
+             * path var references this rel. Use a simpler heuristic:
+             * check whether the rel's variable (if synthetic-generated)
+             * is captured as path element. For simplicity, opt out of
+             * the EXISTS shortcut whenever ANY VAR_KIND_PATH exists
+             * in the var context (path is named somewhere). */
+            (void)path_is_named;
+            bool has_path_var = false;
+            for (int vi = 0; vi < ctx->var_ctx->count; vi++) {
+                if (ctx->var_ctx->vars[vi].kind == VAR_KIND_PATH) {
+                    has_path_var = true;
+                    break;
+                }
+            }
+            /* Check if the deferred endpoint is already in scope (e.g.
+             * a previous rel handler already emitted it). In that case
+             * the EXISTS shortcut would double-emit the node JOIN.
+             * Fall through to the standard path which correctly
+             * handles the in-scope case. */
+            bool exists_deferred_in_scope = false;
+            if (no_user_rel_var && !has_path_var &&
+                ((src_deferred && !tgt_deferred) || (!src_deferred && tgt_deferred))) {
+                const char *def_alias_chk = src_deferred ? source_alias : target_alias;
+                const char *fs0 = dbuf_get(&ctx->unified_builder->from);
+                const char *js0 = dbuf_get(&ctx->unified_builder->joins);
+                char needle[80], suffix[80];
+                snprintf(needle, sizeof(needle), " AS %s ", def_alias_chk);
+                snprintf(suffix, sizeof(suffix), " AS %s", def_alias_chk);
+                size_t slen = strlen(suffix);
+                if (fs0 && (strstr(fs0, needle) ||
+                            (strlen(fs0) >= slen &&
+                             strcmp(fs0 + strlen(fs0) - slen, suffix) == 0))) {
+                    exists_deferred_in_scope = true;
+                }
+                if (!exists_deferred_in_scope && js0 &&
+                    (strstr(js0, needle) ||
+                     (strlen(js0) >= slen &&
+                      strcmp(js0 + strlen(js0) - slen, suffix) == 0))) {
+                    exists_deferred_in_scope = true;
+                }
+            }
+            if (no_user_rel_var && !has_path_var && !exists_deferred_in_scope &&
+                ((src_deferred && !tgt_deferred) || (!src_deferred && tgt_deferred))) {
+                /* Determine the deferred-endpoint alias and direction. */
+                const char *deferred_alias;
+                cypher_node_pattern *deferred_node;
+                const char *bound_id_ref;
+                const char *bound_endpoint_col;  /* edges column the bound side maps to */
+                const char *deferred_endpoint_col;
+                if (src_deferred) {
+                    /* Source is deferred; target is bound. */
+                    deferred_alias = source_alias;
+                    deferred_node = source_node;
+                    bound_id_ref = get_node_id_ref(ctx, target_alias, target_node->variable);
+                    bound_endpoint_col = "target_id";
+                    deferred_endpoint_col = "source_id";
+                } else {
+                    /* Target is deferred; source is bound. */
+                    deferred_alias = target_alias;
+                    deferred_node = target_node;
+                    bound_id_ref = get_node_id_ref(ctx, source_alias, source_node->variable);
+                    bound_endpoint_col = "source_id";
+                    deferred_endpoint_col = "target_id";
+                }
+                /* Build the EXISTS subquery condition. */
+                dynamic_buffer on_cond; dbuf_init(&on_cond);
+                const char *graph_p = ctx->current_graph ? ctx->current_graph : "";
+                dbuf_appendf(&on_cond,
+                    "EXISTS (SELECT 1 FROM %sedges _e WHERE _e.%s = %s AND _e.%s = %s.id",
+                    graph_p, bound_endpoint_col, bound_id_ref,
+                    deferred_endpoint_col, deferred_alias);
+                /* Type filter on the rel. */
+                if (rel->type) {
+                    char *esc = escape_sql_string(rel->type);
+                    dbuf_appendf(&on_cond, " AND _e.type = '%s'",
+                                 esc ? esc : rel->type);
+                    free(esc);
+                } else if (rel->types && rel->types->count > 0) {
+                    dbuf_append(&on_cond, " AND _e.type IN (");
+                    for (int t = 0; t < rel->types->count; t++) {
+                        if (t > 0) dbuf_append(&on_cond, ", ");
+                        cypher_literal *tl = (cypher_literal*)rel->types->items[t];
+                        char *esc = escape_sql_string(tl->value.string);
+                        dbuf_appendf(&on_cond, "'%s'", esc ? esc : tl->value.string);
+                        free(esc);
+                    }
+                    dbuf_append(&on_cond, ")");
+                }
+                /* Honor direction. For undirected (no arrows), use OR of both directions. */
+                if (!rel->left_arrow && !rel->right_arrow) {
+                    /* Undirected: also allow swapped endpoints. */
+                    dbuf_appendf(&on_cond,
+                        " OR (_e.%s = %s AND _e.%s = %s.id",
+                        deferred_endpoint_col, bound_id_ref,
+                        bound_endpoint_col, deferred_alias);
+                    if (rel->type) {
+                        char *esc = escape_sql_string(rel->type);
+                        dbuf_appendf(&on_cond, " AND _e.type = '%s'",
+                                     esc ? esc : rel->type);
+                        free(esc);
+                    }
+                    dbuf_append(&on_cond, "))");
+                } else {
+                    dbuf_append(&on_cond, ")");
+                }
+                /* Label filter on the deferred node. */
+                if (has_labels(deferred_node)) {
+                    for (int li = 0; li < deferred_node->labels->count; li++) {
+                        const char *label = get_label_string(deferred_node->labels->items[li]);
+                        if (!label) continue;
+                        char *esc = escape_sql_string(label);
+                        dbuf_appendf(&on_cond,
+                            " AND EXISTS (SELECT 1 FROM %snode_labels WHERE node_id = %s.id AND label = '%s')",
+                            graph_p, deferred_alias, esc ? esc : label);
+                        free(esc);
+                    }
+                }
+                sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
+                         get_graph_table(ctx, "nodes"), deferred_alias,
+                         dbuf_get(&on_cond));
+                dbuf_free(&on_cond);
+                /* Register the rel variable (even if synthetic). */
+                if (rel->variable) {
+                    transform_var_register_edge(ctx->var_ctx, rel->variable, edge_alias, rel->type);
+                } else {
+                    char synthetic_var[32];
+                    snprintf(synthetic_var, sizeof(synthetic_var), "__unnamed_rel_%d", rel_index);
+                    transform_var_register_edge(ctx->var_ctx, synthetic_var, edge_alias, rel->type);
+                }
+                return 0;
+            }
+
             /* Get proper source id reference (handles projected variables from WITH) */
             const char *source_id = get_node_id_ref(ctx, source_alias, source_node->variable);
 
@@ -1447,13 +1978,57 @@ skip_target_node_join:
                 }
             }
 
-            /* Build the edge JOIN condition */
+            /* Build the edge JOIN condition.
+             * T-0320: when src_deferred AND source-alias is NOT yet
+             * in scope, the edge JOIN's ON can't reference source_id_ref.
+             * We'll emit the source node LEFT JOIN AFTER this edge
+             * JOIN. But if a PRIOR rel handler already emitted the
+             * source's alias (as its target), then source IS in scope
+             * — emit the source constraint normally so the multi-rel
+             * chain stays connected. */
+            bool src_alias_already_in_scope = false;
+            {
+                const char *fs0 = dbuf_get(&ctx->unified_builder->from);
+                const char *js0 = dbuf_get(&ctx->unified_builder->joins);
+                char needle[80], needle2[80], suffix[80];
+                snprintf(needle, sizeof(needle), " AS %s ", source_alias);
+                snprintf(needle2, sizeof(needle2), " AS %s\n", source_alias);
+                snprintf(suffix, sizeof(suffix), " AS %s", source_alias);
+                size_t slen = strlen(suffix);
+                if (fs0) {
+                    if (strstr(fs0, needle) || strstr(fs0, needle2)) src_alias_already_in_scope = true;
+                    size_t flen = strlen(fs0);
+                    if (!src_alias_already_in_scope && flen >= slen &&
+                        strcmp(fs0 + flen - slen, suffix) == 0) src_alias_already_in_scope = true;
+                }
+                if (!src_alias_already_in_scope && js0) {
+                    if (strstr(js0, needle) || strstr(js0, needle2)) src_alias_already_in_scope = true;
+                    size_t jlen = strlen(js0);
+                    if (!src_alias_already_in_scope && jlen >= slen &&
+                        strcmp(js0 + jlen - slen, suffix) == 0) src_alias_already_in_scope = true;
+                }
+            }
+            bool effective_src_defer = src_deferred && !src_alias_already_in_scope;
             dynamic_buffer edge_cond;
             dbuf_init(&edge_cond);
-            dbuf_appendf(&edge_cond, "%s.source_id = %s", edge_alias, source_id);
+            bool first_cond = true;
+            if (!effective_src_defer) {
+                dbuf_appendf(&edge_cond, "%s.source_id = %s", edge_alias, source_id);
+                first_cond = false;
+            }
             if (target_already_added) {
                 const char *target_id = get_node_id_ref(ctx, target_alias, target_node->variable);
-                dbuf_appendf(&edge_cond, " AND %s.target_id = %s", edge_alias, target_id);
+                if (first_cond) {
+                    dbuf_appendf(&edge_cond, "%s.target_id = %s", edge_alias, target_id);
+                    first_cond = false;
+                } else {
+                    dbuf_appendf(&edge_cond, " AND %s.target_id = %s", edge_alias, target_id);
+                }
+            }
+            if (first_cond) {
+                /* No bound endpoint at all (both deferred) — anchor with
+                 * a vacuous condition so subsequent AND's stay valid. */
+                dbuf_append(&edge_cond, "1=1");
             }
 
             /* Add relationship type constraint to edge JOIN */
@@ -1497,9 +2072,50 @@ skip_target_node_join:
 
             sql_join(ctx->unified_builder, SQL_JOIN_LEFT, get_graph_table(ctx, "edges"), edge_alias, dbuf_get(&edge_cond));
             dbuf_free(&edge_cond);
+
+            /* T-0320: emit deferred source-node LEFT JOIN tied through
+             * the edge. Preserves OPTIONAL semantics — when the edge
+             * doesn't match, edge.source_id is NULL → source row is
+             * NULL too. Skip if the source alias is already in
+             * FROM/joins (e.g. a previous rel handler joined this
+             * node as its own target — happens in multi-rel paths
+             * like (a)-[:R]->(x)-[:R]->(y) where x's anon alias
+             * serves as both target of the first rel and source of
+             * the second). */
+            if (effective_src_defer) {
+                /* T-0320: record this defer pair so the WHERE handler
+                 * can push predicates into the edge JOIN's ON via a
+                 * rewritten copy (source_alias.id → edge.source_id). */
+                cypher_transform_record_defer_pair(ctx, edge_alias, source_alias, "source_id");
+                dynamic_buffer src_cond; dbuf_init(&src_cond);
+                dbuf_appendf(&src_cond, "%s.id = %s.source_id",
+                             source_alias, edge_alias);
+                if (has_labels(source_node)) {
+                    for (int li = 0; li < source_node->labels->count; li++) {
+                        const char *label = get_label_string(source_node->labels->items[li]);
+                        if (!label) continue;
+                        char *esc_label = escape_sql_string(label);
+                        dbuf_appendf(&src_cond,
+                            " AND EXISTS (SELECT 1 FROM %snode_labels WHERE node_id = %s.id AND label = '%s')",
+                            graph_prefix, source_alias,
+                            esc_label ? esc_label : label);
+                        free(esc_label);
+                    }
+                }
+                sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
+                         get_graph_table(ctx, "nodes"), source_alias,
+                         dbuf_get(&src_cond));
+                dbuf_free(&src_cond);
+            }
             /* target_already_added still applies to the block below. */
 
             if (!target_already_added) {
+                /* T-0320: record this defer pair so the WHERE handler
+                 * can push predicates into the edge JOIN's ON via a
+                 * rewritten copy (target_alias.id → edge.target_id). */
+                if (tgt_deferred) {
+                    cypher_transform_record_defer_pair(ctx, edge_alias, target_alias, "target_id");
+                }
                 /* For OPTIONAL MATCH with labels on the target, fold the label
                  * condition into the target node's LEFT JOIN ON clause so that
                  * nodes without the required label produce NULLs. */
