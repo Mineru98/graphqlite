@@ -5,7 +5,7 @@ title: "Add CREATE INDEX and CREATE CONSTRAINT support"
 short_code: "GQLITE-T-0008"
 created_at: 2025-12-24T01:49:49.354673+00:00
 updated_at: 2025-12-24T01:49:49.354673+00:00
-parent: 
+parent: GQLITE-I-0045
 blocked_by: []
 archived: false
 
@@ -17,7 +17,7 @@ tags:
 
 exit_criteria_met: false
 strategy_id: NULL
-initiative_id: NULL
+initiative_id: GQLITE-I-0045
 ---
 
 # Add CREATE INDEX and CREATE CONSTRAINT support

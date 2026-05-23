@@ -5,7 +5,7 @@ title: "Map projection variable selector and missing expression features"
 short_code: "GQLITE-T-0136"
 created_at: 2026-03-17T13:41:43.325858+00:00
 updated_at: 2026-03-17T13:41:43.325858+00:00
-parent: 
+parent: GQLITE-I-0045
 blocked_by: []
 archived: false
 
@@ -16,7 +16,7 @@ tags:
 
 
 exit_criteria_met: false
-initiative_id: NULL
+initiative_id: GQLITE-I-0045
 ---
 
 # Map projection variable selector and missing expression features

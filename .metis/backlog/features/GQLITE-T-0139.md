@@ -5,7 +5,7 @@ title: "Existential subquery syntax: EXISTS { MATCH ... WHERE ... }"
 short_code: "GQLITE-T-0139"
 created_at: 2026-03-22T00:45:57.656842+00:00
 updated_at: 2026-03-22T00:45:57.656842+00:00
-parent: 
+parent: GQLITE-I-0045
 blocked_by: []
 archived: false
 
@@ -16,7 +16,7 @@ tags:
 
 
 exit_criteria_met: false
-initiative_id: NULL
+initiative_id: GQLITE-I-0045
 ---
 
 # Existential subquery syntax: EXISTS { MATCH ... WHERE ... }

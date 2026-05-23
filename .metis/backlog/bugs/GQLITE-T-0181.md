@@ -5,7 +5,7 @@ title: "startNode(r)/endNode(r) return integer IDs and collide column aliases"
 short_code: "GQLITE-T-0181"
 created_at: 2026-03-30T12:11:37.126169+00:00
 updated_at: 2026-03-30T12:11:37.126169+00:00
-parent: 
+parent: GQLITE-I-0033
 blocked_by: []
 archived: false
 
@@ -16,7 +16,7 @@ tags:
 
 
 exit_criteria_met: false
-initiative_id: NULL
+initiative_id: GQLITE-I-0033
 ---
 
 # startNode(r)/endNode(r) return integer IDs and collide column aliases

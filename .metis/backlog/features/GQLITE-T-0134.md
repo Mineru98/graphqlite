@@ -5,7 +5,7 @@ title: "Implement LOAD CSV"
 short_code: "GQLITE-T-0134"
 created_at: 2026-03-17T13:41:11.499855+00:00
 updated_at: 2026-03-17T13:41:11.499855+00:00
-parent: 
+parent: GQLITE-I-0045
 blocked_by: []
 archived: false
 
@@ -16,7 +16,7 @@ tags:
 
 
 exit_criteria_met: false
-initiative_id: NULL
+initiative_id: GQLITE-I-0045
 ---
 
 # Implement LOAD CSV

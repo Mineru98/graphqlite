@@ -5,7 +5,7 @@ title: "PROFILE query modifier"
 short_code: "GQLITE-T-0135"
 created_at: 2026-03-17T13:41:26.611069+00:00
 updated_at: 2026-03-17T13:41:26.611069+00:00
-parent: 
+parent: GQLITE-I-0045
 blocked_by: []
 archived: false
 
@@ -16,7 +16,7 @@ tags:
 
 
 exit_criteria_met: false
-initiative_id: NULL
+initiative_id: GQLITE-I-0045
 ---
 
 # PROFILE query modifier
