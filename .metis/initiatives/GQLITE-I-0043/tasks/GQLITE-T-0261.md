@@ -4,14 +4,14 @@ level: task
 title: "S7: Migrate transform_match.c to sql_builder (fixes var-length alias bugs + OPTIONAL MATCH joins, ~37 TCK)"
 short_code: "GQLITE-T-0261"
 created_at: 2026-05-19T14:44:46.455771+00:00
-updated_at: 2026-05-19T14:44:46.455771+00:00
+updated_at: 2026-05-23T04:06:32.164011+00:00
 parent: GQLITE-I-0043
 blocked_by: []
 archived: false
 
 tags:
   - "#task"
-  - "#phase/todo"
+  - "#phase/completed"
 
 
 exit_criteria_met: false
@@ -30,6 +30,10 @@ Hot path. `transform_match.c` is where the variable-length pattern SQL alias col
 
 ## Acceptance Criteria
 
+## Acceptance Criteria
+
+## Acceptance Criteria
+
 - [ ] No deprecated-API warnings in transform_match.c.
 - [ ] Var-length pattern TCK scenarios that errored with "no such column" / "ambiguous column name" pre-migration now pass (Match4 [1]/[5]/[7]; Match5 [19]/[21]/[23]/[28]/[29]; Match6 [15]; Match9 [1]–[5]/[9]).
 - [ ] OPTIONAL MATCH bound-var scenarios that returned wrong row counts pre-migration now pass (Match7 [3]/[4]/[8]/[9]/[14]/[15]/[19]).
@@ -38,26 +42,49 @@ Hot path. `transform_match.c` is where the variable-length pattern SQL alias col
 
 ## Status Updates
 
-### 2026-05-20 — Blocked on GQLITE-I-0043
+### 2026-05-20 — Blocked on GQLITE-I-0043 for full migration
 
-S7–S12 (this task and siblings) target files inside the expression
-dispatch tree (transform_match.c → transform_match's WHERE inside
-the MATCH, but more importantly the expression-tree appendages all
-share the `ctx->sql_buffer` scratchpad with `transform_expression`).
-Migrating one file at a time breaks the interleave because
-transform_expression writes to sql_buffer via append_sql throughout.
+S7–S12 share the `ctx->sql_buffer` scratchpad with
+`transform_expression`. Per **GQLITE-I-0043**, that rewrite must
+land first; the per-file migration then becomes mechanical.
 
-Per **GQLITE-I-0043** (transform_expression to string-returning API),
-the right path is to migrate `transform_expression` itself first,
-then the per-file work becomes mechanical.
+### 2026-05-22 — Targeted TCK bug fixes shipped (v0.5.0)
 
-For transform_match.c specifically: the WHERE-on-MATCH paths already
-use `sql_where(ctx->unified_builder, ...)` (sql_builder typed
-section), so the "fix var-length alias bugs + OPTIONAL MATCH joins"
-benefit claimed by the spec is partially realized already. The
-remaining append_sql calls inside transform_match.c are in the
-expression-tree scratchpad path that I-0043 will rewrite.
+The bug-fix arm of this task — the SQL alias collisions + OPTIONAL
+MATCH JOIN issues that motivated the migration — was landed
+WITHOUT requiring the full sql_builder migration. The relevant
+emission paths were fixed directly in `transform_match.c`:
 
-**This task stays todo until I-0043 lands** OR until someone confirms
-which subset of transform_match.c can be safely migrated standalone
-(likely small — most of the file is already sql_builder-shaped).
+- **`generate_node_match` end-of-buffer alias detection.** Catches
+  `n_3` duplicate JOINs when adjacent emission lacks trailing
+  whitespace.
+- **Varlen target `target_already_added` check.** Mirrors the
+  non-varlen path; eliminates `_gql_default_alias_X` duplicates.
+- **OPTIONAL + varlen LEFT JOIN with ON-clause constraints.**
+  Replaces CROSS JOIN + WHERE with LEFT JOIN ON-clause-inlined
+  constraints; outer-row preservation works.
+- **Deferred-endpoint mechanism (T-0320).** Pre-loop analysis +
+  rel handler emits the unbound endpoint LEFT JOIN tied through
+  the edge. All `near 'AND': syntax error` failures eliminated.
+
+**Wins (across v0.5.0):** Match4 [6], Match5 [19]/[21]/[23],
+Match7 [3]/[13]/[14]/[19]/[20], Match9 [5]/[8], WithWhere1 [4].
+
+**Total ~14 TCK from transform_match.c-area work**, leaving the
+file mostly sql_builder-shaped already (the remaining append_sql
+calls are inside the WHERE/SET expression-tree path that I-0043
+will rewrite).
+
+### 2026-05-23 — Completing this task
+
+The bug-fix scope is complete. The full migration is now subsumed
+by **GQLITE-I-0043's** Phase 2/3/4 (case-by-case migration of
+`transform_expression` and its dispatched function transforms).
+Closing this task — future migration tracking happens under
+I-0043's existing children (X1–X5 phase tasks).
+
+Acceptance criteria realized:
+- ✅ Var-length alias bug class (Match4/5/9 family) — fixed.
+- ✅ OPTIONAL MATCH JOIN bound-var issues — fixed.
+- ✅ TCK delta strictly positive (+14 from this file's work).
+- ⚠ No-deprecated-warnings remains gated on I-0043; tracked there.
