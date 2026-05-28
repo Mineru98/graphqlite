@@ -837,7 +837,16 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                         CYPHER_DEBUG("Processing path variable '%s' in RETURN", id->name);
                         /* This is a path variable - generate JSON with element IDs */
                         transform_var *path_var = transform_var_lookup_path(ctx->var_ctx, id->name);
-                        if (path_var && path_var->path_elements) {
+                        /* I-0047 P4: a path forwarded through WITH has its
+                         * table_alias set to the CTE column holding the already-
+                         * hydrated path text (a `_with_N.p` column ref). Emit that
+                         * column directly — the element aliases used to rebuild
+                         * the path are out of scope in the outer query. The
+                         * executor still hydrates it via path_elements (With1 [4]). */
+                        if (path_var && path_var->table_alias &&
+                            strchr(path_var->table_alias, '.') != NULL) {
+                            append_sql(ctx, "%s", path_var->table_alias);
+                        } else if (path_var && path_var->path_elements) {
                             CYPHER_DEBUG("Found path variable metadata for '%s' with %d elements", id->name, path_var->path_elements->count);
 
                             /* Check if this is a variable-length path (shortestPath, etc.).
@@ -998,8 +1007,9 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                             /* Post-WITH node/edge - alias IS the id value */
                             if (transform_var_is_edge(ctx->var_ctx, id->name)) {
                                 /* Edge that passed through WITH - build relationship object */
-                                /* Note: After WITH, we only have the id, not type/source/target */
-                                append_sql(ctx, "json_object("
+                                /* Note: After WITH, we only have the id, not type/source/target.
+                                 * Guard for NULL (OPTIONAL miss carried across WITH). */
+                                append_sql(ctx, "(CASE WHEN %s IS NULL THEN NULL ELSE json_object("
                                     "'id', %s, "
                                     "'type', (SELECT type FROM edges WHERE id = %s), "
                                     "'startNodeId', (SELECT source_id FROM edges WHERE id = %s), "
@@ -1017,13 +1027,17 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                         "EXISTS (SELECT 1 FROM edge_props_bool WHERE edge_id = %s AND key_id = pk.id) OR "
                                         "EXISTS (SELECT 1 FROM edge_props_json WHERE edge_id = %s AND key_id = pk.id)"
                                     "), json('{}'))"
-                                ")",
-                                alias, alias, alias, alias,
+                                ") END)",
+                                alias, alias, alias, alias, alias,
                                 alias, alias, alias, alias, alias,
                                 alias, alias, alias, alias, alias);
                             } else {
-                                /* Node that passed through WITH - build node object using id directly */
-                                append_sql(ctx, "json_object("
+                                /* Node that passed through WITH - build node object using id directly.
+                                 * Guard for NULL (the id column can be NULL when the value came
+                                 * through an OPTIONAL MATCH miss carried across WITH, e.g.
+                                 * Match7 [27]); otherwise json_object('id', NULL, …) renders a
+                                 * bogus non-null node instead of SQL NULL. */
+                                append_sql(ctx, "(CASE WHEN %s IS NULL THEN NULL ELSE json_object("
                                     "'id', %s, "
                                     "'labels', COALESCE((SELECT json_group_array(label) FROM node_labels WHERE node_id = %s), json('[]')), "
                                     "'properties', COALESCE((SELECT json_group_object(pk.key, COALESCE("
@@ -1039,8 +1053,8 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                         "EXISTS (SELECT 1 FROM node_props_bool WHERE node_id = %s AND key_id = pk.id) OR "
                                         "EXISTS (SELECT 1 FROM node_props_json WHERE node_id = %s AND key_id = pk.id)"
                                     "), json('{}'))"
-                                ")",
-                                alias, alias,
+                                ") END)",
+                                alias, alias, alias,
                                 alias, alias, alias, alias, alias,
                                 alias, alias, alias, alias, alias);
                             }
@@ -1052,7 +1066,15 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                              * edge JSON per id, in path order. */
                             transform_var *evar = transform_var_lookup_edge(ctx->var_ctx, id->name);
                             if (evar && evar->cte_name) {
+                                /* I-0047 P4: guard for an OPTIONAL varlen miss.
+                                 * When the path didn't match, the CTE alias's
+                                 * elem_ids is NULL; json_each(NULL) yields no
+                                 * rows and json_group_array() returns '[]' (an
+                                 * empty array), but openCypher wants NULL for an
+                                 * unmatched OPTIONAL relationship list
+                                 * (Match9 [9]). */
                                 append_sql(ctx,
+                                  "(CASE WHEN %s.elem_ids IS NULL THEN NULL ELSE "
                                   "(SELECT json_group_array(json_object("
                                     "'id', e.id, "
                                     "'type', e.type, "
@@ -1073,8 +1095,8 @@ int transform_expression(cypher_transform_context *ctx, ast_node *expr)
                                       "), json('{}'))"
                                   ") ORDER BY je.key) "
                                   "FROM json_each('[' || %s.elem_ids || ']') je "
-                                  "JOIN edges e ON e.id = je.value WHERE (je.key %% 2) = 1)",
-                                  alias);
+                                  "JOIN edges e ON e.id = je.value WHERE (je.key %% 2) = 1) END)",
+                                  alias, alias);
                                 goto edge_alias_projection_done;
                             }
                             /* Edge variable - return full relationship object,

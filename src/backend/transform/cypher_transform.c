@@ -119,6 +119,7 @@ void cypher_transform_free_context(cypher_transform_context *ctx)
     free(ctx->sql_buffer);
     free(ctx->error_message);
     free(ctx->pending_prop_joins);
+    free(ctx->pending_optional_on);
 
     /* T-0320: free defer-pair tracking. */
     for (int i = 0; i < ctx->optional_defer_pairs_count; i++) {
@@ -1202,12 +1203,85 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
         src_col = "target_id";
         tgt_col = "source_id";
     }
+    /* Undirected (`-[*]-` / `--`): traverse both edge orientations.
+     * Each undirected walk is emitted once per direction (matching
+     * openCypher's both-orientation semantics, e.g. Match9 [1]/[3]),
+     * while the outer endpoint binding stays directional
+     * (`start_id = a.id AND end_id = b.id`). */
+    bool undirected = (!rel->left_arrow && !rel->right_arrow);
+
+    /* Build the per-edge predicate once as a bare boolean expression (no
+     * WHERE/AND prefix), reused across base orientations and the recursive
+     * step. Folds together the relationship type constraint AND any inline
+     * relationship property predicates (`[:T* {k: v}]`), all referencing the
+     * base/recursive edge alias `e`. Empty when neither is present. */
+    dynamic_buffer tpred;
+    dbuf_init(&tpred);
+    if (rel->type) {
+        char *esc = escape_sql_string(rel->type);
+        dbuf_appendf(&tpred, "e.type = '%s'", esc ? esc : rel->type);
+        free(esc);
+    } else if (rel->types && rel->types->count > 0) {
+        dbuf_append(&tpred, "(");
+        for (int t = 0; t < rel->types->count; t++) {
+            if (t > 0) dbuf_append(&tpred, " OR ");
+            cypher_literal *type_lit = (cypher_literal*)rel->types->items[t];
+            char *esc = escape_sql_string(type_lit->value.string);
+            dbuf_appendf(&tpred, "e.type = '%s'", esc ? esc : type_lit->value.string);
+            free(esc);
+        }
+        dbuf_append(&tpred, ")");
+    }
+    /* Inline rel property predicates: every edge along the varlen path must
+     * carry the given properties (Match4 [5] `[:WORKED_WITH* {year:1988}]`). */
+    if (rel->properties && rel->properties->type == AST_NODE_MAP) {
+        cypher_map *m = (cypher_map*)rel->properties;
+        if (m->pairs) {
+            for (int pi = 0; pi < m->pairs->count; pi++) {
+                cypher_map_pair *pair = (cypher_map_pair*)m->pairs->items[pi];
+                if (!pair->key || !pair->value || pair->value->type != AST_NODE_LITERAL) continue;
+                cypher_literal *lit = (cypher_literal*)pair->value;
+                const char *tbl = NULL;
+                char val_buf[256] = "";
+                switch (lit->literal_type) {
+                    case LITERAL_STRING: tbl = "edge_props_text";
+                        { char *esc = escape_sql_string(lit->value.string);
+                          snprintf(val_buf, sizeof(val_buf), "'%s'", esc ? esc : lit->value.string);
+                          free(esc); } break;
+                    case LITERAL_INTEGER: tbl = "edge_props_int";
+                        snprintf(val_buf, sizeof(val_buf), "%lld", (long long)lit->value.integer); break;
+                    case LITERAL_DECIMAL: tbl = "edge_props_real";
+                        snprintf(val_buf, sizeof(val_buf), "%.17g", lit->value.decimal); break;
+                    case LITERAL_BOOLEAN: tbl = "edge_props_bool";
+                        snprintf(val_buf, sizeof(val_buf), "%d", lit->value.boolean ? 1 : 0); break;
+                    default: continue;
+                }
+                if (!tbl) continue;
+                if (dbuf_len(&tpred) > 0) dbuf_append(&tpred, " AND ");
+                char *esc_key = escape_sql_string(pair->key);
+                dbuf_appendf(&tpred,
+                    "EXISTS (SELECT 1 FROM %s ep JOIN property_keys pk ON ep.key_id = pk.id "
+                    "WHERE ep.edge_id = e.id AND pk.key = '%s' AND ep.value = %s)",
+                    tbl, esc_key ? esc_key : pair->key, val_buf);
+                free(esc_key);
+            }
+        }
+    }
+    bool have_tpred = (dbuf_len(&tpred) > 0);
+
+    /* The `visited` column tracks traversed EDGE ids (not node ids):
+     * openCypher variable-length semantics require RELATIONSHIP uniqueness
+     * (each edge used at most once) while nodes MAY repeat — e.g.
+     * `(s)-[:REL]->(b)-[:LOOP]->(b)` is a valid 2-hop path (two distinct
+     * edges) even though it revisits b. Node-based cycle prevention wrongly
+     * dropped such paths (Match7 [12]). Edge ids are finite so traversal
+     * still terminates. */
 
     /* Zero-hop base case (only when explicitly requested via *0..N):
-     * each node maps to itself with depth=0. */
+     * each node maps to itself with depth=0 and no traversed edges. */
     if (min_hops == 0) {
         dbuf_appendf(&cte_query,
-            "SELECT n.id, n.id, 0, CAST(n.id AS TEXT), ',' || n.id || ',', "
+            "SELECT n.id, n.id, 0, CAST(n.id AS TEXT), ',', "
             "CAST(n.id AS TEXT) "
             "FROM nodes n UNION ALL ");
     }
@@ -1218,73 +1292,77 @@ int generate_varlen_cte(cypher_transform_context *ctx, cypher_rel_pattern *rel,
     dbuf_appendf(&cte_query,
         "SELECT e.%s, e.%s, 1, "
         "CAST(e.%s || ',' || e.%s AS TEXT), "
-        "','|| e.%s || ',' || e.%s || ',', "
+        "',' || e.id || ',', "
         "e.%s || ',' || e.id || ',' || e.%s "
         "FROM edges e",
         src_col, tgt_col,
         src_col, tgt_col,
-        src_col, tgt_col,
         src_col, tgt_col);
+    if (have_tpred) dbuf_appendf(&cte_query, " WHERE %s", dbuf_get(&tpred));
 
-    /* Add type constraint if specified */
-    if (rel->type) {
-        { char *esc = escape_sql_string(rel->type);
-          dbuf_appendf(&cte_query, " WHERE e.type = '%s'", esc ? esc : rel->type);
-          free(esc); }
-    } else if (rel->types && rel->types->count > 0) {
-        dbuf_append(&cte_query, " WHERE (");
-        for (int t = 0; t < rel->types->count; t++) {
-            if (t > 0) {
-                dbuf_append(&cte_query, " OR ");
-            }
-            cypher_literal *type_lit = (cypher_literal*)rel->types->items[t];
-            { char *esc = escape_sql_string(type_lit->value.string);
-              dbuf_appendf(&cte_query, "e.type = '%s'", esc ? esc : type_lit->value.string);
-              free(esc); }
-        }
-        dbuf_append(&cte_query, ")");
+    /* Undirected: emit the reverse-orientation base case too, so each
+     * edge seeds a walk in both directions. */
+    if (undirected) {
+        dbuf_appendf(&cte_query,
+            " UNION ALL "
+            "SELECT e.%s, e.%s, 1, "
+            "CAST(e.%s || ',' || e.%s AS TEXT), "
+            "',' || e.id || ',', "
+            "e.%s || ',' || e.id || ',' || e.%s "
+            "FROM edges e",
+            tgt_col, src_col,
+            tgt_col, src_col,
+            tgt_col, src_col);
+        if (have_tpred) dbuf_appendf(&cte_query, " WHERE %s", dbuf_get(&tpred));
     }
 
     /* Recursive case — only recurse from depth >= 1 rows. The depth=0
      * base case is for self-bind (zero-hop); recursing from it would
      * duplicate edges already emitted by the depth=1 base case. */
     dbuf_append(&cte_query, " UNION ALL ");
-    dbuf_appendf(&cte_query,
-        "SELECT cte.start_id, e.%s, cte.depth + 1, "
-        "cte.path_ids || ',' || e.%s, "
-        "cte.visited || e.%s || ',', "
-        "cte.elem_ids || ',' || e.id || ',' || e.%s "
-        "FROM %s cte "
-        "JOIN edges e ON e.%s = cte.end_id "
-        "WHERE cte.depth >= 1 AND cte.depth < %d",
-        tgt_col, tgt_col, tgt_col, tgt_col,
-        cte_name,
-        src_col,
-        max_hops);
-
-    /* Add cycle detection */
-    dbuf_appendf(&cte_query,
-        " AND cte.visited NOT LIKE '%%,' || CAST(e.%s AS TEXT) || ',%%'",
-        tgt_col);
+    if (undirected) {
+        /* Undirected step: join any edge incident to the current end
+         * node and advance to its OTHER endpoint. The "other endpoint"
+         * is `target_id` when we entered via `source_id`, else
+         * `source_id`. Node-based cycle prevention (matches the
+         * directed path's behavior). */
+        const char *other =
+            "(CASE WHEN e.source_id = cte.end_id THEN e.target_id ELSE e.source_id END)";
+        dbuf_appendf(&cte_query,
+            "SELECT cte.start_id, %s, cte.depth + 1, "
+            "cte.path_ids || ',' || %s, "
+            "cte.visited || e.id || ',', "
+            "cte.elem_ids || ',' || e.id || ',' || %s "
+            "FROM %s cte "
+            "JOIN edges e ON (e.source_id = cte.end_id OR e.target_id = cte.end_id) "
+            "WHERE cte.depth >= 1 AND cte.depth < %d",
+            other, other, other,
+            cte_name,
+            max_hops);
+        /* Relationship-uniqueness: don't reuse an edge already on the path. */
+        dbuf_append(&cte_query,
+            " AND cte.visited NOT LIKE '%,' || CAST(e.id AS TEXT) || ',%'");
+    } else {
+        dbuf_appendf(&cte_query,
+            "SELECT cte.start_id, e.%s, cte.depth + 1, "
+            "cte.path_ids || ',' || e.%s, "
+            "cte.visited || e.id || ',', "
+            "cte.elem_ids || ',' || e.id || ',' || e.%s "
+            "FROM %s cte "
+            "JOIN edges e ON e.%s = cte.end_id "
+            "WHERE cte.depth >= 1 AND cte.depth < %d",
+            tgt_col, tgt_col, tgt_col,
+            cte_name,
+            src_col,
+            max_hops);
+        /* Relationship-uniqueness: don't reuse an edge already on the path. */
+        dbuf_append(&cte_query,
+            " AND cte.visited NOT LIKE '%,' || CAST(e.id AS TEXT) || ',%'");
+    }
 
     /* Add type constraint to recursive case */
-    if (rel->type) {
-        { char *esc = escape_sql_string(rel->type);
-          dbuf_appendf(&cte_query, " AND e.type = '%s'", esc ? esc : rel->type);
-          free(esc); }
-    } else if (rel->types && rel->types->count > 0) {
-        dbuf_append(&cte_query, " AND (");
-        for (int t = 0; t < rel->types->count; t++) {
-            if (t > 0) {
-                dbuf_append(&cte_query, " OR ");
-            }
-            cypher_literal *type_lit = (cypher_literal*)rel->types->items[t];
-            { char *esc = escape_sql_string(type_lit->value.string);
-              dbuf_appendf(&cte_query, "e.type = '%s'", esc ? esc : type_lit->value.string);
-              free(esc); }
-        }
-        dbuf_append(&cte_query, ")");
-    }
+    if (have_tpred) dbuf_appendf(&cte_query, " AND %s", dbuf_get(&tpred));
+    dbuf_free(&tpred);
 
     /* Build CTE name with column definitions */
     char cte_full_name[256];

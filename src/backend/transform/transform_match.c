@@ -14,6 +14,25 @@
 #include "parser/cypher_debug.h"
 
 /* Forward declarations */
+/* I-0047 P3: accumulate a bound-rel OPTIONAL endpoint constraint to be flushed
+ * onto the last LEFT JOIN's ON after the path loop (see pending_optional_on). */
+static void transform_ctx_append_pending_optional_on(cypher_transform_context *ctx,
+                                                     const char *cond)
+{
+    if (!ctx || !cond || !cond[0]) return;
+    if (!ctx->pending_optional_on) {
+        ctx->pending_optional_on = strdup(cond);
+        return;
+    }
+    size_t old_len = strlen(ctx->pending_optional_on);
+    size_t add_len = strlen(cond) + 6; /* " AND " + NUL */
+    char *grown = realloc(ctx->pending_optional_on, old_len + add_len);
+    if (!grown) return;
+    strcat(grown, " AND ");
+    strcat(grown, cond);
+    ctx->pending_optional_on = grown;
+}
+
 static int transform_match_pattern(cypher_transform_context *ctx, ast_node *pattern, bool optional);
 static int generate_node_match(cypher_transform_context *ctx, cypher_node_pattern *node, const char *alias, bool optional);
 static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel_pattern *rel,
@@ -678,6 +697,16 @@ handle_where_clause:
         } else if (ctx->sql_buffer) {
             ctx->sql_buffer[0] = '\0';
         }
+    }
+
+    /* I-0047 P3: flush any stashed bound-rel OPTIONAL endpoint constraint onto
+     * the last LEFT JOIN's ON (the fresh target node's join, now emitted).
+     * Runs whether or not a WHERE clause was present (Match7 [4],
+     * MatchWhere6 [5]). */
+    if (ctx->pending_optional_on) {
+        sql_join_append_on(ctx->unified_builder, ctx->pending_optional_on);
+        free(ctx->pending_optional_on);
+        ctx->pending_optional_on = NULL;
     }
 
     /* Clear current graph after MATCH processing */
@@ -1556,18 +1585,41 @@ static int generate_node_match(cypher_transform_context *ctx, cypher_node_patter
         /* Get proper node id reference (handles projected variables from WITH) */
         const char *node_id = get_node_id_ref(ctx, alias, node->variable);
 
-        for (int i = 0; i < node->labels->count; i++) {
-            const char *label = get_label_string(node->labels->items[i]);
-            if (label) {
-                char nl_alias[64];
-                snprintf(nl_alias, sizeof(nl_alias), "_nl_%s_%d", alias, i);
-                dbuf_init(&on_cond);
-                { char *esc_label = escape_sql_string(label);
-                  dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
-                               nl_alias, node_id, nl_alias, esc_label ? esc_label : label);
-                  free(esc_label); }
-                sql_join(ctx->unified_builder, SQL_JOIN_INNER, get_graph_table(ctx, "node_labels"), nl_alias, dbuf_get(&on_cond));
-                dbuf_free(&on_cond);
+        if (optional) {
+            /* I-0047 P3: an OPTIONAL node's label constraint must be inlined
+             * into the node's own LEFT JOIN ON (as a correlated EXISTS), not
+             * emitted as a separate INNER node_labels join. An INNER join
+             * drops the preserved anchor row whenever the optional pattern
+             * doesn't match (e.g. a second `OPTIONAL MATCH (b:Missing)` after
+             * a null-seeded first optional). The first-node-no-FROM path above
+             * already inlines; this covers every other optional node. */
+            for (int i = 0; i < node->labels->count; i++) {
+                const char *label = get_label_string(node->labels->items[i]);
+                if (!label) continue;
+                char *esc_label = escape_sql_string(label);
+                char cond[512];
+                /* sql_join_append_on prepends " AND " itself. */
+                snprintf(cond, sizeof(cond),
+                    "EXISTS (SELECT 1 FROM %s WHERE node_id = %s AND label = '%s')",
+                    get_graph_table(ctx, "node_labels"), node_id,
+                    esc_label ? esc_label : label);
+                free(esc_label);
+                sql_join_append_on(ctx->unified_builder, cond);
+            }
+        } else {
+            for (int i = 0; i < node->labels->count; i++) {
+                const char *label = get_label_string(node->labels->items[i]);
+                if (label) {
+                    char nl_alias[64];
+                    snprintf(nl_alias, sizeof(nl_alias), "_nl_%s_%d", alias, i);
+                    dbuf_init(&on_cond);
+                    { char *esc_label = escape_sql_string(label);
+                      dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
+                                   nl_alias, node_id, nl_alias, esc_label ? esc_label : label);
+                      free(esc_label); }
+                    sql_join(ctx->unified_builder, SQL_JOIN_INNER, get_graph_table(ctx, "node_labels"), nl_alias, dbuf_get(&on_cond));
+                    dbuf_free(&on_cond);
+                }
             }
         }
     }
@@ -1886,22 +1938,47 @@ static int generate_relationship_match(cypher_transform_context *ctx, cypher_rel
         }
 
 skip_target_node_join:
-        /* Add label constraints for target node if specified */
+        /* Add label constraints for target node if specified.
+         *
+         * I-0047 P3: for OPTIONAL + varlen with a DEFERRED target
+         * (`OPTIONAL MATCH (a)-[:T*]->(c:Label)` where c is unbound), the
+         * target is LEFT-joined later via `c.id = cte.end_id`. Emitting the
+         * label as a separate INNER node_labels join here (a) references the
+         * not-yet-joined target alias and (b) drops the anchor row when the
+         * optional doesn't match. Instead, fold the label into the deferred
+         * target's LEFT JOIN ON as a correlated EXISTS (built below). */
+        char deferred_tgt_label_cond[512] = "";
         if (has_labels(target_node)) {
             const char *target_id = get_node_id_ref(ctx, target_alias, target_node->variable);
 
-            for (int i = 0; i < target_node->labels->count; i++) {
-                const char *label = get_label_string(target_node->labels->items[i]);
-                if (label) {
-                    char nl_alias[64];
-                    snprintf(nl_alias, sizeof(nl_alias), "_nl_%s_%d", target_alias, i);
-                    dbuf_init(&on_cond);
-                    { char *esc_label = escape_sql_string(label);
-                      dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
-                                   nl_alias, target_id, nl_alias, esc_label ? esc_label : label);
-                      free(esc_label); }
-                    sql_join(ctx->unified_builder, SQL_JOIN_INNER, get_graph_table(ctx, "node_labels"), nl_alias, dbuf_get(&on_cond));
-                    dbuf_free(&on_cond);
+            if (optional && tgt_deferred) {
+                for (int i = 0; i < target_node->labels->count; i++) {
+                    const char *label = get_label_string(target_node->labels->items[i]);
+                    if (!label) continue;
+                    char *esc_label = escape_sql_string(label);
+                    char one[256];
+                    snprintf(one, sizeof(one),
+                        " AND EXISTS (SELECT 1 FROM %s WHERE node_id = %s AND label = '%s')",
+                        get_graph_table(ctx, "node_labels"), target_id,
+                        esc_label ? esc_label : label);
+                    free(esc_label);
+                    strncat(deferred_tgt_label_cond, one,
+                            sizeof(deferred_tgt_label_cond) - strlen(deferred_tgt_label_cond) - 1);
+                }
+            } else {
+                for (int i = 0; i < target_node->labels->count; i++) {
+                    const char *label = get_label_string(target_node->labels->items[i]);
+                    if (label) {
+                        char nl_alias[64];
+                        snprintf(nl_alias, sizeof(nl_alias), "_nl_%s_%d", target_alias, i);
+                        dbuf_init(&on_cond);
+                        { char *esc_label = escape_sql_string(label);
+                          dbuf_appendf(&on_cond, "%s.node_id = %s AND %s.label = '%s'",
+                                       nl_alias, target_id, nl_alias, esc_label ? esc_label : label);
+                          free(esc_label); }
+                        sql_join(ctx->unified_builder, SQL_JOIN_INNER, get_graph_table(ctx, "node_labels"), nl_alias, dbuf_get(&on_cond));
+                        dbuf_free(&on_cond);
+                    }
                 }
             }
         }
@@ -2013,9 +2090,10 @@ skip_target_node_join:
                         (strlen(js0) >= slen &&
                          strcmp(js0 + strlen(js0) - slen, suffix) == 0))) already = true;
             if (!already) {
-                char tgt_cond[256];
+                char tgt_cond[768];
                 snprintf(tgt_cond, sizeof(tgt_cond),
-                         "%s.id = %s.end_id", target_alias, edge_alias);
+                         "%s.id = %s.end_id%s", target_alias, edge_alias,
+                         deferred_tgt_label_cond);
                 sql_join(ctx->unified_builder, SQL_JOIN_LEFT,
                          get_graph_table(ctx, "nodes"), target_alias, tgt_cond);
             }
@@ -2065,7 +2143,27 @@ skip_target_node_join:
                 snprintf(cond, sizeof(cond), "%s = %s AND %s = %s",
                          src_id_ref, src_subq, tgt_id_ref, tgt_subq);
             }
-            sql_where(ctx->unified_builder, cond);
+            /* I-0047 P3: for OPTIONAL MATCH the bound-rel endpoint constraints
+             * are part of the optional pattern; emitting them as WHERE filters
+             * the preserved anchor row (Match7 [4], MatchWhere6 [5]: a bound
+             * rel reused in the reverse direction). Stash them to flush onto
+             * the target node's LEFT JOIN ON after the path loop. Guard: this
+             * only works when exactly *one* endpoint is fresh (the other in
+             * outer scope from a prior clause). If both are fresh, the first
+             * is CROSS-joined and over-produces (Match7 [5]); if both are
+             * bound, there's no fresh LEFT JOIN to attach to. */
+            bool src_in_scope = source_node->variable && (
+                transform_var_is_bound(ctx->var_ctx, source_node->variable) ||
+                transform_var_alias_is_id(ctx->var_ctx, source_node->variable));
+            bool tgt_in_scope = target_node->variable && (
+                transform_var_is_bound(ctx->var_ctx, target_node->variable) ||
+                transform_var_alias_is_id(ctx->var_ctx, target_node->variable));
+            bool exactly_one_fresh = (src_in_scope != tgt_in_scope);
+            if (optional && exactly_one_fresh) {
+                transform_ctx_append_pending_optional_on(ctx, cond);
+            } else {
+                sql_where(ctx->unified_builder, cond);
+            }
 
             /* If the new pattern specifies a relationship type, enforce it
              * against the bound edge's type. `MATCH ()-[r:T]->() WITH r
