@@ -165,3 +165,100 @@ Cross-cutting read-back semantics (orderability total order over
 node/rel/list/map/scalar, list `=`/`IN`, `min`/`max`) also landed; their
 remaining deep tail is tracked in initiatives [[GQLITE-I-0046]] /
 [[GQLITE-I-0047]] / [[GQLITE-I-0048]].
+
+## Coverage update (2026-05-27) — I-0047 P1: undirected variable-length paths
+
+GQLITE-T-0334 (initiative [[GQLITE-I-0047]]). Verified through the openCypher
+TCK harness (`angreal test tck`, full pass-set diff, zero regressions; unit
+944/944; functional clean):
+
+- **`MATCH (a)-[*]-(b)` (undirected variable-length)** now traverses *both*
+  edge orientations. `generate_varlen_cte` previously emitted only the
+  `source_id → target_id` direction, so an undirected varlen MATCH undercounted
+  (3 directed rows where openCypher matches 6). The recursive CTE base case now
+  UNIONs both orientations and the recursive step advances to the edge's *other*
+  endpoint (`source_id = end OR target_id = end`); the outer endpoint binding
+  stays directional. Fixes Match9 [1]/[3].
+- **`MATCH … DETACH DELETE a,b RETURN count(*)`** — `count()` is now computed
+  from the live pre-delete MATCH (`handle_match_delete` pre-capture) instead of
+  the accumulated delete count. The old delete-count path only *coincidentally*
+  matched the expected aggregate for undirected-varlen shapes the MATCH
+  undercounted; with the MATCH now correct it would have over-counted. Fixes
+  Delete4 [1] (single-hop undirected, +1 bonus) and keeps Delete4 [2] correct.
+
+- **`MATCH (n) WHERE (n)-[:R*..]-(m)` (varlen inside a WHERE existential
+  pattern predicate)** — the `AST_NODE_PATH` EXISTS emitter
+  (`transform_expr_predicate.c`) previously treated every rel as a single fixed
+  hop, ignoring `rel->varlen`. New `emit_exists_varlen_path` emits a correlated
+  recursive-CTE reachability check (same bidirectional traversal as the MATCH
+  CTE; endpoint labels honored; inline endpoint properties fall back). Fixes
+  Pattern1 [10]/[17]/[18].
+
+Net TCK delta: +6 (Match9 [1]/[3], Delete4 [1], Pattern1 [10]/[17]/[18]), zero
+regressions. Remaining I-0047 targets Match6 [14] (multi-segment fixed+varlen
+named path) and Match6 [17] (zero-length named path) are distinct generators
+tracked under P2 (GQLITE-T-0335) / P4 (GQLITE-T-0337).
+
+## Coverage update (2026-05-27) — I-0047 P2: varlen relationship-property predicate
+
+GQLITE-T-0335. Verified via the TCK harness (full pass-set diff, zero
+regressions; unit 944/944; functional clean):
+
+- **`MATCH (a)-[:T* {k: v}]->(b)` (inline relationship property predicate on a
+  variable-length rel)** — `generate_varlen_cte`'s per-edge filter now folds in
+  inline rel property predicates (an `edge_props_*` EXISTS per `{k: v}` pair)
+  alongside the type constraint, applied to every edge in the base and
+  recursive steps. Previously the property map was ignored, so the path matched
+  regardless of edge properties. Fixes Match4 [5] (+1).
+
+Investigation note: the Match5 [25]/[26]/[28]/[29] "multi-segment chain"
+failures turned out **not** to be a path-matching bug — multi-segment
+fixed+varlen chains already match correctly. They fail because their setup
+(`MATCH (d:D) CREATE …`) only processes the first matched row — a write-path
+multiplicity bug filed as GQLITE-T-0339, out of this initiative's scope.
+
+## Coverage update (2026-05-27) — I-0047 P3: OPTIONAL MATCH row preservation
+
+GQLITE-T-0336 (partial). Verified via the TCK harness (full pass-set diff,
+zero regressions; unit 944/944; functional clean):
+
+- **OPTIONAL node label constraints no longer drop the preserved anchor row.**
+  An OPTIONAL node's label was emitted as an INNER `node_labels` join (for
+  varlen-deferred targets and for every non-first optional node), which inner-
+  joins away the NULL-seed row when the optional doesn't match. Labels now fold
+  into the node's LEFT JOIN ON as a correlated EXISTS. Fixes Match7 [15]
+  (OPTIONAL varlen + nulls) and Aggregation5 [2] (OPTIONAL MATCH + collect).
+
+- **Variable-length paths now enforce relationship-uniqueness, not
+  node-uniqueness.** `(s)-[:REL]->(b)-[:LOOP]->(b)` is a valid varlen path (two
+  distinct edges) even though it revisits `b`; the CTE previously blocked node
+  revisits. Fixes Match7 [12].
+- **WITH-projected NULL node/edge variables render as SQL NULL in RETURN.** A
+  node/edge bound via OPTIONAL and carried across WITH, when NULL, was projected
+  as a bogus `{id:null,…}` object; the post-WITH projection now guards with
+  `CASE WHEN id IS NULL THEN NULL`. Fixes Match7 [21], [27].
+
+P3 net: +5 (Match7 [12]/[15]/[21]/[27], Aggregation5 [2]). Remaining OPTIONAL
+work (multi-rel combined-EXISTS join ordering → derived-table rewrite;
+bound-rel reverse optional → deferred-constraint plumbing) tracked under
+GQLITE-T-0336.
+
+## Coverage update (2026-05-27) — I-0047 P4: forward a path variable through WITH
+
+GQLITE-T-0337. Verified via the TCK harness (rigorous pass-set diff vs prior
+HEAD, zero regressions; unit 944/944; functional clean):
+
+- **`MATCH p = (…) WITH p … RETURN p` now carries the path across the WITH
+  boundary.** WITH's item loop bypassed `transform_expression` (which hydrates
+  path vars), so a forwarded path emitted a bare `p` column → "no such column".
+  WITH now emits the path-hydration SQL `AS p`, preserves the path metadata
+  across the scope reset, and re-registers `p` as a path var on the CTE column;
+  RETURN emits that column directly and the executor hydrates it. Fixes
+  With1 [4].
+- **OPTIONAL variable-length relationship list returns NULL (not `[]`) on a
+  no-match.** The varlen edge-list projection used `json_group_array` over
+  `json_each('[' || elem_ids || ']')`, which yields `'[]'` when `elem_ids` is
+  NULL (OPTIONAL miss). Wrapped it in `CASE WHEN elem_ids IS NULL THEN NULL`.
+  Fixes Match9 [9].
+
+P4 (GQLITE-T-0337) complete: +2 (With1 [4], Match9 [9]).
