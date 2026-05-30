@@ -399,3 +399,152 @@ unit 944/944; functional clean):
   `%expect 15` / `%expect-rr 3`). The brace form **with** an inner `WHERE`
   ([2]/[4]) and the full-query/aggregation/nested forms (ExistentialSubquery2/3)
   remain unsupported — they need inner-variable registration and are deferred.
+
+## Coverage update (2026-05-29) — existential subquery brace form with inner WHERE
+
+`cypher_gram.y` + `cypher_ast.{h,c}` + `transform_expr_predicate.c` +
+`transform_validate.c`. Verified via the TCK harness (3710 -> 3712, zero
+regressions; unit 944/944; functional clean):
+
+- **`WHERE exists { (n)-->(m) WHERE n.prop = m.prop }` evaluates** correctly
+  (ExistentialSubquery1 [2]/[4]). The brace form may introduce fresh inner
+  variables (`m`, `r`). Implementation:
+  - `cypher_exists_expr` gains `where_clause` (the inner predicate) and
+    `is_subquery` (brace vs paren). Grammar rule `EXISTS '{' pattern_list
+    WHERE expr '}'` sets both.
+  - The `EXISTS_TYPE_PATTERN` emitter registers the inner pattern's *new*
+    node/rel variables against their subquery aliases (`n%d` / `e%d`) before
+    transforming the inner WHERE, folds it in as ` AND (<expr>)`, then
+    `transform_var_truncate_to`s back to the saved scope.
+  - The WHERE-pattern fresh-variable validator skips `is_subquery` EXISTS
+    nodes (the brace form legitimately scopes fresh vars; the paren
+    pattern-predicate form keeps the stricter rule).
+  - Full-query/aggregation/nested existential subqueries (ExistentialSubquery2
+    [1]/[2], ExistentialSubquery3) remain deferred.
+
+## Coverage update (2026-05-29) — bulk SET from an entity (SET r = a)
+
+`executor_set.c`. Verified via the TCK harness (3712 -> 3714, zero regressions;
+unit 944/944; functional clean):
+
+- **`SET <entity> = <entity>` / `+= <entity>` copies all properties** from the
+  source entity to the destination (Merge6 [6] `ON CREATE SET r = a`, Merge7 [4]
+  `ON MATCH SET r = a`). The bulk-SET handler previously accepted only a map
+  literal or JSON parameter as RHS and errored on an identifier. Added a
+  `copy_entity_properties` helper that reads the source's five property-type
+  tables and re-sets each on the destination via the typed schema setters
+  (incrementing `properties_set`); replace-mode (`=`) reuses the existing
+  delete-all-first step. Merge8 [1] and Merge9 [3] still fail on the unrelated
+  multi-row MATCH+MERGE cartesian-iteration gap (deferred).
+
+## Coverage update (2026-05-29) — NaN constant comparison semantics
+
+`transform_expr_ops.c`. Verified via the TCK harness (3714 -> 3721, rigorous
+full pass-set diff: zero regressions, 7 newly passing; unit 944/944; functional
+clean):
+
+- **`0.0 / 0.0` comparisons follow Cypher NaN semantics** (Comparison1 [8],
+  Comparison2 [5]). SQLite collapses float division-by-zero to NULL at the
+  operator level, so NaN cannot survive as a native double nor be told apart
+  from null at runtime. Every NaN TCK scenario uses the literal constant
+  `0.0 / 0.0`, so it is detected at compile time (`is_nan_const`: DIV of two
+  zero-valued numeric literals) and the comparison emits the correct raw SQL
+  truth value (`1`/`0`/`NULL`, matching a native comparison's shape so any
+  enclosing boolean wrapper evaluates it right):
+  - `NaN = x` -> false, `NaN <> x` -> true (x non-null; vs null -> null)
+  - `NaN </<=/>/>= number-or-NaN` -> false; vs other type -> null (cross-type
+    ordering undefined).
+  Falls through untouched when the other operand isn't a compile-time literal.
+  NaN flowing through a variable (ReturnOrderBy1 [11]/[12], Comparison2 [3])
+  needs the full cross-type total-ordering comparator and is deferred.
+
+## Coverage update (2026-05-29) — UNWIND of a list containing bound entities
+
+`transform_unwind.c`. Verified via the TCK harness (3721 -> 3721 pass; 4
+scenarios move error -> fail; rigorous full pass-set diff: zero regressions;
+unit 944/944; functional clean):
+
+- **`MATCH ... UNWIND [n, r, p, ...] AS x` no longer crashes** with
+  `no such column: _gql_default_alias_0.id`. The LIST branch only emitted a
+  per-arm `FROM` when a WITH projection was carried (`has_carry`); pre-WITH
+  MATCH entity variables are excluded from carry, so an entity-referencing list
+  produced UNION arms with no FROM and unbound aliases. The branch now splices
+  the prior MATCH's FROM tables (and WHERE) into each arm — mirroring the
+  function-call branch — when `inner_sql` is a splicable `SELECT * FROM ...`.
+  This is a **prerequisite** for the ORDER-BY type-ordering scenarios
+  (ReturnOrderBy1 [11]/[12], WithOrderBy1 [21]/[22]), which now produce output
+  but still fail pending: (a) a Cypher total-orderability key in
+  `_gql_order_key` (map<node<rel<list<path<string<bool<number<NaN<null vs the
+  current SQLite-native order), (b) a distinguishable NaN value/rendering (NaN
+  currently collapses to NULL), and (c) path hydration through UNWIND. Those
+  remain deferred. Comparison2 [3] additionally needs WITH-WHERE input-scope
+  referencing (`WHERE i <> j` after a projection that drops `i`/`j`).
+
+## Coverage update (2026-05-29) — Cypher orderability type-rank in ORDER BY
+
+`sql_builder.c`, `transform_with.c`, `udf_helpers.c`, `udf_register.c`. Verified
+via the TCK harness (3721 -> 3721; rigorous full pass-set diff: zero regressions,
+zero newly passing; unit 944/944; functional clean):
+
+- **ORDER BY over mixed types now follows Cypher orderability**
+  (map < node < rel < list < path < string < bool < number < NaN < null) instead
+  of SQLite's native storage-class order. New `_gql_order_rank(value)` UDF returns
+  the type rank 0..9 (entities/maps/paths told apart by their distinctive JSON
+  keys); `sql_order_by` and the WITH ORDER-BY path now emit
+  `_gql_order_rank(e) <dir>, _gql_order_key(e) <dir>` — rank groups by type,
+  `_gql_order_key` orders within the (homogeneous) rank. This is the
+  GQLITE-T-0340 comparator: standalone groundwork for the mixed-type ORDER-BY
+  scenarios (ReturnOrderBy1 [11]/[12], WithOrderBy1 [21]/[22]), which also need
+  a renderable NaN value and path-through-UNWIND hydration (both deferred —
+  see GQLITE-T-0340). The rank UDF already detects the planned NaN sentinel
+  (rank 8) for forward-compat.
+
+## Coverage update (2026-05-29) — renderable NaN value (GQLITE-T-0340 sub-feature B)
+
+`transform_expr_ops.c`, `executor_match.c`, `agtype.c`, `extension.c`. Verified
+via the TCK harness (3721 -> 3722, rigorous full pass-set diff: zero regressions,
++1 WithOrderBy1 [22]; unit 944/944; functional clean):
+
+- **`0.0 / 0.0` now produces a renderable NaN value** that prints as the bare
+  token `NaN` and orders at rank 8. SQLite collapses float `/0` to NULL and drops
+  subtypes across CTE boundaries, so NaN is carried as the private string
+  `GQL_NAN_SENTINEL` (0x01 'N' 'a' 'N') — recognized by content, collision-proof.
+  Standalone `0.0/0.0` emits `(CHAR(1) || 'NaN')`; the agtype layer
+  (`create_property_agtype_value`) maps the sentinel to a float NaN whose
+  serializer prints `NaN`; the plain formatter prints the sentinel as `NaN`.
+  Combined with the orderability rank (sub-feature A) this fixes WithOrderBy1
+  [22]. ReturnOrderBy1 [11]/[12], WithOrderBy1 [21] now order correctly and only
+  fail on path-as-list-element rendering (sub-feature C, deferred).
+
+## Coverage update (2026-05-29) — path-as-list-element hydration (GQLITE-T-0340 sub-feature C)
+
+`cypher_transform.h`, `transform_return.c`, `transform_unwind.c`. Verified via the
+TCK harness (3722 -> 3725; unit 944/944; functional clean):
+
+- **A path variable used as a list element under UNWIND now renders as the full
+  `{nodes,rels}` object** instead of the raw `elem_ids` array. The executor's
+  elem_ids post-hydration only reaches top-level RETURN columns, not values buried
+  in an UNWIND row. New context flag `emit_hydrated_path` makes the path
+  projection emit the self-contained hydrated JSON (reusing the pattern-
+  comprehension builder) for non-varlen paths; `transform_unwind` sets it around
+  each list-element transform. Completes the GQLITE-T-0340 stack (A rank + B NaN +
+  C path): fixes ReturnOrderBy1 [11]/[12] and WithOrderBy1 [21] (WithOrderBy1 [22]
+  landed with B). Mixed-type ORDER BY now fully follows Cypher orderability
+  map<node<rel<list<path<string<bool<number<NaN<null.
+
+## Coverage update (2026-05-30) — labels()/type()/keys() accept type Any
+
+`transform_func_entity.c`, `transform_func_aggregate.c`, `udf_helpers.c`,
+`udf_register.c`. Verified via the TCK harness (3725 -> 3728, rigorous full
+pass-set diff: zero regressions, +3; unit 944/944; functional clean):
+
+- **`labels()`, `type()`, `keys()` accept a statically-Any argument** (e.g.
+  `labels(list[0])`, `type(list[0])`, `keys($param)`) — previously rejected at
+  compile time unless the argument was a bare node/rel identifier. labels()/type()
+  on a non-identifier now route through new `_gql_labels` / `_gql_type` UDFs that
+  inspect the runtime value: a node/relationship JSON object yields its
+  labels/type, null yields null, and anything else raises a runtime
+  `TypeError: InvalidArgumentValue` — so the negative scenarios (Graph3 [9]) still
+  error. keys() on a parameter/expression emits a single-eval subquery over
+  json_each, using the value's `properties` object when present (node/rel) else
+  its own keys (map). Fixes Graph3 [6], Graph4 [5], Map3 [2].

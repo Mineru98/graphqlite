@@ -577,6 +577,52 @@ void gql_subscript_func(
         "TypeError: InvalidArgumentType: Cannot subscript value of non-list/non-map", -1);
 }
 
+/* labels()/type() over a statically-Any argument (Graph3 [6], Graph4 [5]).
+ * The runtime value decides: a node/relationship JSON object yields its
+ * labels/type; null yields null; anything else raises a TypeError so the
+ * "fail on invalid argument" scenarios (Graph3 [9]) still error. `path` is
+ * "$.labels" or "$.type"; `want_array` distinguishes the two shapes. */
+static void gql_entity_accessor(sqlite3_context *context, sqlite3_value *v,
+                                const char *path, bool want_array,
+                                const char *err) {
+    if (sqlite3_value_type(v) == SQLITE_NULL) { sqlite3_result_null(context); return; }
+    const char *s = (sqlite3_value_type(v) == SQLITE_TEXT)
+                    ? (const char*)sqlite3_value_text(v) : NULL;
+    if (s && s[0] == '{') {
+        sqlite3 *db = sqlite3_context_db_handle(context);
+        sqlite3_stmt *st = NULL;
+        if (sqlite3_prepare_v2(db, "SELECT json_type(?1, ?2), json_extract(?1, ?2)",
+                               -1, &st, NULL) == SQLITE_OK) {
+            sqlite3_bind_value(st, 1, v);
+            sqlite3_bind_text(st, 2, path, -1, SQLITE_TRANSIENT);
+            int ok = 0;
+            if (sqlite3_step(st) == SQLITE_ROW) {
+                const char *jt = (const char*)sqlite3_column_text(st, 0);
+                if (jt && ((want_array && strcmp(jt, "array") == 0) ||
+                           (!want_array && strcmp(jt, "text") == 0))) {
+                    sqlite3_result_value(context, sqlite3_column_value(st, 1));
+                    ok = 1;
+                }
+            }
+            sqlite3_finalize(st);
+            if (ok) return;
+        }
+    }
+    sqlite3_result_error(context, err, -1);
+}
+
+void gql_labels_func(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    if (argc != 1) { sqlite3_result_null(context); return; }
+    gql_entity_accessor(context, argv[0], "$.labels", true,
+        "TypeError: InvalidArgumentValue: labels() requires a Node");
+}
+
+void gql_type_func(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    if (argc != 1) { sqlite3_result_null(context); return; }
+    gql_entity_accessor(context, argv[0], "$.type", false,
+        "TypeError: InvalidArgumentValue: type() requires a Relationship");
+}
+
 /* Cypher's three-valued IN operator.
  *   null IN []          -> false
  *   null IN <non-empty> -> null
@@ -1208,6 +1254,53 @@ void gql_order_key_func(
 
     /* Fallback: pass-through */
     sqlite3_result_value(context, argv[0]);
+}
+
+/* Cypher orderability type-rank (0..9), the PRIMARY ORDER BY key so mixed-type
+ * sorts follow Cypher's total order:
+ *   map < node < rel < list < path < string < bool < number < NaN < null
+ * The secondary key (_gql_order_key) then orders within a homogeneous rank.
+ * Values arrive as untyped SQLite cells; JSON entity/map/path shapes are told
+ * apart by their distinctive keys (heuristic, sufficient for the value shapes
+ * this engine emits). GQLITE-T-0340. */
+void gql_order_rank_func(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    if (argc != 1) { sqlite3_result_int(context, 9); return; }
+    int t = sqlite3_value_type(argv[0]);
+    if (t == SQLITE_NULL) { sqlite3_result_int(context, 9); return; }   /* null  */
+    if (t == SQLITE_INTEGER || t == SQLITE_FLOAT) {
+        sqlite3_result_int(context, 7); return;                          /* number */
+    }
+    if (t == SQLITE_TEXT) {
+        const char *s = (const char*)sqlite3_value_text(argv[0]);
+        if (!s) { sqlite3_result_int(context, 9); return; }
+        /* NaN sentinel — ranks just after numbers. */
+        if (strcmp(s, GQL_NAN_SENTINEL) == 0) { sqlite3_result_int(context, 8); return; }
+        /* Boolean: subtype-tagged or the canonical literals. */
+        if (sqlite3_value_subtype(argv[0]) == GQL_SUBTYPE_BOOLEAN ||
+            strcmp(s, "true") == 0 || strcmp(s, "false") == 0) {
+            sqlite3_result_int(context, 6); return;                      /* bool */
+        }
+        if (s[0] == '{') {
+            /* Entity/path/map JSON. Path carries both "nodes" and "rels"
+             * arrays; a node carries "labels"; a relationship carries
+             * "startNode"/"startNodeId"; otherwise it is a plain map. Order of
+             * checks matters because a path's text contains the inner keys. */
+            bool has_nodes = strstr(s, "\"nodes\"") != NULL;
+            bool has_rels  = strstr(s, "\"rels\"")  != NULL;
+            if (has_nodes && has_rels) { sqlite3_result_int(context, 4); return; }   /* path */
+            if (strstr(s, "\"labels\"")) { sqlite3_result_int(context, 1); return; } /* node */
+            if (strstr(s, "\"startNode")) { sqlite3_result_int(context, 2); return; }/* rel  */
+            sqlite3_result_int(context, 0); return;                      /* map */
+        }
+        if (s[0] == '[') { sqlite3_result_int(context, 3); return; }     /* list */
+        sqlite3_result_int(context, 5); return;                          /* string */
+    }
+    /* BLOB / unknown — treat as string-ish. */
+    sqlite3_result_int(context, 5);
 }
 
 /* --- Cypher-orderability min()/max() aggregates (Aggregation2 [9]/[11]/[12]).
