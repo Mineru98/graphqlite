@@ -548,3 +548,79 @@ pass-set diff: zero regressions, +3; unit 944/944; functional clean):
   error. keys() on a parameter/expression emits a single-eval subquery over
   json_each, using the value's `properties` object when present (node/rel) else
   its own keys (map). Fixes Graph3 [6], Graph4 [5], Map3 [2].
+
+## Coverage update (2026-05-30) — duration multiply/divide by a number (Temporal8 [7])
+
+`transform_expr_ops.c`, `udf_helpers.c`, `udf_register.c`. Verified via the TCK
+harness (3728 -> 3731, rigorous full pass-set diff: zero regressions, +3; unit
+944/944; functional clean):
+
+- **`duration * n` / `duration / n` now scale the duration component-wise**
+  instead of coercing the JSON to 0. New `_gql_dyn_mul` / `_gql_dyn_div` UDFs
+  (mirroring the ADD/SUB `_gql_dyn_*` dispatch) detect a Duration operand and
+  scale months/days/seconds/nanos by the factor, cascading each unit's
+  fractional remainder down via 1 month = 30.436875 days and 1 day = 86400 s
+  (components otherwise NOT normalized across each other); plain numerics keep
+  native int/float semantics. BINARY_OP_MUL/DIV route through the helpers unless
+  both operands are numeric literals. Fixes Temporal8 [7]. Part of GQLITE-T-0341.
+
+## Coverage update (2026-05-30) — fractional duration construction + date arithmetic (Temporal8 [6]/[1])
+
+`udf_helpers.c`. Verified via the TCK harness (3731 -> 3742, rigorous full
+pass-set diff: zero regressions, +11; unit 944/944; functional clean):
+
+- **`duration({...})` with fractional components cascades correctly.** The
+  fractional-month→day carry used 30.0 days/month; corrected to 30.436875 (avg
+  Gregorian month), matching Cypher (Temporal8 [6] examples 3/6/7/8/9, Temporal1
+  [12], Temporal7 [6]).
+- **Durations no longer normalize sub-day time into days.** The composer's
+  day-overflow roll (seconds → days) was removed so `duration({hours:25})` stays
+  `PT25H` and a fractional duration keeps e.g. `PT67H` — consistent with
+  `emit_duration_json` used by duration addition.
+- **date + duration rolls the duration's whole-day time into the date.** Since
+  the duration value is no longer pre-normalized, `apply_duration_to_temporal`
+  now adds `time_ns / DAY_NS` whole days (trunc toward zero) to a pure-date input
+  and drops the sub-day remainder (Temporal8 [1] example 3). Part of GQLITE-T-0341.
+
+## Coverage update (2026-05-30) — duration.inMonths/inDays tz normalization (Temporal10 [3]/[4])
+
+`udf_helpers.c`. Verified via the TCK harness (3742 -> 3744, rigorous full
+pass-set diff: zero regressions, +2; unit 944/944; functional clean):
+
+- **`duration.inMonths` / `duration.inDays` compare the time-of-day in UTC**
+  when both operands carry a tz offset, instead of the local clock face. A
+  tz-offset difference (e.g. `+0200` vs `+0100`) no longer spuriously drops a
+  whole month/day (Temporal10 [3] ex19 `P1Y`, [4] ex17 `P337D`). inDays was also
+  rewritten to count whole days from the calendar day difference minus a partial
+  trailing day (time-of-day comparison), using `days_from_civil` (unbounded)
+  instead of `timegm`. Part of GQLITE-T-0341. Remaining Temporal10: DST-aware
+  durations [8] and large-duration overflow [9]/[10] (deferred).
+
+## Coverage update (2026-05-30) — time() drops named-zone region; date() quarter selection (Temporal3)
+
+`udf_helpers.c`, `transform_func_temporal.c`, `udf_register.c`. Verified via the
+TCK harness (rigorous full pass-set diffs: zero regressions; unit 944/944;
+functional clean):
+
+- **`date({date: other, quarter: N})` preserves month-of-quarter + day** (+3,
+  3744->3747). Was resetting to the quarter's first month/day 1.
+- **`time()` / `localtime()` drop a named-zone `[Region]` suffix**, keeping only
+  the numeric offset, while `datetime()` retains it (+2, 3747->3749). The shared
+  `_gql_time_compose` UDF gained a `drop_region` arg (1 for time, 0 for datetime).
+  Part of GQLITE-T-0341.
+
+## Coverage update (2026-05-31) — Temporal cluster grind (T-0341), 3728 -> 3758 (+30)
+
+`udf_helpers.c`, `transform_func_temporal.c`, `udf_register.c`. Closed nearly the
+whole Temporal cluster across many rigorous-diff-verified commits: duration
+multiply/divide; fractional duration construction + date arithmetic;
+duration.inMonths/inDays tz normalization; date() quarter selection; time()
+region-drop; zero-offset -> Z; offset zero-seconds drop; date(datetime); ISO
+fractional-month cascade; UTC-instant temporal comparison; .timezone accessor;
+alternate ISO duration form. Unit 944/944, functional clean throughout.
+
+Remaining Temporal = the DST cluster only (12): Temporal10 [8] (across-DST-
+transition elapsed time), Temporal3 [10] / Temporal2 [6] (offset resolution on a
+DST-transition date). `named_tz_offset`'s month approximation is load-bearing
+(an accurate last-Sunday-rule swap regressed -29), so DST needs a careful,
+empirical, per-zone effort + across-transition interval math. Deferred.

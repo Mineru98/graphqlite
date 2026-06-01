@@ -37,6 +37,7 @@ void gql_order_cmp_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 /* Order key + namespace/timezone extractors */
 void gql_order_key_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void gql_order_rank_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void gql_fmt_offset_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void gql_labels_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void gql_type_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void gql_extract_ns_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
@@ -52,6 +53,8 @@ void gql_duration_calendar_func(sqlite3_context *ctx, int argc, sqlite3_value **
 void gql_tz_offset_for_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void gql_dyn_add_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void gql_dyn_sub_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void gql_dyn_mul_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void gql_dyn_div_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 
 /* Temporal value construction + parsing + reflection */
 void gql_date_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);

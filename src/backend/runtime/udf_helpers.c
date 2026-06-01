@@ -20,6 +20,7 @@
 #include <regex.h>
 #include <time.h>
 #include <stdbool.h>
+#include <math.h>
 #include <stdint.h>
 
 #if defined(_WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
@@ -381,6 +382,23 @@ static int gql_cmp_json_vals(sqlite3 *db,
  *
  *   Called by transform_binary_operation's LT/GT/LTE/GTE path —
  *   each operand is transformed exactly once. */
+static int64_t parse_temporal_ns(const char *s);  /* defined below */
+
+/* Heuristic: does the text look like a Cypher temporal value (time 'HH:MM…' or
+ * date/datetime 'YYYY-MM-DD…')? Used so ordered comparison of two temporals
+ * uses their UTC instant rather than a lexical compare (Temporal7 [3]). */
+static bool looks_temporal(const char *s) {
+    if (!s) return false;
+    size_t n = strlen(s);
+    if (n >= 5 && s[0] >= '0' && s[0] <= '9' && s[1] >= '0' && s[1] <= '9' &&
+        s[2] == ':' && s[3] >= '0' && s[3] <= '9' && s[4] >= '0' && s[4] <= '9')
+        return true;  /* time HH:MM… */
+    if (n >= 10 && s[4] == '-' && s[7] == '-' &&
+        s[0] >= '0' && s[0] <= '9' && s[1] >= '0' && s[1] <= '9')
+        return true;  /* date / datetime YYYY-MM-DD… */
+    return false;
+}
+
 void gql_order_cmp_func(
     sqlite3_context *context, int argc, sqlite3_value **argv) {
     if (argc != 3) { sqlite3_result_null(context); return; }
@@ -455,7 +473,14 @@ void gql_order_cmp_func(
         const char *a = (const char *)sqlite3_value_text(argv[0]);
         const char *b = (const char *)sqlite3_value_text(argv[1]);
         if (!a || !b) { sqlite3_result_null(context); return; }
-        cmp = strcmp(a, b);
+        if (looks_temporal(a) && looks_temporal(b)) {
+            /* Compare two temporal values by UTC instant, not lexically, so a
+             * tz offset is honored (Temporal7 [3]: 10:00+01:00 < 09:35+00:00). */
+            int64_t na = parse_temporal_ns(a), nb = parse_temporal_ns(b);
+            cmp = (na < nb) ? -1 : (na > nb) ? 1 : 0;
+        } else {
+            cmp = strcmp(a, b);
+        }
         if (cmp < 0) cmp = -1;
         else if (cmp > 0) cmp = 1;
     } else {
@@ -1263,6 +1288,25 @@ void gql_order_key_func(
  * Values arrive as untyped SQLite cells; JSON entity/map/path shapes are told
  * apart by their distinctive keys (heuristic, sufficient for the value shapes
  * this engine emits). GQLITE-T-0340. */
+/* Normalize a numeric tz offset string: drop a zero seconds suffix, keep
+ * non-zero seconds (Temporal1 [13]: '+02:05:00' -> '+02:05', '+02:05:59' kept).
+ * Non-offset inputs (e.g. 'Z', a named zone) pass through unchanged. */
+void gql_fmt_offset_func(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    if (argc != 1) { sqlite3_result_null(context); return; }
+    const char *tz = (const char*)sqlite3_value_text(argv[0]);
+    if (!tz) { sqlite3_result_null(context); return; }
+    int oh = 0, om = 0, os = 0;
+    if ((tz[0] == '+' || tz[0] == '-') &&
+        sscanf(tz + 1, "%d:%d:%d", &oh, &om, &os) >= 2) {
+        char buf[16];
+        if (os != 0) snprintf(buf, sizeof(buf), "%c%02d:%02d:%02d", tz[0], oh, om, os);
+        else         snprintf(buf, sizeof(buf), "%c%02d:%02d", tz[0], oh, om);
+        sqlite3_result_text(context, buf, -1, SQLITE_TRANSIENT);
+    } else {
+        sqlite3_result_text(context, tz, -1, SQLITE_TRANSIENT);
+    }
+}
+
 void gql_order_rank_func(
     sqlite3_context *context,
     int argc,
@@ -1434,7 +1478,9 @@ void gql_extract_tz_func(
     const char *start;
     if (t) {
         start = t + 1;
-    } else if (strlen(s) >= 8 && s[2] == ':') {
+    } else if (strlen(s) >= 5 && s[2] == ':') {
+        /* Time-only 'HH:MM[...]' — a 'Z' or offset can follow as early as
+         * position 5 (e.g. '21:40Z'), so require only HH:MM, not HH:MM:SS. */
         start = s;
     } else {
         sqlite3_result_text(context, "", 0, SQLITE_TRANSIENT); return;
@@ -1658,6 +1704,8 @@ static int days_in_month_c(int year, int month) {
  * is missing a date or time component, the result borrows zero for that
  * component. Components share sign per-section (date and time may have
  * opposite signs to match TCK examples like 'P-27DT-21H-40M-32.142S'). */
+static long days_from_civil(int y, int m, int d);  /* defined below */
+
 static int64_t time_ns_of(const tparts *p) {
     if (!p->has_time) return 0;
     int64_t NS = 1000000000LL;
@@ -1810,12 +1858,21 @@ void gql_duration_in_days_func(sqlite3_context *ctx, int argc, sqlite3_value **a
     if (!parse_temporal_parts(sa, &a) || !parse_temporal_parts(sb, &b)) { sqlite3_result_null(ctx); return; }
     int64_t days = 0;
     if (a.has_date && b.has_date) {
-        struct tm ta, tb;
-        memset(&ta, 0, sizeof(ta)); memset(&tb, 0, sizeof(tb));
-        ta.tm_year = a.y - 1900; ta.tm_mon = a.mo - 1; ta.tm_mday = a.d;
-        tb.tm_year = b.y - 1900; tb.tm_mon = b.mo - 1; tb.tm_mday = b.d;
-        time_t epa = timegm(&ta), epb = timegm(&tb);
-        days = (epb - epa) / 86400;
+        /* Whole days in the elapsed period — the calendar day difference,
+         * reduced by one when the later instant's time-of-day falls short of
+         * the earlier one (so a partial trailing day isn't counted). Compare in
+         * UTC when both sides carry a tz offset (Temporal10 [4] example 17). */
+        int cmp = compare_temporal(&a, &b);
+        bool forward = (cmp <= 0);
+        const tparts *lo = forward ? &a : &b;
+        const tparts *hi = forward ? &b : &a;
+        int64_t dd = days_from_civil(hi->y, hi->mo, hi->d)
+                   - days_from_civil(lo->y, lo->mo, lo->d);
+        int64_t lo_t, hi_t;
+        if (lo->has_tz && hi->has_tz) { lo_t = time_ns_of_utc(lo); hi_t = time_ns_of_utc(hi); }
+        else { lo_t = time_ns_of(lo); hi_t = time_ns_of(hi); }
+        if (hi_t < lo_t) dd -= 1;
+        days = forward ? dd : -dd;
     }
     char iso[64];
     if (days == 0) snprintf(iso, sizeof(iso), "PT0S");
@@ -1843,8 +1900,12 @@ void gql_duration_in_months_func(sqlite3_context *ctx, int argc, sqlite3_value *
         const tparts *hi = forward ? &b : &a;
         int y = hi->y - lo->y, m = hi->mo - lo->mo, dd = hi->d - lo->d;
         /* When days equal, also account for time-of-day: a full month is
-         * only reached when hi.time >= lo.time. */
-        int64_t lo_t = time_ns_of(lo), hi_t = time_ns_of(hi);
+         * only reached when hi.time >= lo.time. Compare in UTC when both sides
+         * carry a tz offset so a tz difference doesn't spuriously drop a month
+         * (Temporal10 [3] example 19). */
+        int64_t lo_t, hi_t;
+        if (lo->has_tz && hi->has_tz) { lo_t = time_ns_of_utc(lo); hi_t = time_ns_of_utc(hi); }
+        else { lo_t = time_ns_of(lo); hi_t = time_ns_of(hi); }
         if (dd < 0 || (dd == 0 && hi_t < lo_t)) m -= 1;
         if (m < 0) { m += 12; y -= 1; }
         total_months = y * 12 + m;
@@ -2114,6 +2175,14 @@ static void apply_duration_to_temporal(sqlite3_context *ctx, const char *tempora
             residue_ns = time_ns - extra_days * DAY_NS;
             if (residue_ns < 0) { residue_ns += DAY_NS; extra_days -= 1; }
             base_days += extra_days;
+        } else {
+            /* Pure date + duration: the duration's sub-day time still
+             * contributes its WHOLE days (truncated toward zero); the sub-day
+             * remainder is dropped since a date has no time-of-day. The
+             * duration value itself is not normalized — only this date
+             * arithmetic rolls the hours into days. (Temporal8 [1] example 3.) */
+            long long DAY_NS = 86400LL * 1000000000LL;
+            base_days += add_total_ns / DAY_NS;
         }
         int oy, om, od;
         civil_from_days(base_days, &oy, &om, &od);
@@ -2335,6 +2404,96 @@ void gql_dyn_sub_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
     gql_dyn_addsub_func(ctx, argc, argv, -1);
 }
 
+/* Scale a Duration by a numeric factor (Temporal8 [7]). Cypher multiplies each
+ * component (months, days, seconds, nanos) by the factor and cascades the
+ * fractional remainder of each larger unit down into the next smaller one, using
+ * the duration-arithmetic conversions 1 month = 30.436875 days and 1 day = 86400
+ * seconds. Components are NOT otherwise normalized across each other. */
+static void scale_duration(sqlite3_context *ctx, const char *dur, double factor) {
+    double months_f = (double)dur_field_ll(dur, "months") * factor;
+    double days_f   = (double)dur_field_ll(dur, "days") * factor;
+    double total_ns_base = ((double)dur_field_ll(dur, "seconds") * 1e9
+                            + (double)dur_field_ll(dur, "nanosecondsOfSecond")) * factor;
+
+    /* trunc toward zero keeps the signed fraction so negatives cascade too. */
+    double months_int = trunc(months_f);
+    double month_frac = months_f - months_int;
+    days_f += month_frac * 30.436875;        /* avg Gregorian month in days */
+
+    double days_int = trunc(days_f);
+    double day_frac = days_f - days_int;
+    double total_ns = total_ns_base + day_frac * 86400.0 * 1e9;
+
+    /* Cypher truncates the final nanosecond toward zero. But the carries above
+     * accumulate floating-point noise (~0.02 ULP at this magnitude), so an
+     * exact-integer result can read as x.9999. Snap to the nearest integer when
+     * within a small tolerance (absorbs the noise), otherwise truncate toward
+     * zero (so a genuine half like *0.5 of an odd nanosecond drops, not rounds). */
+    double rounded = round(total_ns);
+    long long ns_ll = (fabs(total_ns - rounded) < 0.05)
+                          ? (long long)rounded
+                          : (long long)trunc(total_ns);
+    emit_duration_json(ctx, (long long)months_int, (long long)days_int, ns_ll);
+}
+
+/* `_gql_dyn_mul` / `_gql_dyn_div`: numeric * / / that also scales a Duration
+ * operand (Temporal8 [7]). `op` is '*' or '/'. */
+static void gql_dyn_muldiv_func(sqlite3_context *ctx, int argc, sqlite3_value **argv, char op) {
+    if (argc != 2) { sqlite3_result_null(ctx); return; }
+    int t0 = sqlite3_value_type(argv[0]);
+    int t1 = sqlite3_value_type(argv[1]);
+    if (t0 == SQLITE_NULL || t1 == SQLITE_NULL) { sqlite3_result_null(ctx); return; }
+
+    const char *l_dur = NULL, *r_dur = NULL;
+    bool l_is_dur = is_duration_value(argv[0], &l_dur);
+    bool r_is_dur = is_duration_value(argv[1], &r_dur);
+
+    if (l_is_dur && !r_is_dur) {
+        /* duration * num  or  duration / num */
+        double n = sqlite3_value_double(argv[1]);
+        if (op == '/') {
+            if (n == 0.0) { sqlite3_result_null(ctx); return; }
+            n = 1.0 / n;
+        }
+        scale_duration(ctx, l_dur, n);
+        return;
+    }
+    if (r_is_dur && !l_is_dur && op == '*') {
+        /* num * duration (commutes for * only) */
+        scale_duration(ctx, r_dur, sqlite3_value_double(argv[0]));
+        return;
+    }
+    if (l_is_dur || r_is_dur) {
+        /* num / duration, duration * duration, etc. — undefined. */
+        sqlite3_result_null(ctx);
+        return;
+    }
+
+    /* Plain numeric: preserve SQLite-native int/float semantics. */
+    if (op == '*') {
+        if (t0 == SQLITE_INTEGER && t1 == SQLITE_INTEGER) {
+            sqlite3_result_int64(ctx, sqlite3_value_int64(argv[0]) * sqlite3_value_int64(argv[1]));
+        } else {
+            sqlite3_result_double(ctx, sqlite3_value_double(argv[0]) * sqlite3_value_double(argv[1]));
+        }
+    } else { /* '/' — Cypher integer division truncates toward zero. */
+        if (t0 == SQLITE_INTEGER && t1 == SQLITE_INTEGER) {
+            long long b = sqlite3_value_int64(argv[1]);
+            if (b == 0) { sqlite3_result_null(ctx); return; }
+            sqlite3_result_int64(ctx, sqlite3_value_int64(argv[0]) / b);
+        } else {
+            sqlite3_result_double(ctx, sqlite3_value_double(argv[0]) / sqlite3_value_double(argv[1]));
+        }
+    }
+}
+
+void gql_dyn_mul_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
+    gql_dyn_muldiv_func(ctx, argc, argv, '*');
+}
+void gql_dyn_div_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
+    gql_dyn_muldiv_func(ctx, argc, argv, '/');
+}
+
 /* Compose a YYYY-MM-DD date string from a map's named components. Used by
  * the date()/datetime()/localdatetime() constructors when the map has a
  * `date` or `datetime` base value alongside scalar component overrides.
@@ -2431,11 +2590,28 @@ void gql_date_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv)
         snprintf(buf, sizeof(buf), "%04d-%02d-%02d", oy, omm, odd);
     } else if (sqlite3_value_type(argv[6]) != SQLITE_NULL) {
         int q = sqlite3_value_int(argv[6]);
-        int doq = (sqlite3_value_type(argv[7]) != SQLITE_NULL) ? sqlite3_value_int(argv[7]) : 1;
-        int month = (q - 1) * 3 + 1;
-        long start_days = days_from_civil(y, month, 1);
-        civil_from_days(start_days + (doq - 1), &oy, &omm, &odd);
-        snprintf(buf, sizeof(buf), "%04d-%02d-%02d", oy, omm, odd);
+        if (sqlite3_value_type(argv[7]) != SQLITE_NULL) {
+            /* dayOfQuarter is absolute within the quarter. */
+            int doq = sqlite3_value_int(argv[7]);
+            int month = (q - 1) * 3 + 1;
+            long start_days = days_from_civil(y, month, 1);
+            civil_from_days(start_days + (doq - 1), &oy, &omm, &odd);
+            snprintf(buf, sizeof(buf), "%04d-%02d-%02d", oy, omm, odd);
+        } else {
+            /* Only `quarter` is selected — preserve the month-within-quarter and
+             * day from the base value (or month/day scalar overrides). E.g.
+             * quarter 3 over 1984-11-11 (Q4 month-2, day 11) -> 1984-08-11.
+             * (Temporal3 [1] quarter examples.) */
+            int src_mo = (sqlite3_value_type(argv[1]) != SQLITE_NULL)
+                             ? sqlite3_value_int(argv[1]) : mo;
+            int month_in_q = ((src_mo - 1) % 3 + 3) % 3 + 1;
+            int new_month = (q - 1) * 3 + month_in_q;
+            int day = (sqlite3_value_type(argv[2]) != SQLITE_NULL)
+                          ? sqlite3_value_int(argv[2]) : d;
+            int dim = days_in_month_c(y, new_month);
+            if (day > dim) day = dim;
+            snprintf(buf, sizeof(buf), "%04d-%02d-%02d", y, new_month, day);
+        }
     } else {
         if (sqlite3_value_type(argv[1]) != SQLITE_NULL) mo = sqlite3_value_int(argv[1]);
         if (sqlite3_value_type(argv[2]) != SQLITE_NULL) d = sqlite3_value_int(argv[2]);
@@ -2452,7 +2628,11 @@ void gql_date_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv)
  *   8 base_time, 9 base_datetime, 10 base_localdatetime, 11 base_localtime
  */
 void gql_time_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
-    if (argc != 12) { sqlite3_result_null(ctx); return; }
+    if (argc != 13) { sqlite3_result_null(ctx); return; }
+    /* drop_region: a Cypher time/localtime value never carries a named zone —
+     * keep only the numeric offset. datetime() passes 0 to retain it. */
+    int drop_region = (sqlite3_value_type(argv[12]) != SQLITE_NULL)
+                          ? sqlite3_value_int(argv[12]) : 0;
     int h = 0, mi = 0, sec = 0;
     int64_t ns = 0;
     bool inherit_subsec = false;
@@ -2571,12 +2751,23 @@ void gql_time_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **argv)
                  * a summer date (most TCK tests with named zones use one).
                  * For datetime() the outer SQL replaces this when needed. */
                 const char *off = named_tz_offset(tz, 2000, 7, 15);
-                p += snprintf(p, sizeof(buf) - (p - buf), "%s[%s]", off, tz);
+                if (drop_region)
+                    p += snprintf(p, sizeof(buf) - (p - buf), "%s", off);
+                else
+                    p += snprintf(p, sizeof(buf) - (p - buf), "%s[%s]", off, tz);
             } else if (tz) {
                 p += snprintf(p, sizeof(buf) - (p - buf), "%s", tz);
             }
         } else if (base_tz) {
-            p += snprintf(p, sizeof(buf) - (p - buf), "%s", base_tz);
+            /* Inherited from a base value. A time value drops any [Region]
+             * suffix, keeping only the offset (Temporal3 [3]). */
+            if (drop_region) {
+                const char *br = strchr(base_tz, '[');
+                if (br) p += snprintf(p, sizeof(buf) - (p - buf), "%.*s", (int)(br - base_tz), base_tz);
+                else    p += snprintf(p, sizeof(buf) - (p - buf), "%s", base_tz);
+            } else {
+                p += snprintf(p, sizeof(buf) - (p - buf), "%s", base_tz);
+            }
         } else {
             *p++ = 'Z'; *p = 0;
         }
@@ -2639,7 +2830,10 @@ void gql_duration_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **a
         double total_months_d = years * 12.0 + months;
         total_months = (long long)total_months_d;
         double frac_months = total_months_d - total_months;
-        double total_days_d = weeks * 7.0 + days + frac_months * 30.0;
+        /* Fractional months convert to days at the average Gregorian month
+         * (365.2425/12 = 30.436875 days), matching Cypher duration arithmetic
+         * (Temporal8 [6]). */
+        double total_days_d = weeks * 7.0 + days + frac_months * 30.436875;
         total_days = (long long)total_days_d;
         double frac_days = total_days_d - total_days;
         double total_seconds_d = frac_days * 86400.0 + hours * 3600.0
@@ -2651,14 +2845,12 @@ void gql_duration_compose_func(sqlite3_context *ctx, int argc, sqlite3_value **a
         total_ns = total_secs * 1000000000LL + total_ns_from_secs + extra_ns;
     }
 
-    /* Move full-day overflow from total_ns into total_days using
-     * trunc-toward-zero division — preserves the sign of total_ns so
-     * inputs like {days:1, milliseconds:-1} keep the day and time signs
-     * separate ('P1DT-0.001S' rather than 'PT23H59M59.999S'). */
-    long long DAY_NS = 86400LL * 1000000000LL;
-    long long extra_days = total_ns / DAY_NS;
-    long long residue_ns = total_ns - extra_days * DAY_NS;
-    total_days += extra_days;
+    /* Cypher durations do NOT normalize sub-day time into the days field — the
+     * seconds component keeps hours even past 24 (e.g. `PT67H`, Temporal8 [6]).
+     * Only weeks→days and the fractional month/day carries above feed `days`;
+     * the time residue stays in `total_ns`. (`emit_duration_json`, used by
+     * duration addition, follows the same rule — keeping the two consistent.) */
+    long long residue_ns = total_ns;
 
     char iso[160];
     format_iso_duration((int)total_months, (int)total_days, residue_ns, iso, sizeof(iso));
@@ -2691,6 +2883,20 @@ void gql_duration_parse_iso_func(sqlite3_context *ctx, int argc, sqlite3_value *
     double hours = 0, minutes = 0, seconds = 0;
     bool in_time = false;
     const char *p = s + 1;
+    /* Alternate ISO form P[YYYY]-[MM]-[DD]T[hh]:[mm]:[ss] (Temporal2 [7] ex8).
+     * Detected by date-style dashes after 'P'; the unit-letter form below has
+     * none. */
+    {
+        int Y = 0, Mo = 0, D = 0, H = 0, Mi = 0; double S = 0;
+        int n = sscanf(p, "%d-%d-%dT%d:%d:%lf", &Y, &Mo, &D, &H, &Mi, &S);
+        if (n >= 3 && strchr(p, '-')) {
+            years = Y; months = Mo; days = D;
+            if (n >= 4) hours = H;
+            if (n >= 5) minutes = Mi;
+            if (n >= 6) seconds = S;
+            p = ""; /* skip the unit-letter loop below */
+        }
+    }
     while (*p) {
         if (*p == 'T') { in_time = true; p++; continue; }
         /* Parse a numeric value (with optional sign + fractional). */
@@ -2725,7 +2931,9 @@ void gql_duration_parse_iso_func(sqlite3_context *ctx, int argc, sqlite3_value *
     double total_months_d = years * 12.0 + months;
     int total_months = (int)total_months_d;
     double frac_months = total_months_d - total_months;
-    double total_days_d = weeks * 7.0 + days + frac_months * 30.0;
+    /* Fractional months cascade to days at the average Gregorian month
+     * (30.436875), matching Cypher (Temporal2 [7] 'P0.75M'). */
+    double total_days_d = weeks * 7.0 + days + frac_months * 30.436875;
     long long total_days = (long long)total_days_d;
     double frac_days = total_days_d - total_days;
     double total_seconds_d = frac_days * 86400.0 + hours * 3600.0 + minutes * 60.0 + seconds;
@@ -2875,6 +3083,18 @@ void gql_temporal_field_func(sqlite3_context *ctx, int argc, sqlite3_value **arg
     if (p.has_tz) {
         if (strcmp(field, "offsetMinutes") == 0) { sqlite3_result_int(ctx, p.tz_offset_min); return; }
         if (strcmp(field, "offsetSeconds") == 0) { sqlite3_result_int(ctx, p.tz_offset_min * 60); return; }
+        if (strcmp(field, "timezone") == 0) {
+            /* `.timezone` returns the named zone when present (e.g.
+             * 'Europe/Stockholm'), otherwise the numeric offset (Temporal5 [6]). */
+            const char *lb = s ? strchr(s, '[') : NULL;
+            if (lb) {
+                const char *rb = strchr(lb, ']');
+                int zlen = rb ? (int)(rb - lb - 1) : (int)strlen(lb + 1);
+                sqlite3_result_text(ctx, lb + 1, zlen, SQLITE_TRANSIENT);
+                return;
+            }
+            /* fall through to offset form below */
+        }
         if (strcmp(field, "offset") == 0 || strcmp(field, "timezone") == 0) {
             char buf[16];
             int oh = p.tz_offset_min / 60;
@@ -2912,6 +3132,18 @@ void gql_normalize_date_func(sqlite3_context *ctx, int argc, sqlite3_value **arg
     if (argc != 1) { sqlite3_result_null(ctx); return; }
     const char *s = (const char*)sqlite3_value_text(argv[0]);
     if (!s) { sqlite3_result_null(ctx); return; }
+    /* date(datetime/localdatetime): keep only the date portion before the 'T'
+     * so '1984-11-11T12:31:14' yields '1984-11-11' rather than failing the
+     * length checks below (Temporal3 [1] ex8/15). */
+    char datebuf[16];
+    const char *Tpos = strchr(s, 'T');
+    if (Tpos) {
+        size_t dlen = (size_t)(Tpos - s);
+        if (dlen >= sizeof(datebuf)) dlen = sizeof(datebuf) - 1;
+        memcpy(datebuf, s, dlen);
+        datebuf[dlen] = 0;
+        s = datebuf;
+    }
     int len = (int)strlen(s);
     bool has_W = strchr(s, 'W') != NULL;
     bool has_dash = strchr(s, '-') != NULL;
@@ -3050,8 +3282,12 @@ void gql_normalize_time_func(sqlite3_context *ctx, int argc, sqlite3_value **arg
             }
             /* A `time` value carries only the numeric offset — the named-zone
              * bracket (e.g. [Europe/Stockholm], already resolved to the offset)
-             * is dropped (only datetime keeps the zone name). Temporal3 [3]. */
-            snprintf(tz_out, sizeof(tz_out), "%c%02d:%02d", tz_main[0], oh, om);
+             * is dropped (only datetime keeps the zone name). Temporal3 [3].
+             * A zero offset renders as `Z`, not `±00:00` (Temporal2 [3]). */
+            if (oh == 0 && om == 0)
+                snprintf(tz_out, sizeof(tz_out), "Z");
+            else
+                snprintf(tz_out, sizeof(tz_out), "%c%02d:%02d", tz_main[0], oh, om);
         }
     }
 
@@ -3225,7 +3461,12 @@ void gql_normalize_datetime_func(sqlite3_context *ctx, int argc, sqlite3_value *
                 if (strchr(tz_main + 1, ':')) sscanf(tz_main + 1, "%d:%d", &oh, &om);
                 else if (strlen(tz_main + 1) >= 4) sscanf(tz_main + 1, "%2d%2d", &oh, &om);
                 else sscanf(tz_main + 1, "%d", &oh);
-                snprintf(tz_out, sizeof(tz_out), "%c%02d:%02d%s", tz_main[0], oh, om, bracket ? bracket : "");
+                /* A zero numeric offset with no named zone renders as `Z`
+                 * (Temporal2 [5]); a named zone keeps the explicit offset. */
+                if (oh == 0 && om == 0 && !bracket)
+                    snprintf(tz_out, sizeof(tz_out), "Z");
+                else
+                    snprintf(tz_out, sizeof(tz_out), "%c%02d:%02d%s", tz_main[0], oh, om, bracket ? bracket : "");
             } else if (*tz_start == '[') snprintf(tz_out, sizeof(tz_out), "%s", tz_start);
         }
 
