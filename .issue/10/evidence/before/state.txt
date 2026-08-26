@@ -1,0 +1,10 @@
+# BEFORE — upsertNode 착수 전 baseline (origin/main)
+
+## src/graph/nodes.ts 에 upsertNode 함수 부재 (주석 언급만)
+5:// write side (`upsertNode`) depends on `hasNode` and lands with N-02 (#10).
+16:export function hasNode(conn: Connection, nodeId: string): boolean {
+30:export function getNode(conn: Connection, nodeId: string): CypherValue | null {
+39:export function deleteNode(conn: Connection, nodeId: string): void {
+54:export function getAllNodes(conn: Connection, label?: string): CypherValue[] {
+
+## baseline 테스트: 91 pass / 0 fail (upsert 테스트 이전)
