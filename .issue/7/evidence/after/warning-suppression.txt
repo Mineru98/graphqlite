@@ -1,0 +1,8 @@
+# ExperimentalWarning 억제 실증 (수용 기준 #3)
+커넥션 모듈을 fresh 프로세스에서 import 했을 때 stderr
+
+## 기본 (억제 ON) — SQLite 경고 없음
+(SQLite ExperimentalWarning 출력 없음 — 억제 성공)
+
+## GRAPHQLITE_SHOW_EXPERIMENTAL_WARNING=1 (원복) — 경고 다시 출력
+(node:23503) ExperimentalWarning: SQLite is an experimental feature and might change at any time
