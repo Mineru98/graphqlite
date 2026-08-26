@@ -1,10 +1,9 @@
-// Node read/delete operations as pure functions.
+// Node read/delete/upsert operations as pure functions.
 //
 // Each takes a Connection first so Graph can delegate in three lines (see
-// graph/index.ts). Mirrors bindings/python/src/graphqlite/graph/nodes.py. The
-// write side (`upsertNode`) depends on `hasNode` and lands with N-02 (#10).
+// graph/index.ts). Mirrors bindings/python/src/graphqlite/graph/nodes.py.
 import type { Connection } from '../connection.ts';
-import { assertIdentifier } from '../utils.ts';
+import { assertIdentifier, formatProps } from '../utils.ts';
 import type { CypherValue } from '../result.ts';
 
 /**
@@ -81,4 +80,44 @@ export function getAllNodes(conn: Connection, label?: string): CypherValue[] {
     }
   }
   return nodes;
+}
+
+/**
+ * Create a node, or update an existing one — dispatched on {@link hasNode}
+ * (mirrors nodes.py:49-79).
+ *
+ * The two paths are deliberately **asymmetric** and this is load-bearing:
+ * - **Create** merges as `{ id: nodeId, ...nodeData }`, so a `nodeData.id`
+ *   *overwrites* `nodeId` (later spread wins). The whole record is interpolated
+ *   via {@link formatProps} in a single `CREATE`.
+ * - **Update** SETs only the `nodeData` entries — `id` is left untouched — and
+ *   issues **one query per entry** (N round-trips; do not batch them).
+ *
+ * `label` (default `"Entity"`) is used only on creation. The label and every
+ * interpolated property key are validated with {@link assertIdentifier} (the
+ * core binding does this even though Python interpolates unchecked).
+ */
+export function upsertNode(
+  conn: Connection,
+  nodeId: string,
+  nodeData: Record<string, unknown>,
+  label: string = 'Entity',
+): void {
+  const props: Record<string, unknown> = { id: nodeId, ...nodeData };
+
+  if (hasNode(conn, nodeId)) {
+    // Update: one query per entry, key interpolated, value bound. `id` untouched.
+    for (const [key, value] of Object.entries(nodeData)) {
+      assertIdentifier(key, 'property');
+      conn.cypher(`MATCH (n {id: $id}) SET n.${key} = $val RETURN n`, { id: nodeId, val: value });
+    }
+  } else {
+    // Create: single interpolated CREATE. nodeData.id (if any) wins over nodeId.
+    assertIdentifier(label, 'label');
+    for (const key of Object.keys(props)) {
+      assertIdentifier(key, 'property');
+    }
+    const propStr = formatProps(props);
+    conn.cypher(`CREATE (n:${label} {${propStr}})`);
+  }
 }
