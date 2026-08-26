@@ -1,0 +1,7 @@
+# BEFORE — 커뮤니티 탐지 착수 전 baseline (origin/main)
+
+## src/algorithms/ 목록 (community.ts 없음)
+centrality.ts
+parsing.ts
+
+## baseline 테스트: 138 pass / 0 fail (community 테스트 이전)
