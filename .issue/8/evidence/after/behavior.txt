@@ -1,0 +1,6 @@
+graph() 반환         : Graph 인스턴스
+namespace 저장       : "tenant-a"
+connection getter    : Connection
+namespace 무시 쿼리  : [{"n.name":"Alice"}] (namespace 는 SQL 에 안 쓰임)
+close() 동작         : 이후 execute 차단됨 (닫힘 확인)
+using 자동 해제      : 블록 종료 후 connection 닫힘 (Symbol.dispose 동작)
