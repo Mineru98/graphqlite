@@ -1,0 +1,7 @@
+weaklyConnectedComponents() 노드수        4
+  → 서로 다른 component 수                  2
+wcc()[0]                               {"nodeId":"1","userId":"a","component":0}
+wcc===weaklyConnectedComponents        true
+connectedComponents===wcc              true
+stronglyConnectedComponents() 노드수      4
+scc===stronglyConnectedComponents      true
