@@ -17,7 +17,7 @@
 import { connect, type Connection, type ConnectionOptions } from '../connection.ts';
 import type { CypherRow, CypherValue } from '../result.ts';
 import { hasNode, getNode, deleteNode, getAllNodes, upsertNode } from './nodes.ts';
-import { hasEdge, getEdge, deleteEdge, getAllEdges } from './edges.ts';
+import { hasEdge, getEdge, deleteEdge, getAllEdges, upsertEdge } from './edges.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -122,6 +122,17 @@ export class Graph {
   /** All edges as `{ source, target, r }` rows. */
   getAllEdges(): CypherRow[] {
     return getAllEdges(this.#conn);
+  }
+
+  /** Create or update an edge via MERGE (no-op if either node is missing). */
+  upsertEdge(
+    sourceId: string,
+    targetId: string,
+    edgeData: Record<string, unknown>,
+    relType?: string,
+    edgeId?: string,
+  ): void {
+    upsertEdge(this.#conn, sourceId, targetId, edgeData, relType, edgeId);
   }
 }
 
