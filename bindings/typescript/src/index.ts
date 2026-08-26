@@ -13,3 +13,13 @@ export {
 export { graph, Graph, type GraphOptions } from './graph/index.ts';
 export { hasNode, getNode, deleteNode, getAllNodes, upsertNode } from './graph/nodes.ts';
 export { hasEdge, getEdge, deleteEdge, getAllEdges, upsertEdge } from './graph/edges.ts';
+export {
+  nodeDegree,
+  getNeighbors,
+  getNodeEdges,
+  getEdgesFrom,
+  getEdgesTo,
+  getEdgesByType,
+  stats,
+  query,
+} from './graph/queries.ts';
