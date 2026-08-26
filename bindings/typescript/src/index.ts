@@ -30,3 +30,14 @@ export {
   graphLoaded,
   type CacheStatus,
 } from './graph/cache.ts';
+export {
+  pagerank,
+  degreeCentrality,
+  betweennessCentrality,
+  closenessCentrality,
+  eigenvectorCentrality,
+  betweenness,
+  closeness,
+  type CentralityScore,
+  type DegreeCentralityResult,
+} from './algorithms/centrality.ts';
