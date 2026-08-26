@@ -16,7 +16,7 @@
 // elements at the marked insertion points below.
 import { connect, type Connection, type ConnectionOptions } from '../connection.ts';
 import type { CypherValue } from '../result.ts';
-import { hasNode, getNode, deleteNode, getAllNodes } from './nodes.ts';
+import { hasNode, getNode, deleteNode, getAllNodes, upsertNode } from './nodes.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -95,6 +95,11 @@ export class Graph {
   /** All nodes, optionally filtered by `label` (validated as an identifier). */
   getAllNodes(label?: string): CypherValue[] {
     return getAllNodes(this.#conn, label);
+  }
+
+  /** Create a node, or update an existing one (dispatched on `hasNode`). */
+  upsertNode(nodeId: string, nodeData: Record<string, unknown>, label?: string): void {
+    upsertNode(this.#conn, nodeId, nodeData, label);
   }
 }
 
