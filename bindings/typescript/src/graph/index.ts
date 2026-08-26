@@ -29,6 +29,17 @@ import {
   query,
 } from './queries.ts';
 import { loadGraph, unloadGraph, reloadGraph, graphLoaded, type CacheStatus } from './cache.ts';
+import {
+  pagerank,
+  degreeCentrality,
+  betweennessCentrality,
+  closenessCentrality,
+  eigenvectorCentrality,
+  betweenness,
+  closeness,
+  type CentralityScore,
+  type DegreeCentralityResult,
+} from '../algorithms/centrality.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -80,7 +91,7 @@ export class Graph {
   //   edges       — #11 [E-01] 엣지 읽기·삭제  ← 아래 구현됨
   //   queries     — #13 [Q-01] 그래프 조회 8종 (queries.ts)  ← 아래 구현됨
   //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01 ← 아래 구현됨]
-  //   centrality  — #15 [A-01] 중심성 알고리즘 5종
+  //   centrality  — #15 [A-01] 중심성 알고리즘 5종  ← 아래 구현됨
   //   community   — #16 [A-02] 커뮤니티 탐지
   //   components  — #17 [A-03] 연결 요소 (WCC/SCC)
   //   paths       — #18 [A-04] 경로 알고리즘 (dijkstra/astar/apsp)
@@ -206,6 +217,42 @@ export class Graph {
   /** Whether the cache is currently loaded. */
   graphLoaded(): boolean {
     return graphLoaded(this.#conn);
+  }
+
+  // ── centrality — #15 [A-01] ────────────────────────────────────────────────
+  /** PageRank (filters on score !== null, unlike the others). */
+  pagerank(damping?: number, iterations?: number): CentralityScore[] {
+    return pagerank(this.#conn, damping, iterations);
+  }
+
+  /** In/out/total degree per node. */
+  degreeCentrality(): DegreeCentralityResult[] {
+    return degreeCentrality(this.#conn);
+  }
+
+  /** Betweenness centrality (Brandes). */
+  betweennessCentrality(): CentralityScore[] {
+    return betweennessCentrality(this.#conn);
+  }
+
+  /** Closeness centrality (harmonic variant). */
+  closenessCentrality(): CentralityScore[] {
+    return closenessCentrality(this.#conn);
+  }
+
+  /** Eigenvector centrality (power iteration). */
+  eigenvectorCentrality(iterations?: number): CentralityScore[] {
+    return eigenvectorCentrality(this.#conn, iterations);
+  }
+
+  /** Alias for {@link Graph.betweennessCentrality}. */
+  betweenness(): CentralityScore[] {
+    return betweenness(this.#conn);
+  }
+
+  /** Alias for {@link Graph.closenessCentrality}. */
+  closeness(): CentralityScore[] {
+    return closeness(this.#conn);
   }
 }
 
