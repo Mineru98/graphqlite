@@ -144,3 +144,4 @@ src/generated/
 !.issue/graph.json
 .issue/**/.auth.json
 .issue/**/storage-state.json
+.om*
