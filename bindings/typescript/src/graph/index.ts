@@ -15,8 +15,9 @@
 // helpers (load/unload/reload — those land with C-01 #14) are added by later
 // elements at the marked insertion points below.
 import { connect, type Connection, type ConnectionOptions } from '../connection.ts';
-import type { CypherValue } from '../result.ts';
+import type { CypherRow, CypherValue } from '../result.ts';
 import { hasNode, getNode, deleteNode, getAllNodes, upsertNode } from './nodes.ts';
+import { hasEdge, getEdge, deleteEdge, getAllEdges } from './edges.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -65,7 +66,7 @@ export class Graph {
   // so the facade stays diff-friendly and merge conflicts stay local.
   //
   //   nodes       — #9  [N-01] 노드 읽기·삭제  ← 아래 구현됨
-  //   edges       — #11 [E-01] 엣지 읽기·삭제
+  //   edges       — #11 [E-01] 엣지 읽기·삭제  ← 아래 구현됨
   //   queries     — #13 [Q-01] 그래프 조회 8종 (queries.ts)
   //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01]
   //   centrality  — #15 [A-01] 중심성 알고리즘 5종
@@ -100,6 +101,27 @@ export class Graph {
   /** Create a node, or update an existing one (dispatched on `hasNode`). */
   upsertNode(nodeId: string, nodeData: Record<string, unknown>, label?: string): void {
     upsertNode(this.#conn, nodeId, nodeData, label);
+  }
+
+  // ── edges — #11 [E-01] ─────────────────────────────────────────────────────
+  /** Whether an edge exists between two nodes (optionally of `relType`). */
+  hasEdge(sourceId: string, targetId: string, relType?: string): boolean {
+    return hasEdge(this.#conn, sourceId, targetId, relType);
+  }
+
+  /** Fetch the edge between two nodes, or `null` if none (returned unmodified). */
+  getEdge(sourceId: string, targetId: string, relType?: string): CypherValue | null {
+    return getEdge(this.#conn, sourceId, targetId, relType);
+  }
+
+  /** Delete the edge(s) between two nodes (optionally of `relType`). */
+  deleteEdge(sourceId: string, targetId: string, relType?: string): void {
+    deleteEdge(this.#conn, sourceId, targetId, relType);
+  }
+
+  /** All edges as `{ source, target, r }` rows. */
+  getAllEdges(): CypherRow[] {
+    return getAllEdges(this.#conn);
   }
 }
 
