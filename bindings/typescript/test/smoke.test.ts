@@ -8,7 +8,7 @@ test('scaffolding is in place', () => {
   assert.equal(1 + 1, 2);
 });
 
-test('index module has no runtime exports yet', async () => {
+test('index module exposes the F-07 connection surface', async () => {
   const mod = await import('../src/index.ts');
-  assert.deepEqual(Object.keys(mod), []);
+  assert.deepEqual(Object.keys(mod).sort(), ['Connection', 'connect', 'wrap']);
 });
