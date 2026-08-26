@@ -135,3 +135,12 @@ bindings/python/src/graphqlite.egg-info/
 
 # Generated parser/scanner output (regenerated into build/)
 src/generated/
+
+# issue-* workspace — evidence only stays committed so issue comments render
+.issue/**
+!.issue/*/
+!.issue/*/evidence/
+!.issue/*/evidence/**
+!.issue/graph.json
+.issue/**/.auth.json
+.issue/**/storage-state.json
