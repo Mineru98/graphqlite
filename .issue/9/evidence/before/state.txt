@@ -1,0 +1,6 @@
+# BEFORE — 노드 읽기·삭제 착수 전 baseline (origin/main)
+
+## src/graph/ 목록 (nodes.ts 없음)
+index.ts
+
+## baseline 테스트: 81 pass / 0 fail (nodes 테스트 이전)
