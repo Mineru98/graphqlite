@@ -41,3 +41,5 @@ export {
   type CentralityScore,
   type DegreeCentralityResult,
 } from './algorithms/centrality.ts';
+export { communityDetection, louvain, type CommunityResult } from './algorithms/community.ts';
+export { UnsupportedOperationError } from './errors.ts';
