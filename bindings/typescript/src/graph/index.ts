@@ -15,6 +15,8 @@
 // helpers (load/unload/reload — those land with C-01 #14) are added by later
 // elements at the marked insertion points below.
 import { connect, type Connection, type ConnectionOptions } from '../connection.ts';
+import type { CypherValue } from '../result.ts';
+import { hasNode, getNode, deleteNode, getAllNodes } from './nodes.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -62,7 +64,7 @@ export class Graph {
   // Each later element adds ONLY its own three-line delegations here, in place,
   // so the facade stays diff-friendly and merge conflicts stay local.
   //
-  //   nodes       — #9  [N-01] 노드 읽기·삭제
+  //   nodes       — #9  [N-01] 노드 읽기·삭제  ← 아래 구현됨
   //   edges       — #11 [E-01] 엣지 읽기·삭제
   //   queries     — #13 [Q-01] 그래프 조회 8종 (queries.ts)
   //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01]
@@ -73,6 +75,27 @@ export class Graph {
   //   traversal   — #19 [A-05] 순회 (BFS/DFS)
   //   similarity  — #20 [A-06] 유사도 (nodeSimilarity/knn/triangleCount)
   // ──────────────────────────────────────────────────────────────────────────
+
+  // ── nodes — #9 [N-01] ──────────────────────────────────────────────────────
+  /** Whether a node with the given `id` exists. */
+  hasNode(nodeId: string): boolean {
+    return hasNode(this.#conn, nodeId);
+  }
+
+  /** Fetch a node by `id`, or `null` if none (returned unmodified). */
+  getNode(nodeId: string): CypherValue | null {
+    return getNode(this.#conn, nodeId);
+  }
+
+  /** Delete a node and its relationships. */
+  deleteNode(nodeId: string): void {
+    deleteNode(this.#conn, nodeId);
+  }
+
+  /** All nodes, optionally filtered by `label` (validated as an identifier). */
+  getAllNodes(label?: string): CypherValue[] {
+    return getAllNodes(this.#conn, label);
+  }
 }
 
 /**
