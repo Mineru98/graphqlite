@@ -20,6 +20,7 @@ test('index module exposes the connection + graph facade surface', async () => {
     'closenessCentrality',
     'communityDetection',
     'connect',
+    'connectedComponents',
     'degreeCentrality',
     'deleteEdge',
     'deleteNode',
@@ -43,10 +44,14 @@ test('index module exposes the connection + graph facade surface', async () => {
     'pagerank',
     'query',
     'reloadGraph',
+    'scc',
     'stats',
+    'stronglyConnectedComponents',
     'unloadGraph',
     'upsertEdge',
     'upsertNode',
+    'wcc',
+    'weaklyConnectedComponents',
     'wrap',
   ]);
 });
