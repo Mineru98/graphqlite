@@ -1,0 +1,7 @@
+pagerank()[0]                  {"nodeId":"1","userId":"a","score":0.3333333433}
+degreeCentrality()[0] (키)      {"nodeId":"1","userId":"a","inDegree":1,"outDegree":1,"degree":2}
+betweennessCentrality() 개수     3
+closenessCentrality() 개수       3
+eigenvectorCentrality() 개수     3
+betweenness===betweennessCentrality true
+pagerank(NaN) 검증               ValidationError

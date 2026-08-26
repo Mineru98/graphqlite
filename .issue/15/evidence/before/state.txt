@@ -1,0 +1,6 @@
+# BEFORE — 중심성 알고리즘 5종 착수 전 baseline (origin/main)
+
+## src/algorithms/ 목록 (centrality.ts 없음)
+parsing.ts
+
+## baseline 테스트: 129 pass / 0 fail (centrality 테스트 이전)
