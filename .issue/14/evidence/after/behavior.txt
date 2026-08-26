@@ -1,0 +1,6 @@
+graphLoaded() 초기             false
+loadGraph() (rename O)       {"status":"loaded","nodeCount":2,"edgeCount":1}
+graphLoaded() load 후         true
+reloadGraph() (rename O)     {"status":"reloaded","previous_nodes":2,"previous_edges":1,"nodeCount":2,"edgeCount":1}
+unloadGraph() (rename X)     {"status":"unloaded"}
+graphLoaded() unload 후       false
