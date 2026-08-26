@@ -40,6 +40,12 @@ import {
   type CentralityScore,
   type DegreeCentralityResult,
 } from '../algorithms/centrality.ts';
+import {
+  communityDetection,
+  louvain,
+  type CommunityResult,
+} from '../algorithms/community.ts';
+import { UnsupportedOperationError } from '../errors.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -92,7 +98,7 @@ export class Graph {
   //   queries     — #13 [Q-01] 그래프 조회 8종 (queries.ts)  ← 아래 구현됨
   //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01 ← 아래 구현됨]
   //   centrality  — #15 [A-01] 중심성 알고리즘 5종  ← 아래 구현됨
-  //   community   — #16 [A-02] 커뮤니티 탐지
+  //   community   — #16 [A-02] 커뮤니티 탐지  ← 아래 구현됨
   //   components  — #17 [A-03] 연결 요소 (WCC/SCC)
   //   paths       — #18 [A-04] 경로 알고리즘 (dijkstra/astar/apsp)
   //   traversal   — #19 [A-05] 순회 (BFS/DFS)
@@ -253,6 +259,30 @@ export class Graph {
   /** Alias for {@link Graph.closenessCentrality}. */
   closeness(): CentralityScore[] {
     return closeness(this.#conn);
+  }
+
+  // ── community — #16 [A-02] ─────────────────────────────────────────────────
+  /** Label-propagation community detection (checks nodeId AND community). */
+  communityDetection(iterations?: number): CommunityResult[] {
+    return communityDetection(this.#conn, iterations);
+  }
+
+  /** Louvain community detection (checks nodeId only). */
+  louvain(resolution?: number): CommunityResult[] {
+    return louvain(this.#conn, resolution);
+  }
+
+  /**
+   * **Not implemented in the TypeScript binding.** Python's `leiden_communities`
+   * depends on graspologic, which has no JS equivalent. Always throws
+   * {@link UnsupportedOperationError}; use {@link Graph.communityDetection} or
+   * {@link Graph.louvain} instead.
+   */
+  leidenCommunities(): never {
+    throw new UnsupportedOperationError(
+      'leidenCommunities is not available in the TypeScript binding: it relies on ' +
+        "Python-only 'graspologic'. Use communityDetection() or louvain() instead.",
+    );
   }
 }
 
