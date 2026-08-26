@@ -1,0 +1,8 @@
+# BEFORE — 그래프 조회 8종 착수 전 baseline (origin/main)
+
+## src/graph/ 목록 (queries.ts 없음)
+edges.ts
+index.ts
+nodes.ts
+
+## baseline 테스트: 114 pass / 0 fail (queries 테스트 이전)
