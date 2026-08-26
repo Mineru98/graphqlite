@@ -1,0 +1,11 @@
+# AFTER — node --test
+## 실제 확장 (통합 게이트 실행)
+ℹ tests 99
+ℹ pass 99
+ℹ fail 0
+ℹ skipped 0
+## 확장 없이 (게이트 skip)
+ℹ tests 99
+ℹ pass 89
+ℹ fail 0
+ℹ skipped 10
