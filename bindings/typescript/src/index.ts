@@ -23,3 +23,10 @@ export {
   stats,
   query,
 } from './graph/queries.ts';
+export {
+  loadGraph,
+  unloadGraph,
+  reloadGraph,
+  graphLoaded,
+  type CacheStatus,
+} from './graph/cache.ts';
