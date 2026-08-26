@@ -1,0 +1,8 @@
+nodeDegree('alice')                2
+getNeighbors('alice') 개수           2
+getNodeEdges('alice') (튜플)         [["alice","carol",{"id":2,"type":"FOLLOWS","startNode":1,"endNode":3,"properties":{}}],["alice","bob",{"id":1,"type":"KNOWS","startNode":1,"endNode":2,"properties":{"since":2020}}]]
+getEdgesFrom('alice') 개수           2
+getEdgesTo('bob') 개수               1
+getEdgesByType('alice','KNOWS')    1
+stats()                            {"nodeCount":3,"edgeCount":2}
+query(원문 전달)                       [{"id":"alice"},{"id":"bob"},{"id":"carol"}]
