@@ -10,5 +10,15 @@ test('scaffolding is in place', () => {
 
 test('index module exposes the connection + graph facade surface', async () => {
   const mod = await import('../src/index.ts');
-  assert.deepEqual(Object.keys(mod).sort(), ['Connection', 'Graph', 'connect', 'graph', 'wrap']);
+  assert.deepEqual(Object.keys(mod).sort(), [
+    'Connection',
+    'Graph',
+    'connect',
+    'deleteNode',
+    'getAllNodes',
+    'getNode',
+    'graph',
+    'hasNode',
+    'wrap',
+  ]);
 });
