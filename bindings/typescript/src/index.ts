@@ -12,3 +12,4 @@ export {
 } from './connection.ts';
 export { graph, Graph, type GraphOptions } from './graph/index.ts';
 export { hasNode, getNode, deleteNode, getAllNodes, upsertNode } from './graph/nodes.ts';
+export { hasEdge, getEdge, deleteEdge, getAllEdges } from './graph/edges.ts';
