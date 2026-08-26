@@ -1,0 +1,5 @@
+communityDetection()[0]          {"nodeId":"1","userId":"a","community":0}
+communityDetection() 개수          4
+louvain() 개수                     4
+leidenCommunities()              UnsupportedOperationError (code=UNSUPPORTED_OPERATION)
+communityDetection(NaN) 검증       ValidationError
