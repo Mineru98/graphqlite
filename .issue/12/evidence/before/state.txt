@@ -1,0 +1,9 @@
+# BEFORE — upsertEdge 착수 전 baseline (origin/main)
+
+## src/graph/edges.ts 에 upsertEdge 함수 부재
+25:export function hasEdge(
+43:export function getEdge(
+60:export function deleteEdge(
+76:export function getAllEdges(conn: Connection): CypherRow[] {
+
+## baseline 테스트: 107 pass / 0 fail (upsert 테스트 이전)

@@ -1,0 +1,7 @@
+생성 후 getEdge   : {"id":1,"type":"KNOWS","startNode":1,"endNode":2,"properties":{"since":2020}}
+생성 후 엣지 수   : 1 (속성 있음 → 쿼리 2회)
+재upsert 후 since : 2021 / 엣지 수: 1 (중복 안 생김)
+속성없는 upsert 후: 2 개 (FOLLOWS 추가)
+잘못된 키         : ValidationError
+노드 없을 때 예외 없음: 예외 안 던짐(바인딩 계약 충족)
+(주의) 이 빌드의 코어는 표준 MATCH-실패-no-op 을 하지 않음 — 관계가 생성될 수 있음
