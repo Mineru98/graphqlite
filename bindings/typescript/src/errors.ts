@@ -70,6 +70,18 @@ export class ExecutionError extends GraphQLiteError {
   }
 }
 
+/**
+ * `UNSUPPORTED_OPERATION` — a feature the Python binding has but this one does
+ * not implement (e.g. it relies on a Python-only dependency). Not produced by
+ * the core; thrown by binding-side stubs (see `algorithms/community.ts` / #16).
+ */
+export class UnsupportedOperationError extends GraphQLiteError {
+  constructor(message: string, options: GraphQLiteErrorOptions = {}) {
+    super(message, { code: options.code ?? 'UNSUPPORTED_OPERATION', query: options.query });
+    this.name = 'UnsupportedOperationError';
+  }
+}
+
 export interface ExtensionLoadErrorOptions extends GraphQLiteErrorOptions {
   searchedPaths?: string[];
 }
