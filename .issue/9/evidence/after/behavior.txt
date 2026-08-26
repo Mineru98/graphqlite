@@ -1,0 +1,8 @@
+초기 getAllNodes  : []
+hasNode('alice')  : true
+hasNode('nobody') : false
+getNode('alice')  : {"id":1,"labels":["Person"],"properties":{"id":"alice","name":"Alice"}}
+getAllNodes('Person') 개수: 1
+getAllNodes() 개수: 2
+deleteNode 후 hasNode('alice'): false
+잘못된 label      : ValidationError (assertIdentifier 거부)
