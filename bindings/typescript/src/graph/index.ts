@@ -18,6 +18,16 @@ import { connect, type Connection, type ConnectionOptions } from '../connection.
 import type { CypherRow, CypherValue } from '../result.ts';
 import { hasNode, getNode, deleteNode, getAllNodes, upsertNode } from './nodes.ts';
 import { hasEdge, getEdge, deleteEdge, getAllEdges, upsertEdge } from './edges.ts';
+import {
+  nodeDegree,
+  getNeighbors,
+  getNodeEdges,
+  getEdgesFrom,
+  getEdgesTo,
+  getEdgesByType,
+  stats,
+  query,
+} from './queries.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -67,7 +77,7 @@ export class Graph {
   //
   //   nodes       — #9  [N-01] 노드 읽기·삭제  ← 아래 구현됨
   //   edges       — #11 [E-01] 엣지 읽기·삭제  ← 아래 구현됨
-  //   queries     — #13 [Q-01] 그래프 조회 8종 (queries.ts)
+  //   queries     — #13 [Q-01] 그래프 조회 8종 (queries.ts)  ← 아래 구현됨
   //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01]
   //   centrality  — #15 [A-01] 중심성 알고리즘 5종
   //   community   — #16 [A-02] 커뮤니티 탐지
@@ -133,6 +143,47 @@ export class Graph {
     edgeId?: string,
   ): void {
     upsertEdge(this.#conn, sourceId, targetId, edgeData, relType, edgeId);
+  }
+
+  // ── queries — #13 [Q-01] ───────────────────────────────────────────────────
+  /** Degree (in + out) of a node. */
+  nodeDegree(nodeId: string): number {
+    return nodeDegree(this.#conn, nodeId);
+  }
+
+  /** Distinct neighbouring nodes (either direction). */
+  getNeighbors(nodeId: string): CypherValue[] {
+    return getNeighbors(this.#conn, nodeId);
+  }
+
+  /** Edges touching a node as `[source, target, props]` tuples. */
+  getNodeEdges(nodeId: string): [string, string, Record<string, unknown>][] {
+    return getNodeEdges(this.#conn, nodeId);
+  }
+
+  /** Outgoing edges from a node as `{ source, target, r }` rows. */
+  getEdgesFrom(nodeId: string): CypherRow[] {
+    return getEdgesFrom(this.#conn, nodeId);
+  }
+
+  /** Incoming edges to a node as `{ source, target, r }` rows. */
+  getEdgesTo(nodeId: string): CypherRow[] {
+    return getEdgesTo(this.#conn, nodeId);
+  }
+
+  /** Outgoing edges of a given type from a node. */
+  getEdgesByType(nodeId: string, relType: string): CypherRow[] {
+    return getEdgesByType(this.#conn, nodeId, relType);
+  }
+
+  /** Node/edge counts as `{ nodeCount, edgeCount }`. */
+  stats(): { nodeCount: number; edgeCount: number } {
+    return stats(this.#conn);
+  }
+
+  /** Run a raw Cypher query, passing the caller's string through unchanged. */
+  query(cypher: string, params?: Record<string, unknown> | null): CypherRow[] {
+    return query(this.#conn, cypher, params);
   }
 }
 
