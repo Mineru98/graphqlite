@@ -28,6 +28,7 @@ import {
   stats,
   query,
 } from './queries.ts';
+import { loadGraph, unloadGraph, reloadGraph, graphLoaded, type CacheStatus } from './cache.ts';
 
 export interface GraphOptions extends ConnectionOptions {
   /**
@@ -78,7 +79,7 @@ export class Graph {
   //   nodes       — #9  [N-01] 노드 읽기·삭제  ← 아래 구현됨
   //   edges       — #11 [E-01] 엣지 읽기·삭제  ← 아래 구현됨
   //   queries     — #13 [Q-01] 그래프 조회 8종 (queries.ts)  ← 아래 구현됨
-  //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01]
+  //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01 ← 아래 구현됨]
   //   centrality  — #15 [A-01] 중심성 알고리즘 5종
   //   community   — #16 [A-02] 커뮤니티 탐지
   //   components  — #17 [A-03] 연결 요소 (WCC/SCC)
@@ -184,6 +185,27 @@ export class Graph {
   /** Run a raw Cypher query, passing the caller's string through unchanged. */
   query(cypher: string, params?: Record<string, unknown> | null): CypherRow[] {
     return query(this.#conn, cypher, params);
+  }
+
+  // ── cache — #14 [C-01] ─────────────────────────────────────────────────────
+  /** Load the graph into the in-memory CSR cache (renames nodes/edges). */
+  loadGraph(): CacheStatus {
+    return loadGraph(this.#conn);
+  }
+
+  /** Free the cached graph (raw status, no rename). */
+  unloadGraph(): CacheStatus {
+    return unloadGraph(this.#conn);
+  }
+
+  /** Reload the cache with the latest data (renames nodes/edges). */
+  reloadGraph(): CacheStatus {
+    return reloadGraph(this.#conn);
+  }
+
+  /** Whether the cache is currently loaded. */
+  graphLoaded(): boolean {
+    return graphLoaded(this.#conn);
   }
 }
 
