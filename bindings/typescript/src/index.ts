@@ -10,3 +10,4 @@ export {
   type ConnectOptions,
   type ConnectionOptions,
 } from './connection.ts';
+export { graph, Graph, type GraphOptions } from './graph/index.ts';
