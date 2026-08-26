@@ -1,0 +1,30 @@
+✔ a bare non-JSON scalar string is wrapped as {result: raw} (2.096666ms)
+✔ CypherResult constructed directly is array-like (0.153875ms)
+✔ scaffolding is in place (0.303875ms)
+✔ index module exposes the F-07 connection surface (9.662875ms)
+✔ escape_string: single quotes (0.368ms)
+✔ escape_string: double quotes (0.048958ms)
+✔ escape_string: backslash (0.03775ms)
+✔ escape_string: newlines become spaces (0.042584ms)
+✔ escape_string: tabs become spaces (0.045917ms)
+✔ sanitize_rel_type: passthrough (0.241417ms)
+✔ sanitize_rel_type: special chars become underscore (0.06425ms)
+✔ sanitize_rel_type: leading digit gets REL_ prefix (0.053458ms)
+✔ sanitize_rel_type: reserved word gets REL_ prefix (0.041375ms)
+✔ CYPHER_RESERVED contains core keywords (63 entries) (0.07375ms)
+✔ sanitize_rel_type is Unicode-aware: CJK survives (matches Python isalnum) (0.248458ms)
+✔ sanitize_rel_type: leading digit before non-ASCII still prefixes (0.045459ms)
+✔ format_props: strings escaped, bool/null formatted, numbers raw (0.055209ms)
+✔ format_props: non-string/bool/null values interpolated without escaping (0.033416ms)
+✔ format_props: string values are escaped via escapeString (0.032958ms)
+✔ assertIdentifier accepts valid identifiers (latin, underscore, CJK) (0.471625ms)
+✔ assertIdentifier rejects injection-shaped identifiers with ValidationError (0.186542ms)
+✔ assertIdentifier error carries VALIDATION_ERROR code (0.038542ms)
+ℹ tests 73
+ℹ suites 0
+ℹ pass 73
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 193.763709

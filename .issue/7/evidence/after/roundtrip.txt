@@ -1,0 +1,6 @@
+graphqlite_test 검증 통과 → connect() 성공
+CREATE       : Query executed successfully - nodes created: 1, relationships created: 0
+MATCH all    : [{"n.name":"Alice"}]
+MATCH $param : [{"n.name":"Alice"}]
+빈객체 {}    : [{"n.name":"Alice"}] (cypher(?) 무파라미터 경로)
+에러 매핑    : ParseError / code=PARSE_ERROR / line=1 / col=1
