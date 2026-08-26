@@ -19,6 +19,7 @@ test('index module exposes the connection + graph facade surface', async () => {
     'getNode',
     'graph',
     'hasNode',
+    'upsertNode',
     'wrap',
   ]);
 });
