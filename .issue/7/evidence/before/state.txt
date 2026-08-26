@@ -1,0 +1,14 @@
+# BEFORE — connection.ts 착수 전 baseline (origin/main)
+
+## src/ 목록 (connection.ts 없음)
+algorithms/parsing.ts
+errors.ts
+index.ts
+platform.ts
+result.ts
+utils.ts
+
+## index.ts 공개 표면 (F-01 스캐폴딩 — 런타임 export 없음)
+export {};
+
+## baseline 테스트 (connection 테스트 이전): 61 pass / 0 fail
