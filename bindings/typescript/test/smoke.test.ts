@@ -8,7 +8,7 @@ test('scaffolding is in place', () => {
   assert.equal(1 + 1, 2);
 });
 
-test('index module exposes the F-07 connection surface', async () => {
+test('index module exposes the connection + graph facade surface', async () => {
   const mod = await import('../src/index.ts');
-  assert.deepEqual(Object.keys(mod).sort(), ['Connection', 'connect', 'wrap']);
+  assert.deepEqual(Object.keys(mod).sort(), ['Connection', 'Graph', 'connect', 'graph', 'wrap']);
 });
