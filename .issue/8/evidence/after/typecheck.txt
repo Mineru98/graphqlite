@@ -1,0 +1,1 @@
+tsc --noEmit: No errors found (using/Symbol.dispose 포함)

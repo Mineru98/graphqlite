@@ -1,0 +1,18 @@
+# BEFORE — graph 파사드 착수 전 baseline (origin/main)
+
+## src/ 목록 (src/graph/ 없음)
+algorithms/parsing.ts
+connection.ts
+errors.ts
+index.ts
+platform.ts
+result.ts
+utils.ts
+
+## index.ts 공개 표면 (connection 만)
+  connect,
+  Connection,
+  type ConnectionOptions,
+} from './connection.ts';
+
+## baseline 테스트: 73 pass / 0 fail (graph 테스트 이전)
