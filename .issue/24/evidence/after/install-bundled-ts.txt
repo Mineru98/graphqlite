@@ -1,0 +1,2 @@
+# install-bundled-ts 산출물 (프리빌트 dylib 기준 레시피 복사부)
+bindings/typescript/npm/darwin-arm64/graphqlite.dylib
