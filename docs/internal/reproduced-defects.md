@@ -12,7 +12,7 @@
 
 | # | 결함 | 근거 (TS) | 추적 이슈 |
 |---|------|-----------|-----------|
-| 1 | `astar` 가 `column_0` 언랩을 하지 않는다 — `shortestPath` 와 비대칭 | `bindings/typescript/src/algorithms/paths.ts:93,122` | #64 |
+| 1 | ~~`astar` 가 `column_0` 언랩을 하지 않는다 — `shortestPath` 와 비대칭~~ **수정됨(#64)**: 세 바인딩 astar 가 이제 `column_0` 을 언랩한다 | `bindings/typescript/src/algorithms/paths.ts` astar | #64 |
 | 2 | `ALGO_COLUMN_NAMES` 가 snake_case(`pagerank()`)인데 실제 Cypher 는 camelCase(`pageRank(...)`)라 대부분 매칭되지 않는다 | `bindings/typescript/src/algorithms/parsing.ts:16-17` | #65 |
 | 3 | `sanitizeRelType` 이 두 벌 존재한다 (`utils` vs `bulk`) — 예약어 처리와 빈 문자열 결과가 다르다 | `bindings/typescript/src/utils.ts`, `src/graph/bulk.ts:321` | #66 |
 | 4 | `unloadGraph` 만 `nodes`/`edges` → `nodeCount`/`edgeCount` 키 rename 을 하지 않는다 | `bindings/typescript/src/graph/cache.ts:59` | #67 |
@@ -23,9 +23,11 @@
 
 ### 상세
 
-1. **`astar` column_0 비대칭** — `shortestPath`(dijkstra)는 결과 행의 `column_0` 래퍼를 언랩하지만,
-   `astar` 는 직접 필드 접근이라 코어가 결과를 `column_0` 에 담으면 default 를 반환한다.
-   `apsp` 는 `.toList()` → `extractAlgoArray` 로 `column_0` 을 언랩하므로 정상 동작 — 세 경로가 제각각이다.
+1. **`astar` column_0 비대칭 — 수정됨(#64)** — 과거 `shortestPath`(dijkstra)는 결과 행의 `column_0` 래퍼를
+   언랩했지만 `astar` 는 직접 필드 접근이라 코어가 결과를 `column_0` 에 담으면 default 를 반환했다.
+   #64 에서 세 바인딩(Python·Rust·TS) 의 `astar` 가 `shortestPath` 와 동일하게 `column_0` 을 언랩하도록
+   수정했다(없을 때 직접 접근 fallback 유지, `nodes_explored` 도 언랩된 객체에서 읽음). 이제
+   `shortestPath`·`astar`·`apsp` 세 경로 모두 `column_0` 래퍼를 정상 처리한다.
 2. **`ALGO_COLUMN_NAMES` 케이스 불일치** — 결과 컬럼 이름 매칭 테이블이 snake_case 인데 실제 방출되는
    Cypher 함수는 camelCase 라, 대부분의 알고리즘 결과가 이름 매칭에 실패한다.
 3. **`sanitizeRelType` 두 벌** — `utils` 버전은 Cypher 예약어 검사가 있고 빈 결과가 `REL_`,

@@ -56,15 +56,15 @@ test('shortestPath: direct-access branch when there is no column_0', () => {
   assert.deepEqual(shortestPath(conn, 'a', 'a'), { path: ['a'], distance: 0, found: true });
 });
 
-// --- astar: single quotes, NO column_0 unwrap, assertIdentifier (asym 1,2,3) -
-test('astar: single quotes; does NOT unwrap column_0 (returns defaults here)', () => {
+// --- astar: single quotes, unwraps column_0, assertIdentifier (asym 1,3; #64) -
+test('astar: single quotes; unwraps column_0 (returns the real path)', () => {
   const { conn, calls } = makeConn(
-    // Same column_0-wrapped shape the real core returns — astar ignores it.
+    // Same column_0-wrapped shape the real core returns — astar now unwraps it.
     rows({ column_0: { path: ['a', 'b'], distance: 2, found: true, nodes_explored: 3 } }),
   );
   const out = astar(conn, 'a', 'b');
   assert.equal(calls[0]?.query, "RETURN astar('a', 'b')");
-  assert.deepEqual(out, { path: [], distance: null, found: false, nodesExplored: 0 });
+  assert.deepEqual(out, { path: ['a', 'b'], distance: 2, found: true, nodesExplored: 3 });
 });
 
 test('astar: reads fields directly from result[0] (unwrapped shape)', () => {
