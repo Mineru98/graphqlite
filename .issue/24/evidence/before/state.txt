@@ -1,0 +1,14 @@
+# before — origin/main pure (#24 착수 직전)
+
+## HEAD
+8bdd5e4b3cfc47ed5f29a44209545e6dd998ed87
+
+## Makefile TS 관련 존재 여부
+  TS 매치 수: 0
+
+## task_test.py ts 커맨드 존재 여부
+  ts 매치 수: 0
+
+## bindings/typescript/npm 존재 여부
+ls: bindings/typescript/npm: No such file or directory
+  (없음 — 예상대로)

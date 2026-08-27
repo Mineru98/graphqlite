@@ -1,0 +1,29 @@
+# 동작 실증 — 인프라 원소 (Makefile · angreal), 삽입 지점 실행 검증
+
+## test-ts 는 install-bundled-ts 에 의존 (핵심 비대칭)
+$ make -n test ts   # (extension → install-bundled-ts → node --test)
+  mkdir -p bindings/typescript/npm/darwin-arm64
+  cp build/graphqlite.dylib bindings/typescript/npm/darwin-arm64/graphqlite.dylib
+  echo "Running TypeScript binding tests..."
+  cd bindings/typescript && node --test
+  # Python(test-python)은 extension 만 의존 — TS는 Rust처럼 바이너리 복사 필요(재현)
+
+## make test bindings 체인에 test-ts 포함
+  echo "Running Rust binding tests..."
+  echo "Running Python binding tests..."
+  echo "Running TypeScript binding tests..."
+  cd bindings/typescript && node --test
+
+## node --test (test-ts 최종 레시피 본문) — 실제 실행
+  tests 200 / pass 200 / fail 0 / skipped 0
+
+## install-bundled-ts 산출물
+  bindings/typescript/npm/darwin-arm64/graphqlite.dylib   (getPlatformKey 규칙)
+
+## angreal test ts
+  task_test.py: name="ts" 커맨드 + test_ts() 정의 + test_bindings 본문에 test_ts 호출 (문법 검증 OK)
+  angreal 실행 파일: 없음 — 이 환경 미설치라 angreal test ts 직접 실행 검증 불가(정직하게 명시)
+
+## 환경 제약 (기존, 무관)
+  워크트리에서 C 확장을 처음부터 재빌드하는 경로(make test ts 전체)는 이 환경의 오래된 bison
+  (`%code` 미지원)에 막힘 — 제 변경과 무관. 메인 저장소의 프리빌트 dylib로 레시피·테스트를 검증함.
