@@ -1,0 +1,21 @@
+# before — origin/main 기준 pure 상태 (#19 착수 직전)
+
+## HEAD
+57559b744cb0e1aebbaba04edafa7428821266db
+
+## traversal.ts 존재 여부
+ls: bindings/typescript/src/algorithms/traversal.ts: No such file or directory
+  (없음 — 예상대로)
+
+## 기존 알고리즘 모듈
+centrality.ts
+community.ts
+components.ts
+parsing.ts
+paths.ts
+
+## 테스트 수 (실제 확장)
+ℹ tests 158
+ℹ pass 158
+ℹ fail 0
+ℹ skipped 0
