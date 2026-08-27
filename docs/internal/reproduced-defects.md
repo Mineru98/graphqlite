@@ -16,7 +16,7 @@
 | 2 | ~~`ALGO_COLUMN_NAMES` 가 snake_case(`pagerank()`)인데 실제 Cypher 는 camelCase(`pageRank(...)`)라 대부분 매칭되지 않는다~~ **수정됨(#65)** — 세 바인딩의 named 항목을 실제 camelCase 함수명으로 교정. `column_0` 이 항상 먼저 매칭되어 동작은 불변 | `bindings/typescript/src/algorithms/parsing.ts:16` | #65 |
 | 3 | `sanitizeRelType` 이 두 벌 존재한다 (`utils` vs `bulk`) — 예약어 처리와 빈 문자열 결과가 다르다 | `bindings/typescript/src/utils.ts`, `src/graph/bulk.ts:321` | #66 |
 | 4 | ~~`unloadGraph` 만 `nodes`/`edges` → `nodeCount`/`edgeCount` 키 rename 을 하지 않는다~~ **정리됨(#67)** — unloadGraph 도 remap 을 통과시켜 대칭화. 코어 unload 응답엔 `nodes`/`edges` 키가 없어 동작 불변 | `bindings/typescript/src/graph/cache.ts:59` | #67 |
-| 5 | `GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다 | `bindings/typescript/src/manager.ts` | #68 |
+| 5 | ~~`GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다~~ **문서 교정됨(#68)** — 자동 감지를 구현하지 않고, 세 바인딩의 문서/주석에서 거짓 자동 감지 주장을 제거해 "graphs 명시 필수"로 정정. 동작 불변 | `bindings/typescript/src/manager.ts` (이미 정직) · `python/manager.py` · `rust/manager.rs` | #68 |
 | 6 | `namespace` 파라미터가 저장만 되고 어디서도 쓰이지 않는다 (dead parameter) | `bindings/typescript/src/graph/index.ts:113-119` | #69 |
 | 7 | `upsertNode` 의 생성/갱신 경로가 `id` 덮어쓰기에서 비대칭이다 | `bindings/typescript/src/graph/nodes.ts:99-124` | #70 |
 | 8 | `nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다 | `bindings/typescript/src/algorithms/similarity.ts:53-67` | #71 |
@@ -34,8 +34,10 @@
    `bulk` 버전은 예약어 검사가 없고 빈 결과가 `REL`. 합치면 동작이 바뀌므로 분리 유지 중.
 4. **`unloadGraph` rename 누락** — `loadGraph`/`reloadGraph` 는 `remapCacheStatus` 로 키를 바꾸지만
    `unloadGraph` 는 raw 키(`nodes`/`edges`)를 그대로 반환한다.
-5. **`GraphManager.query` 자동 감지 부재** — `graphs` 를 생략/빈 배열로 주면 `#attach` 가 호출되지 않아
-   아무 그래프도 ATTACH 되지 않는다. docstring 만 자동 감지를 주장한다.
+5. **`GraphManager.query` 자동 감지 부재 — 문서 교정됨(#68)** — `graphs` 를 생략/빈 배열로 주면 `#attach` 가
+   호출되지 않아 아무 그래프도 ATTACH 되지 않는다. 과거 Python docstring·Rust doc·참조 문서가 자동 감지를
+   주장했다. #68 에서 자동 감지를 구현하는 대신(FROM 절 파싱은 코어가 처리) 세 바인딩의 문서/주석에서 거짓
+   주장을 걷어내 "graphs 명시 필수"로 정정했다. TS 는 이미 정직해 변경 없음. 동작은 불변이다.
 6. **`namespace` dead parameter** — 생성 시 `this.namespace` 에 저장되지만 어떤 쿼리에서도 쓰이지 않는다.
 7. **`upsertNode` 생성/갱신 비대칭** — 생성은 `{id: nodeId, ...nodeData}` 라 `nodeData.id` 가 `nodeId` 를
    덮어쓰지만(나중 spread 승), 갱신은 `nodeData` 항목만 `SET` 하고 `id` 는 건드리지 않는다.
