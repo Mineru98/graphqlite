@@ -1,0 +1,1 @@
+npx tsc --noEmit → 무오류 (exit 0)
