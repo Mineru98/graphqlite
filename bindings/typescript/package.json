@@ -1,6 +1,6 @@
 {
   "name": "graphqlite",
-  "version": "0.7.0",
+  "version": "0.6.1",
   "description": "SQLite extension for graph queries using Cypher — TypeScript bindings",
   "type": "module",
   "license": "MIT",
@@ -30,11 +30,11 @@
     "test": "node --test"
   },
   "optionalDependencies": {
-    "@graphqlite/darwin-arm64": "0.7.0",
-    "@graphqlite/darwin-x64": "0.7.0",
-    "@graphqlite/linux-x64": "0.7.0",
-    "@graphqlite/linux-arm64": "0.7.0",
-    "@graphqlite/win32-x64": "0.7.0"
+    "@graphqlite/darwin-arm64": "0.6.1",
+    "@graphqlite/darwin-x64": "0.6.1",
+    "@graphqlite/linux-x64": "0.6.1",
+    "@graphqlite/linux-arm64": "0.6.1",
+    "@graphqlite/win32-x64": "0.6.1"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",
