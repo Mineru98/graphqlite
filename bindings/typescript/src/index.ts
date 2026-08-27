@@ -63,4 +63,12 @@ export {
   type ShortestPathOptions,
   type AStarOptions,
 } from './algorithms/paths.ts';
+export {
+  bfs,
+  dfs,
+  breadthFirstSearch,
+  depthFirstSearch,
+  type TraversalResult,
+  type TraversalOptions,
+} from './algorithms/traversal.ts';
 export { UnsupportedOperationError } from './errors.ts';

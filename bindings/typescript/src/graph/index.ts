@@ -66,6 +66,14 @@ import {
   type ShortestPathOptions,
   type AStarOptions,
 } from '../algorithms/paths.ts';
+import {
+  bfs,
+  dfs,
+  breadthFirstSearch,
+  depthFirstSearch,
+  type TraversalResult,
+  type TraversalOptions,
+} from '../algorithms/traversal.ts';
 import { UnsupportedOperationError } from '../errors.ts';
 
 export interface GraphOptions extends ConnectionOptions {
@@ -365,6 +373,27 @@ export class Graph {
   /** Alias for {@link Graph.allPairsShortestPath}. */
   apsp(): AllPairsPath[] {
     return apsp(this.#conn);
+  }
+
+  // ── traversal — #19 [A-05] ─────────────────────────────────────────────────
+  /** Breadth-first search from a node (`maxDepth < 0` = unlimited). */
+  bfs(startId: string, options?: TraversalOptions): TraversalResult[] {
+    return bfs(this.#conn, startId, options);
+  }
+
+  /** Depth-first search from a node (`maxDepth < 0` = unlimited). */
+  dfs(startId: string, options?: TraversalOptions): TraversalResult[] {
+    return dfs(this.#conn, startId, options);
+  }
+
+  /** Alias for {@link Graph.bfs}. */
+  breadthFirstSearch(startId: string, options?: TraversalOptions): TraversalResult[] {
+    return breadthFirstSearch(this.#conn, startId, options);
+  }
+
+  /** Alias for {@link Graph.dfs}. */
+  depthFirstSearch(startId: string, options?: TraversalOptions): TraversalResult[] {
+    return depthFirstSearch(this.#conn, startId, options);
   }
 }
 
