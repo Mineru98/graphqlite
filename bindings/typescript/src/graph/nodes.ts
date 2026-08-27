@@ -86,12 +86,14 @@ export function getAllNodes(conn: Connection, label?: string): CypherValue[] {
  * Create a node, or update an existing one — dispatched on {@link hasNode}
  * (mirrors nodes.py:49-79).
  *
- * The two paths are deliberately **asymmetric** and this is load-bearing:
- * - **Create** merges as `{ id: nodeId, ...nodeData }`, so a `nodeData.id`
- *   *overwrites* `nodeId` (later spread wins). The whole record is interpolated
- *   via {@link formatProps} in a single `CREATE`.
- * - **Update** SETs only the `nodeData` entries — `id` is left untouched — and
- *   issues **one query per entry** (N round-trips; do not batch them).
+ * The two paths are **symmetric in how they treat `id`**: `nodeId` always wins.
+ * - **Create** interpolates `{ id: nodeId, ...rest }` where `rest` is `nodeData`
+ *   without any `id` key, so a `nodeData.id` is ignored and the node's id is
+ *   exactly `nodeId`. The whole record is interpolated via {@link formatProps}
+ *   in a single `CREATE`.
+ * - **Update** SETs only the non-`id` `nodeData` entries — `id` is never
+ *   reassigned, so it stays `nodeId` — and issues **one query per entry** (N
+ *   round-trips; do not batch them).
  *
  * `label` (default `"Entity"`) is used only on creation. The label and every
  * interpolated property key are validated with {@link assertIdentifier} (the
@@ -103,16 +105,21 @@ export function upsertNode(
   nodeData: Record<string, unknown>,
   label: string = 'Entity',
 ): void {
-  const props: Record<string, unknown> = { id: nodeId, ...nodeData };
+  // `id` is the node identity: nodeId always wins, a nodeData.id is dropped.
+  const { id: _ignoredId, ...rest } = nodeData;
+  const props: Record<string, unknown> = { id: nodeId, ...rest };
 
   if (hasNode(conn, nodeId)) {
-    // Update: one query per entry, key interpolated, value bound. `id` untouched.
+    // Update: one query per entry, key interpolated, value bound. `id` is the
+    // node identity and is never reassigned — a `nodeData.id` is skipped so the
+    // node keeps `nodeId`, symmetric with the create path.
     for (const [key, value] of Object.entries(nodeData)) {
+      if (key === 'id') continue;
       assertIdentifier(key, 'property');
       conn.cypher(`MATCH (n {id: $id}) SET n.${key} = $val RETURN n`, { id: nodeId, val: value });
     }
   } else {
-    // Create: single interpolated CREATE. nodeData.id (if any) wins over nodeId.
+    // Create: single interpolated CREATE. nodeId always wins over nodeData.id.
     assertIdentifier(label, 'label');
     for (const key of Object.keys(props)) {
       assertIdentifier(key, 'property');
