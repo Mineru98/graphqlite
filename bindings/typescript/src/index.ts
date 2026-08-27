@@ -89,4 +89,12 @@ export {
   type EdgeBatchItem,
 } from './graph/batch.ts';
 export { GraphManager, graphs, type GraphManagerOptions } from './manager.ts';
-export { UnsupportedOperationError } from './errors.ts';
+export {
+  GraphQLiteError,
+  ParseError,
+  ValidationError,
+  ExecutionError,
+  UnsupportedOperationError,
+  ExtensionLoadError,
+} from './errors.ts';
+export { VERSION } from './version.ts';
