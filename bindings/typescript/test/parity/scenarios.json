@@ -98,6 +98,14 @@
       ]
     },
     {
+      "id": "bulk-float-int-quirk",
+      "group": "bulk",
+      "steps": [
+        { "id": "insert", "method": "insertNodesBulk", "args": [[["floaty", { "x": 1.0 }, "T"]]] },
+        { "id": "prop-table", "method": "bulkPropTable", "args": ["floaty", "x"] }
+      ]
+    },
+    {
       "id": "known-divergences",
       "group": "divergence",
       "steps": [

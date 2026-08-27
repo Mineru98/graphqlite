@@ -88,6 +88,15 @@ export {
   type NodeBatchItem,
   type EdgeBatchItem,
 } from './graph/batch.ts';
+export {
+  insertNodesBulk,
+  insertEdgesBulk,
+  insertGraphBulk,
+  resolveNodeIds,
+  type BulkNodeItem,
+  type BulkEdgeItem,
+  type BulkInsertResult,
+} from './graph/bulk.ts';
 export { GraphManager, graphs, type GraphManagerOptions } from './manager.ts';
 export {
   GraphQLiteError,
