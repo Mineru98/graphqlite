@@ -134,7 +134,9 @@ class Graph(
         import json
         cursor = self._conn.execute("SELECT gql_unload_graph()")
         row = cursor.fetchone()
-        return json.loads(row[0]) if row else {}
+        # Remap uniformly like load/reload (#67). The core's unload response has
+        # no 'nodes'/'edges' keys, so this is a no-op today but keeps it uniform.
+        return self._remap_cache_status(json.loads(row[0]) if row else {})
 
     def reload_graph(self) -> dict:
         """

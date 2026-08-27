@@ -65,12 +65,14 @@ test('loadGraph / reloadGraph rename nodes→nodeCount, edges→edgeCount', () =
   );
 });
 
-test('unloadGraph does NOT rename — keeps raw keys (Python asymmetry)', () => {
-  // Even if the core returned nodes/edges, unloadGraph leaves them as-is.
+test('unloadGraph renames nodes/edges uniformly like load/reload (#67)', () => {
+  // The core's unload response has no nodes/edges (so this is a no-op in
+  // practice), but remapping is now applied uniformly: if the core ever did
+  // return them, they are renamed the same way as load/reload.
   assert.deepEqual(unloadGraph(makeConn('{"status":"unloaded","nodes":2,"edges":1}').conn), {
     status: 'unloaded',
-    nodes: 2,
-    edges: 1,
+    nodeCount: 2,
+    edgeCount: 1,
   });
 });
 
