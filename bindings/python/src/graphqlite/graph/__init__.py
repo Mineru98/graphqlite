@@ -73,7 +73,8 @@ class Graph(
 
         Args:
             db_path: Path to database file or ":memory:" for in-memory
-            namespace: Optional namespace for isolating graphs
+            namespace: Stored on the instance but never used by any query
+                (dead parameter, kept for binding parity). Does not isolate graphs.
             extension_path: Path to graphqlite extension (auto-detected if None)
         """
         ext_path = find_extension(extension_path)
@@ -210,7 +211,8 @@ def graph(
 
     Args:
         db_path: Path to database file or ":memory:" for in-memory
-        namespace: Optional namespace for isolating graphs
+        namespace: Stored on the instance but never used by any query
+            (dead parameter, kept for binding parity). Does not isolate graphs.
         extension_path: Path to graphqlite extension (auto-detected if None)
 
     Returns:
