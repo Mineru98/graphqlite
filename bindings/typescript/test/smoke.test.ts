@@ -12,9 +12,15 @@ test('index module exposes the connection + graph facade surface', async () => {
   const mod = await import('../src/index.ts');
   assert.deepEqual(Object.keys(mod).sort(), [
     'Connection',
+    'ExecutionError',
+    'ExtensionLoadError',
     'Graph',
     'GraphManager',
+    'GraphQLiteError',
+    'ParseError',
     'UnsupportedOperationError',
+    'VERSION',
+    'ValidationError',
     'aStar',
     'allPairsShortestPath',
     'apsp',
