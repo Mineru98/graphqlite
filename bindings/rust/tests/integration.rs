@@ -286,6 +286,25 @@ fn test_graph_upsert_node() {
 }
 
 #[test]
+fn test_graph_upsert_node_id_symmetry() {
+    // #70: node_id always wins over a props "id" on BOTH create and update,
+    // so the two paths agree on identity.
+    let g = test_graph();
+
+    // Create: a props "id" is ignored, the node keeps "alice".
+    g.upsert_node("alice", [("id", "bob"), ("name", "Alice")], "Person")
+        .unwrap();
+    assert!(g.has_node("alice").unwrap());
+    assert!(!g.has_node("bob").unwrap());
+
+    // Update the existing "alice": a props "id" must not reassign identity.
+    g.upsert_node("alice", [("id", "carol"), ("age", "31")], "Person")
+        .unwrap();
+    assert!(g.has_node("alice").unwrap());
+    assert!(!g.has_node("carol").unwrap());
+}
+
+#[test]
 fn test_graph_upsert_edge() {
     let g = test_graph();
 
