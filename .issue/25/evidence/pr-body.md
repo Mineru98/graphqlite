@@ -11,7 +11,7 @@
 
 ## 수용 기준
 - **`needs:` 배열 6곳에 `ts-check` 추가**(full-build-unix·full-rust-tests·full-python-tests-linux·full-python-tests-macos·full-windows-tests·performance-tests) — TS 실패가 후속 잡을 막음
-- **Node 하한 확정**: `>=22.13.0`(loadExtension/allowExtension 이 22.x LTS 로 백포트된 문서상 하한). 로컬은 v24.13.0 만 가용해 22.x 실측은 ts-check CI 잡이 담당(정직하게 명시)
+- **Node 하한 확정**: **`>=24.0.0`** — ts-check CI 를 node 22 로 돌리자 `npm test` 가 테스트의 `using g = graph()`(명시적 자원 관리, Node 24+) 구문을 파싱 못 해 실패. **CI 실측으로 하한이 Node 24 임을 확정**(CI `node-version: '24'`, 개발 검증 v24.13.0)
 
 ## 검증
 - YAML 파싱 유효, ts-check 9스텝, needs 6곳 전부 ts-check 포함
