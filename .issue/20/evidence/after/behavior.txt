@@ -1,0 +1,15 @@
+# 동작 실증 — 실제 확장 build/graphqlite.dylib, Node v24.13.0
+
+4갈래 분기 쿼리:
+  [1] RETURN nodeSimilarity('a', 'b')
+  [2] RETURN nodeSimilarity(0.3, 5)
+  [3] RETURN nodeSimilarity(0.3)
+  [4] RETURN nodeSimilarity()
+  [5] RETURN nodeSimilarity()
+직접 순회 — 언랩 형태      [{"node1":"a","node2":"b","similarity":0.5}]
+직접 순회 — column_0 래핑  [] (extractAlgoArray 미사용 → 빈 결과)
+triangleCount 반환 키      ["nodeId","userId","triangles","clusteringCoefficient"]
+triangleCount 첫 행        {"nodeId":"1","userId":"a","triangles":2,"clusteringCoefficient":0.33}
+triangles===triangleCount  true
+실제 확장 nodeSimilarity() [] (코어 래핑 → 직접 순회 빈 결과, Python 비일관성 재현)
+실제 확장 knn('a')         []
