@@ -1,0 +1,147 @@
+diff --git a/bindings/python/src/graphqlite/algorithms/similarity.py b/bindings/python/src/graphqlite/algorithms/similarity.py
+index 6d89686..942801f 100644
+--- a/bindings/python/src/graphqlite/algorithms/similarity.py
++++ b/bindings/python/src/graphqlite/algorithms/similarity.py
+@@ -32,7 +32,8 @@ class SimilarityMixin(BaseMixin):
+         """
+         if node1_id and node2_id:
+             query = f"RETURN nodeSimilarity('{self._escape(node1_id)}', '{self._escape(node2_id)}')"
+-        elif threshold > 0 and top_k > 0:
++        elif top_k > 0:
++            # topK is honored on its own: threshold defaults to 0 (#71).
+             query = f"RETURN nodeSimilarity({threshold}, {top_k})"
+         elif threshold > 0:
+             query = f"RETURN nodeSimilarity({threshold})"
+diff --git a/bindings/python/tests/test_graph.py b/bindings/python/tests/test_graph.py
+index 06796f6..28ca811 100644
+--- a/bindings/python/tests/test_graph.py
++++ b/bindings/python/tests/test_graph.py
+@@ -654,6 +654,16 @@ def test_bulk_insert_performance(g):
+ # Graph Algorithms
+ # =============================================================================
+ 
++def test_node_similarity_topk_only(g):
++    # #71: top_k alone (threshold defaults to 0) is honored, not silently ignored.
++    g.upsert_node("a", {"name": "A"}, label="N")
++    g.upsert_node("b", {"name": "B"}, label="N")
++    g.upsert_node("c", {"name": "C"}, label="N")
++    res = g.node_similarity(top_k=2)
++    assert isinstance(res, list)
++    assert len(res) <= 2
++
++
+ def test_pagerank(g):
+     g.upsert_node("pr1", {"name": "PR1"})
+     g.upsert_node("pr2", {"name": "PR2"})
+diff --git a/bindings/rust/src/algorithms/similarity.rs b/bindings/rust/src/algorithms/similarity.rs
+index df7b25f..925f9b3 100644
+--- a/bindings/rust/src/algorithms/similarity.rs
++++ b/bindings/rust/src/algorithms/similarity.rs
+@@ -32,7 +32,8 @@ impl Graph {
+                     escape_string(n2)
+                 )
+             }
+-            _ if threshold > 0.0 && top_k > 0 => {
++            // topK is honored on its own: threshold defaults to 0.0 (#71).
++            _ if top_k > 0 => {
+                 format!("RETURN nodeSimilarity({}, {})", threshold, top_k)
+             }
+             _ if threshold > 0.0 => {
+diff --git a/bindings/rust/tests/integration.rs b/bindings/rust/tests/integration.rs
+index 7c0965f..207e2af 100644
+--- a/bindings/rust/tests/integration.rs
++++ b/bindings/rust/tests/integration.rs
+@@ -257,6 +257,20 @@ fn test_graph_algorithms() {
+ // Graph API Tests
+ // =============================================================================
+ 
++#[test]
++fn test_node_similarity_topk_only() {
++    // #71: topK alone (threshold 0.0) must be honored and emit the 2-arg core
++    // path nodeSimilarity(0, topK) instead of falling through to the no-arg form.
++    let g = test_graph();
++    g.upsert_node("a", [("name", "A")], "N").unwrap();
++    g.upsert_node("b", [("name", "B")], "N").unwrap();
++    g.upsert_node("c", [("name", "C")], "N").unwrap();
++
++    // Must not error; the core must accept nodeSimilarity(0, 2) and cap results.
++    let res = g.node_similarity(None, None, 0.0, 2).unwrap();
++    assert!(res.len() <= 2);
++}
++
+ #[test]
+ fn test_graph_upsert_node() {
+     let g = test_graph();
+diff --git a/bindings/typescript/src/algorithms/similarity.ts b/bindings/typescript/src/algorithms/similarity.ts
+index 5878499..1cfac27 100644
+--- a/bindings/typescript/src/algorithms/similarity.ts
++++ b/bindings/typescript/src/algorithms/similarity.ts
+@@ -50,11 +50,11 @@ export interface KnnOptions {
+ 
+ /**
+  * Node similarity (Jaccard). The query is chosen by a **4-way branch** in
+- * priority order — note that giving only `topK` (with `threshold === 0`) falls
+- * through to branch 4, i.e. `topK` is ignored (Python inconsistency kept):
++ * priority order. `topK` is honored on its own: giving only `topK` (with
++ * `threshold === 0`) selects branch 2 and emits `nodeSimilarity(0, topK)`.
+  *
+  * 1. `node1 && node2`          → `nodeSimilarity('n1', 'n2')`
+- * 2. `threshold>0 && topK>0`   → `nodeSimilarity(threshold, topK)`
++ * 2. `topK>0`                  → `nodeSimilarity(threshold, topK)`
+  * 3. `threshold>0`             → `nodeSimilarity(threshold)`
+  * 4. else                      → `nodeSimilarity()`
+  *
+@@ -69,7 +69,7 @@ export function nodeSimilarity(
+   let query: string;
+   if (node1 && node2) {
+     query = `RETURN nodeSimilarity('${escapeString(node1)}', '${escapeString(node2)}')`;
+-  } else if (threshold > 0 && topK > 0) {
++  } else if (topK > 0) {
+     query = `RETURN nodeSimilarity(${threshold}, ${topK})`;
+   } else if (threshold > 0) {
+     query = `RETURN nodeSimilarity(${threshold})`;
+diff --git a/bindings/typescript/test/similarity.test.ts b/bindings/typescript/test/similarity.test.ts
+index 6fd4b55..8528245 100644
+--- a/bindings/typescript/test/similarity.test.ts
++++ b/bindings/typescript/test/similarity.test.ts
+@@ -53,10 +53,10 @@ test('nodeSimilarity: branch 3 — threshold>0 only', () => {
+   assert.equal(calls[0]?.query, 'RETURN nodeSimilarity(0.3)');
+ });
+ 
+-test('nodeSimilarity: branch 4 — topK ONLY (threshold 0) is ignored → nodeSimilarity()', () => {
++test('nodeSimilarity: branch 2 — topK ONLY (threshold 0) is honored → nodeSimilarity(0, topK)', () => {
+   const { conn, calls } = makeConn(new CypherResult([], []));
+-  nodeSimilarity(conn, { topK: 5 }); // threshold defaults to 0 → topK ignored
+-  assert.equal(calls[0]?.query, 'RETURN nodeSimilarity()');
++  nodeSimilarity(conn, { topK: 5 }); // threshold defaults to 0 → still emits topK (#71)
++  assert.equal(calls[0]?.query, 'RETURN nodeSimilarity(0, 5)');
+ });
+ 
+ test('nodeSimilarity: no options → nodeSimilarity()', () => {
+diff --git a/docs/internal/reproduced-defects.md b/docs/internal/reproduced-defects.md
+index 5ecee61..481d575 100644
+--- a/docs/internal/reproduced-defects.md
++++ b/docs/internal/reproduced-defects.md
+@@ -19,7 +19,7 @@
+ | 5 | `GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다 | `bindings/typescript/src/manager.ts` | #68 |
+ | 6 | `namespace` 파라미터가 저장만 되고 어디서도 쓰이지 않는다 (dead parameter) | `bindings/typescript/src/graph/index.ts:113-119` | #69 |
+ | 7 | `upsertNode` 의 생성/갱신 경로가 `id` 덮어쓰기에서 비대칭이다 | `bindings/typescript/src/graph/nodes.ts:99-124` | #70 |
+-| 8 | `nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다 | `bindings/typescript/src/algorithms/similarity.ts:53-67` | #71 |
++| 8 | ~~`nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다~~ **수정됨(#71)** — 세 바인딩에서 분기 2 조건을 `topK>0` 로 앞당겨 `topK` 만 줘도 `nodeSimilarity(threshold, topK)` 를 방출. 기존 threshold 케이스는 방출·동작 불변 | `bindings/typescript/src/algorithms/similarity.ts` · `python/algorithms/similarity.py` · `rust/src/algorithms/similarity.rs` | #71 |
+ 
+ ### 상세
+ 
+@@ -39,8 +39,11 @@
+ 6. **`namespace` dead parameter** — 생성 시 `this.namespace` 에 저장되지만 어떤 쿼리에서도 쓰이지 않는다.
+ 7. **`upsertNode` 생성/갱신 비대칭** — 생성은 `{id: nodeId, ...nodeData}` 라 `nodeData.id` 가 `nodeId` 를
+    덮어쓰지만(나중 spread 승), 갱신은 `nodeData` 항목만 `SET` 하고 `id` 는 건드리지 않는다.
+-8. **`nodeSimilarity` topK 무시** — 인자 우선순위 분기상 `threshold === 0 && topK > 0` 은
+-   인자 없는 `nodeSimilarity()` 분기로 떨어져 `topK` 가 조용히 무시된다.
++8. **`nodeSimilarity` topK 무시 — 수정됨(#71)** — 과거 인자 우선순위 분기 2 가 `threshold>0 && topK>0` 이라
++   `threshold === 0 && topK > 0` 은 인자 없는 `nodeSimilarity()` 분기로 떨어져 `topK` 가 무시됐다. #71 에서
++   세 바인딩의 분기 2 조건을 `topK>0` 로 바꿔 `topK` 만 줘도 `nodeSimilarity(threshold, topK)`(threshold 0 포함)
++   를 방출하게 했다. 코어(`graph_algorithms.c`)는 `nodeSimilarity(0, topK)` 를 top_k 로 정상 처리한다. 기존
++   threshold 케이스의 방출·동작은 불변이라 parity 게이트에 영향이 없다.
+ 
+ ## 코어 제안
+ 

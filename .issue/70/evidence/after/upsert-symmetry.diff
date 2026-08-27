@@ -1,0 +1,230 @@
+diff --git a/bindings/python/src/graphqlite/graph/nodes.py b/bindings/python/src/graphqlite/graph/nodes.py
+index 7ee0042..73fc36c 100644
+--- a/bindings/python/src/graphqlite/graph/nodes.py
++++ b/bindings/python/src/graphqlite/graph/nodes.py
+@@ -63,11 +63,18 @@ class NodesMixin(BaseMixin):
+             node_data: Dictionary of properties to set
+             label: Node label (only used on creation)
+         """
+-        props = {"id": node_id, **node_data}
++        # id is the node identity: node_id always wins, a node_data["id"] is
++        # dropped, so the create and update paths agree on id.
++        rest = {k: v for k, v in node_data.items() if k != "id"}
++        props = {"id": node_id, **rest}
+ 
+         if self.has_node(node_id):
+-            # Update existing node
++            # Update existing node. `id` is the node identity and is never
++            # reassigned — a node_data["id"] is skipped so the node keeps
++            # node_id, symmetric with the create path.
+             for k, v in node_data.items():
++                if k == "id":
++                    continue
+                 self._conn.cypher(
+                     f"MATCH (n {{id: $id}}) "
+                     f"SET n.{k} = $val RETURN n",
+diff --git a/bindings/python/tests/test_graph.py b/bindings/python/tests/test_graph.py
+index 06796f6..bd5d8ab 100644
+--- a/bindings/python/tests/test_graph.py
++++ b/bindings/python/tests/test_graph.py
+@@ -146,6 +146,18 @@ def test_upsert_node_updates(g):
+     assert g.stats()["node_count"] == 1
+ 
+ 
++def test_upsert_node_id_symmetry(g):
++    # #70: node_id always wins over a node_data["id"] on BOTH create and update,
++    # so the two paths agree on identity.
++    g.upsert_node("alice", {"id": "bob", "name": "Alice"}, label="Person")
++    assert g.has_node("alice")
++    assert not g.has_node("bob")
++    # Updating the existing node must not reassign its id either.
++    g.upsert_node("alice", {"id": "carol", "age": 31}, label="Person")
++    assert g.has_node("alice")
++    assert not g.has_node("carol")
++
++
+ def test_delete_node(g):
+     g.upsert_node("dave", {"name": "Dave"}, label="Person")
+     assert g.has_node("dave")
+diff --git a/bindings/rust/src/graph/nodes.rs b/bindings/rust/src/graph/nodes.rs
+index 7756008..b8f690c 100644
+--- a/bindings/rust/src/graph/nodes.rs
++++ b/bindings/rust/src/graph/nodes.rs
+@@ -50,8 +50,13 @@ impl Graph {
+             .collect();
+ 
+         if self.has_node(node_id)? {
+-            // Update existing node
++            // Update existing node. `id` is the node identity and is never
++            // reassigned — a props "id" entry is skipped so the node keeps
++            // node_id, symmetric with the create path.
+             for (k, v) in props {
++                if k == "id" {
++                    continue;
++                }
+                 let query = format!(
+                     "MATCH (n {{id: $id}}) SET n.{} = {} RETURN n",
+                     k,
+@@ -63,9 +68,13 @@ impl Graph {
+                     .run()?;
+             }
+         } else {
+-            // Create new node
++            // Create new node. node_id always wins: a props "id" entry is
++            // skipped so `id` is exactly node_id, symmetric with the update path.
+             let mut prop_parts = vec![format!("id: '{}'", escape_string(node_id))];
+             for (k, v) in props {
++                if k == "id" {
++                    continue;
++                }
+                 prop_parts.push(format!("{}: {}", k, v.to_cypher()));
+             }
+             let prop_str = prop_parts.join(", ");
+diff --git a/bindings/rust/tests/integration.rs b/bindings/rust/tests/integration.rs
+index 7c0965f..ad3d925 100644
+--- a/bindings/rust/tests/integration.rs
++++ b/bindings/rust/tests/integration.rs
+@@ -271,6 +271,25 @@ fn test_graph_upsert_node() {
+     assert!(node.is_some());
+ }
+ 
++#[test]
++fn test_graph_upsert_node_id_symmetry() {
++    // #70: node_id always wins over a props "id" on BOTH create and update,
++    // so the two paths agree on identity.
++    let g = test_graph();
++
++    // Create: a props "id" is ignored, the node keeps "alice".
++    g.upsert_node("alice", [("id", "bob"), ("name", "Alice")], "Person")
++        .unwrap();
++    assert!(g.has_node("alice").unwrap());
++    assert!(!g.has_node("bob").unwrap());
++
++    // Update the existing "alice": a props "id" must not reassign identity.
++    g.upsert_node("alice", [("id", "carol"), ("age", "31")], "Person")
++        .unwrap();
++    assert!(g.has_node("alice").unwrap());
++    assert!(!g.has_node("carol").unwrap());
++}
++
+ #[test]
+ fn test_graph_upsert_edge() {
+     let g = test_graph();
+diff --git a/bindings/typescript/src/graph/nodes.ts b/bindings/typescript/src/graph/nodes.ts
+index aaabfea..46bfe0f 100644
+--- a/bindings/typescript/src/graph/nodes.ts
++++ b/bindings/typescript/src/graph/nodes.ts
+@@ -86,12 +86,14 @@ export function getAllNodes(conn: Connection, label?: string): CypherValue[] {
+  * Create a node, or update an existing one — dispatched on {@link hasNode}
+  * (mirrors nodes.py:49-79).
+  *
+- * The two paths are deliberately **asymmetric** and this is load-bearing:
+- * - **Create** merges as `{ id: nodeId, ...nodeData }`, so a `nodeData.id`
+- *   *overwrites* `nodeId` (later spread wins). The whole record is interpolated
+- *   via {@link formatProps} in a single `CREATE`.
+- * - **Update** SETs only the `nodeData` entries — `id` is left untouched — and
+- *   issues **one query per entry** (N round-trips; do not batch them).
++ * The two paths are **symmetric in how they treat `id`**: `nodeId` always wins.
++ * - **Create** interpolates `{ id: nodeId, ...rest }` where `rest` is `nodeData`
++ *   without any `id` key, so a `nodeData.id` is ignored and the node's id is
++ *   exactly `nodeId`. The whole record is interpolated via {@link formatProps}
++ *   in a single `CREATE`.
++ * - **Update** SETs only the non-`id` `nodeData` entries — `id` is never
++ *   reassigned, so it stays `nodeId` — and issues **one query per entry** (N
++ *   round-trips; do not batch them).
+  *
+  * `label` (default `"Entity"`) is used only on creation. The label and every
+  * interpolated property key are validated with {@link assertIdentifier} (the
+@@ -103,16 +105,21 @@ export function upsertNode(
+   nodeData: Record<string, unknown>,
+   label: string = 'Entity',
+ ): void {
+-  const props: Record<string, unknown> = { id: nodeId, ...nodeData };
++  // `id` is the node identity: nodeId always wins, a nodeData.id is dropped.
++  const { id: _ignoredId, ...rest } = nodeData;
++  const props: Record<string, unknown> = { id: nodeId, ...rest };
+ 
+   if (hasNode(conn, nodeId)) {
+-    // Update: one query per entry, key interpolated, value bound. `id` untouched.
++    // Update: one query per entry, key interpolated, value bound. `id` is the
++    // node identity and is never reassigned — a `nodeData.id` is skipped so the
++    // node keeps `nodeId`, symmetric with the create path.
+     for (const [key, value] of Object.entries(nodeData)) {
++      if (key === 'id') continue;
+       assertIdentifier(key, 'property');
+       conn.cypher(`MATCH (n {id: $id}) SET n.${key} = $val RETURN n`, { id: nodeId, val: value });
+     }
+   } else {
+-    // Create: single interpolated CREATE. nodeData.id (if any) wins over nodeId.
++    // Create: single interpolated CREATE. nodeId always wins over nodeData.id.
+     assertIdentifier(label, 'label');
+     for (const key of Object.keys(props)) {
+       assertIdentifier(key, 'property');
+diff --git a/bindings/typescript/test/nodes-upsert.test.ts b/bindings/typescript/test/nodes-upsert.test.ts
+index f394630..188e385 100644
+--- a/bindings/typescript/test/nodes-upsert.test.ts
++++ b/bindings/typescript/test/nodes-upsert.test.ts
+@@ -45,12 +45,12 @@ test('create path: custom label is interpolated', () => {
+   assert.equal(writes()[0]?.query, "CREATE (n:Person {id: 'alice', name: 'Alice'})");
+ });
+ 
+-// --- Asymmetry (acceptance criterion #1) -----------------------------------
+-test('create path: nodeData.id overwrites nodeId (later spread wins)', () => {
++// --- id symmetry (#70) -----------------------------------------------------
++test('create path: nodeData.id is ignored, nodeId wins', () => {
+   const { conn, writes } = makeConn(false);
+   upsertNode(conn, 'alice', { id: 'override', name: 'A' });
+-  // props = { id: 'alice', ...{ id: 'override' } } → id is 'override'.
+-  assert.equal(writes()[0]?.query, "CREATE (n:Entity {id: 'override', name: 'A'})");
++  // props = { id: 'alice', ...rest } where rest drops nodeData.id → id is 'alice'.
++  assert.equal(writes()[0]?.query, "CREATE (n:Entity {id: 'alice', name: 'A'})");
+ });
+ 
+ // --- Update path (acceptance criteria #4, #5) ------------------------------
+@@ -75,6 +75,19 @@ test('update path: empty nodeData issues no SET queries', () => {
+   assert.equal(writes().length, 0);
+ });
+ 
++test('update path: nodeData.id is skipped, id is never reassigned', () => {
++  const { conn, writes } = makeConn(true);
++  upsertNode(conn, 'alice', { id: 'override', name: 'A' });
++  const w = writes();
++  // Only name is SET; the id entry is skipped so the node keeps 'alice',
++  // symmetric with the create path.
++  assert.equal(w.length, 1);
++  assert.deepEqual(w[0], {
++    query: 'MATCH (n {id: $id}) SET n.name = $val RETURN n',
++    params: { id: 'alice', val: 'A' },
++  });
++});
++
+ // --- Identifier validation (acceptance criterion #3) -----------------------
+ test('create path: bad label and bad property key are rejected', () => {
+   {
+diff --git a/docs/internal/reproduced-defects.md b/docs/internal/reproduced-defects.md
+index 5ecee61..0bfade5 100644
+--- a/docs/internal/reproduced-defects.md
++++ b/docs/internal/reproduced-defects.md
+@@ -18,7 +18,7 @@
+ | 4 | ~~`unloadGraph` 만 `nodes`/`edges` → `nodeCount`/`edgeCount` 키 rename 을 하지 않는다~~ **정리됨(#67)** — unloadGraph 도 remap 을 통과시켜 대칭화. 코어 unload 응답엔 `nodes`/`edges` 키가 없어 동작 불변 | `bindings/typescript/src/graph/cache.ts:59` | #67 |
+ | 5 | `GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다 | `bindings/typescript/src/manager.ts` | #68 |
+ | 6 | `namespace` 파라미터가 저장만 되고 어디서도 쓰이지 않는다 (dead parameter) | `bindings/typescript/src/graph/index.ts:113-119` | #69 |
+-| 7 | `upsertNode` 의 생성/갱신 경로가 `id` 덮어쓰기에서 비대칭이다 | `bindings/typescript/src/graph/nodes.ts:99-124` | #70 |
++| 7 | ~~`upsertNode` 의 생성/갱신 경로가 `id` 덮어쓰기에서 비대칭이다~~ **수정됨(#70)** — 세 바인딩에서 `nodeId` 가 항상 노드 `id` 를 결정하도록 대칭화. 생성은 `nodeData.id` 를 무시(`{id: nodeId, ...rest}`), 갱신은 `id` 키를 SET 에서 제외. 정상 케이스(nodeData 에 id 없음)는 동작·속성순서 불변 | `bindings/typescript/src/graph/nodes.ts` · `python/graph/nodes.py` · `rust/src/graph/nodes.rs` | #70 |
+ | 8 | `nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다 | `bindings/typescript/src/algorithms/similarity.ts:53-67` | #71 |
+ 
+ ### 상세
+@@ -37,8 +37,11 @@
+ 5. **`GraphManager.query` 자동 감지 부재** — `graphs` 를 생략/빈 배열로 주면 `#attach` 가 호출되지 않아
+    아무 그래프도 ATTACH 되지 않는다. docstring 만 자동 감지를 주장한다.
+ 6. **`namespace` dead parameter** — 생성 시 `this.namespace` 에 저장되지만 어떤 쿼리에서도 쓰이지 않는다.
+-7. **`upsertNode` 생성/갱신 비대칭** — 생성은 `{id: nodeId, ...nodeData}` 라 `nodeData.id` 가 `nodeId` 를
+-   덮어쓰지만(나중 spread 승), 갱신은 `nodeData` 항목만 `SET` 하고 `id` 는 건드리지 않는다.
++7. **`upsertNode` 생성/갱신 비대칭 — 수정됨(#70)** — 과거 생성은 `{id: nodeId, ...nodeData}` 라 `nodeData.id`
++   가 `nodeId` 를 덮어썼고(나중 spread 승), 갱신은 `nodeData` 전체를 `SET` 했다. #70 에서 세 바인딩을 대칭화해
++   `nodeId` 가 항상 노드 `id` 를 결정하게 했다 — 생성은 `{id: nodeId, ...(id 제외한 rest)}`, 갱신은 `id` 키를
++   `SET` 에서 건너뛴다. `nodeData` 에 `id` 가 없는 정상 케이스는 동작도 방출 Cypher 도 불변이라 parity 게이트에
++   영향이 없다.
+ 8. **`nodeSimilarity` topK 무시** — 인자 우선순위 분기상 `threshold === 0 && topK > 0` 은
+    인자 없는 `nodeSimilarity()` 분기로 떨어져 `topK` 가 조용히 무시된다.
+ 
