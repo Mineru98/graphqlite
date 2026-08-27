@@ -74,6 +74,17 @@ import {
   type TraversalResult,
   type TraversalOptions,
 } from '../algorithms/traversal.ts';
+import {
+  nodeSimilarity,
+  knn,
+  triangleCount,
+  triangles,
+  type NodeSimilarityPair,
+  type KnnNeighbor,
+  type TriangleCount,
+  type NodeSimilarityOptions,
+  type KnnOptions,
+} from '../algorithms/similarity.ts';
 import { UnsupportedOperationError } from '../errors.ts';
 
 export interface GraphOptions extends ConnectionOptions {
@@ -394,6 +405,27 @@ export class Graph {
   /** Alias for {@link Graph.dfs}. */
   depthFirstSearch(startId: string, options?: TraversalOptions): TraversalResult[] {
     return depthFirstSearch(this.#conn, startId, options);
+  }
+
+  // ── similarity — #20 [A-06] ────────────────────────────────────────────────
+  /** Node similarity (Jaccard, 4-way branch; does NOT use extractAlgoArray). */
+  nodeSimilarity(options?: NodeSimilarityOptions): NodeSimilarityPair[] {
+    return nodeSimilarity(this.#conn, options);
+  }
+
+  /** K-nearest neighbors by Jaccard similarity. */
+  knn(nodeId: string, options?: KnnOptions): KnnNeighbor[] {
+    return knn(this.#conn, nodeId, options);
+  }
+
+  /** Triangle count + local clustering coefficient per node. */
+  triangleCount(): TriangleCount[] {
+    return triangleCount(this.#conn);
+  }
+
+  /** Alias for {@link Graph.triangleCount}. */
+  triangles(): TriangleCount[] {
+    return triangles(this.#conn);
   }
 }
 
