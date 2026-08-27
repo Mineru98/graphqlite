@@ -553,7 +553,7 @@ graphqlite.graphs(base_path: str, extension_path: str = None) -> GraphManager
 | `open` | `manager.open(name: str) -> Graph` | Open existing graph; raises if not found |
 | `open_or_create` | `manager.open_or_create(name: str) -> Graph` | Open or create |
 | `drop` | `manager.drop(name: str) -> None` | Delete the graph database file |
-| `query` | `manager.query(cypher: str, graphs: list[str] = None, params: dict = None) -> list` | Query across multiple graphs; `graphs=None` queries all |
+| `query` | `manager.query(cypher: str, graphs: list[str] = None, params: dict = None) -> list` | Query across multiple graphs; name every graph to attach — omitting `graphs` (or `None`/empty) attaches nothing (no auto-detection) |
 | `query_sql` | `manager.query_sql(sql: str, graphs: list[str], parameters: tuple = ()) -> list` | Raw SQL across multiple graphs |
 | `close` | `manager.close() -> None` | Close all open connections |
 

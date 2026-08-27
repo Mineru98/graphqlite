@@ -229,13 +229,17 @@ impl GraphManager {
 
     /// Execute a cross-graph Cypher query.
     ///
-    /// Uses the FROM clause syntax to query across multiple graphs.
-    /// Graphs are automatically attached to the coordinator connection.
+    /// Uses the FROM clause syntax to query across multiple graphs. The named
+    /// graphs are attached to the coordinator connection before the query runs.
+    ///
+    /// There is no auto-detection: `graph_names` is required, and passing an
+    /// empty slice attaches nothing, so a query that references a graph will not
+    /// see it unless that graph is named explicitly.
     ///
     /// # Arguments
     ///
     /// * `cypher` - Cypher query with FROM clauses specifying graphs
-    /// * `graph_names` - List of graph names to attach
+    /// * `graph_names` - Graph names to attach (required; not auto-detected)
     ///
     /// # Returns
     ///
