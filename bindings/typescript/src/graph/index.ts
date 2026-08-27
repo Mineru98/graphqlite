@@ -85,6 +85,12 @@ import {
   type NodeSimilarityOptions,
   type KnnOptions,
 } from '../algorithms/similarity.ts';
+import {
+  upsertNodesBatch,
+  upsertEdgesBatch,
+  type NodeBatchItem,
+  type EdgeBatchItem,
+} from './batch.ts';
 import { UnsupportedOperationError } from '../errors.ts';
 
 export interface GraphOptions extends ConnectionOptions {
@@ -426,6 +432,17 @@ export class Graph {
   /** Alias for {@link Graph.triangleCount}. */
   triangles(): TriangleCount[] {
     return triangles(this.#conn);
+  }
+
+  // ── batch — #21 [B-01] ─────────────────────────────────────────────────────
+  /** Upsert many nodes (non-atomic loop over upsertNode). */
+  upsertNodesBatch(nodes: NodeBatchItem[]): void {
+    upsertNodesBatch(this.#conn, nodes);
+  }
+
+  /** Upsert many edges (non-atomic; no edgeId, so no parallel edges). */
+  upsertEdgesBatch(edges: EdgeBatchItem[]): void {
+    upsertEdgesBatch(this.#conn, edges);
   }
 }
 
