@@ -10,10 +10,13 @@
 #   5. bindings/typescript/package.json             optionalDependencies["@graphqlite/*"] 5핀
 #   6. bindings/typescript/src/version.ts           export const VERSION
 #   7. bindings/typescript/package-lock.json        root version + packages[""].version
+#   8. bindings/typescript/npm/*/package.json        플랫폼 서브패키지 5개 version
+#      (optionalDependencies 핀과 정확히 일치해야 npm publish 가 성립. 저장소에
+#       없는 브랜치에서는 자동으로 건너뛴다.)
 #
 # 사용법:
-#   scripts/bump-version.sh <version>          # 8곳을 <version> 으로 갱신
-#   scripts/bump-version.sh --check <version>  # 8곳이 전부 <version> 인지 검증 (CI 게이트)
+#   scripts/bump-version.sh <version>          # 모든 버전 소스를 <version> 으로 갱신
+#   scripts/bump-version.sh --check <version>  # 전부 <version> 인지 검증 (CI 게이트)
 #
 # --check 는 불일치가 하나라도 있으면 exit 1, 전부 일치하면 exit 0.
 # 릴리스 워크플로우가 `태그(vX.Y.Z) == 파일 버전` 검증에 쓴다.
@@ -29,9 +32,19 @@ CARGO_LOCK="$ROOT/bindings/rust/Cargo.lock"
 TS_PKG="$ROOT/bindings/typescript/package.json"
 TS_VERSION_TS="$ROOT/bindings/typescript/src/version.ts"
 TS_LOCK="$ROOT/bindings/typescript/package-lock.json"
+NPM_DIR="$ROOT/bindings/typescript/npm"
 
 # optionalDependencies 에 핀되는 플랫폼 서브패키지
 SUBPACKAGES=(darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64)
+
+# 저장소에 존재하는 npm 서브패키지 package.json 경로를 한 줄씩 출력한다.
+# (npm/ 디렉터리가 아직 없는 브랜치에서는 아무것도 출력하지 않는다.)
+npm_subpkg_files() {
+  local p
+  for p in "${SUBPACKAGES[@]}"; do
+    [ -f "$NPM_DIR/$p/package.json" ] && printf '%s\n' "$NPM_DIR/$p/package.json"
+  done
+}
 
 usage() {
   cat >&2 <<'EOF'
@@ -120,6 +133,15 @@ update_all() {
   tmp_lock2="$(mktemp)"
   jq --arg v "$v" '.version = $v | .packages[""].version = $v' "$TS_LOCK" > "$tmp_lock2"
   mv "$tmp_lock2" "$TS_LOCK"
+
+  # 8. npm 서브패키지 5개 package.json version (있을 때만)
+  #    self version 이 유일한 "version" 키다. jq 는 compact 배열(os/cpu/files)을
+  #    여러 줄로 재포맷하므로, version 줄만 바꾸는 perl 로 원본 포맷을 보존한다.
+  local f
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    perl -i -pe 's/("version"\s*:\s*")[^"]*(")/${1}'"$v"'${2}/' "$f"
+  done < <(npm_subpkg_files)
 }
 
 # ---- 검증 ---------------------------------------------------------------
@@ -137,6 +159,12 @@ collect() {
   printf 'ts      src/version.ts VERSION\t%s\n' "$(read_ts_const)"
   printf 'ts      package-lock.json root\t%s\n' "$(read_ts_lock_root)"
   printf 'ts      package-lock.json pkg\t%s\n'  "$(read_ts_lock_pkg)"
+  local f name
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    name="$(basename "$(dirname "$f")")"
+    printf 'ts      npm/%s package.json\t%s\n' "$name" "$(jq -r '.version' "$f")"
+  done < <(npm_subpkg_files)
 }
 
 check_all() {
