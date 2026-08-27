@@ -193,15 +193,32 @@ function importConnectionModule(env: Record<string, string | undefined>): string
   return result.stderr;
 }
 
+// node:sqlite is stabilizing across Node releases — newer runtimes no longer
+// emit the ExperimentalWarning at all. Probe a raw import so the "restore" test
+// only asserts on Nodes that actually have a warning to restore; where none is
+// emitted the suppressor is a correct no-op and the assertion is skipped.
+function nodeEmitsSqliteWarning(): boolean {
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '--eval', `await import('node:sqlite');`],
+    { encoding: 'utf8', env: { ...process.env } },
+  );
+  return /SQLite is an experimental feature/.test(result.stderr);
+}
+
 test('the node:sqlite ExperimentalWarning is swallowed by default', () => {
   const stderr = importConnectionModule({ GRAPHQLITE_SHOW_EXPERIMENTAL_WARNING: undefined });
   assert.doesNotMatch(stderr, /SQLite is an experimental feature/);
 });
 
-test('GRAPHQLITE_SHOW_EXPERIMENTAL_WARNING=1 restores the warning', () => {
-  const stderr = importConnectionModule({ GRAPHQLITE_SHOW_EXPERIMENTAL_WARNING: '1' });
-  assert.match(stderr, /SQLite is an experimental feature/);
-});
+test(
+  'GRAPHQLITE_SHOW_EXPERIMENTAL_WARNING=1 restores the warning',
+  { skip: !nodeEmitsSqliteWarning() },
+  () => {
+    const stderr = importConnectionModule({ GRAPHQLITE_SHOW_EXPERIMENTAL_WARNING: '1' });
+    assert.match(stderr, /SQLite is an experimental feature/);
+  },
+);
 
 // --- Integration round-trip (gated on a built extension) -------------------
 // Runs only when the real extension resolves; otherwise skipped so the suite

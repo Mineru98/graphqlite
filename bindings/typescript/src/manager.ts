@@ -18,7 +18,7 @@ import { GraphQLiteError, ValidationError } from './errors.ts';
 import type { CypherResult } from './result.ts';
 
 /** Options for {@link GraphManager} / {@link graphs}. */
-export interface GraphManagerOptions extends ConnectionOptions {}
+export type GraphManagerOptions = ConnectionOptions;
 
 export class GraphManager {
   readonly #basePath: string;

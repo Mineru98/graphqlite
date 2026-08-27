@@ -87,6 +87,45 @@ jobs:
         working-directory: bindings/python
         run: pytest tests/ -v
 
+  ts-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bison flex libsqlite3-dev
+
+      - name: Build extension
+        run: make extension
+
+      - name: Stage bundled extension for the TS binding
+        run: |
+          mkdir -p bindings/typescript/npm/linux-x64
+          cp build/graphqlite.so bindings/typescript/npm/linux-x64/graphqlite.so
+
+      - name: Install TypeScript deps
+        working-directory: bindings/typescript
+        run: npm ci
+
+      - name: Type check
+        working-directory: bindings/typescript
+        run: npx tsc --noEmit
+
+      - name: Lint
+        working-directory: bindings/typescript
+        run: npx eslint .
+
+      - name: Run tests
+        working-directory: bindings/typescript
+        run: npm test
+
   windows-build:
     # Temporarily non-blocking: after the 187-commit TCK conformance push,
     # the MinGW64 DLL fails to load at runtime with "specified procedure
@@ -125,7 +164,7 @@ jobs:
   # =============================================================================
 
   full-build-unix:
-    needs: [build-and-test, rust-check, python-check, windows-build]
+    needs: [build-and-test, rust-check, python-check, ts-check, windows-build]
     strategy:
       fail-fast: false
       matrix:
@@ -169,7 +208,7 @@ jobs:
         run: make test-functional EXTRA_INCLUDES="-I$HOMEBREW_PREFIX/include" EXTRA_LIBS="-L$HOMEBREW_PREFIX/lib" SQLITE="$SQLITE_PREFIX/bin/sqlite3"
 
   full-rust-tests:
-    needs: [build-and-test, rust-check, python-check, windows-build]
+    needs: [build-and-test, rust-check, python-check, ts-check, windows-build]
     strategy:
       fail-fast: false
       matrix:
@@ -213,7 +252,7 @@ jobs:
         run: cargo test --lib --test integration -- --test-threads=1
 
   full-python-tests-linux:
-    needs: [build-and-test, rust-check, python-check, windows-build]
+    needs: [build-and-test, rust-check, python-check, ts-check, windows-build]
     strategy:
       fail-fast: false
       matrix:
@@ -244,7 +283,7 @@ jobs:
         run: pytest tests/ -v
 
   full-python-tests-macos:
-    needs: [build-and-test, rust-check, python-check, windows-build]
+    needs: [build-and-test, rust-check, python-check, ts-check, windows-build]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -276,7 +315,7 @@ jobs:
     # Re-enable as required once that ticket ships a toolchain-portable
     # timestamp() implementation.
     continue-on-error: true
-    needs: [build-and-test, rust-check, python-check, windows-build]
+    needs: [build-and-test, rust-check, python-check, ts-check, windows-build]
     runs-on: windows-latest
     defaults:
       run:
@@ -410,7 +449,7 @@ jobs:
 
   performance-tests:
     if: github.ref == 'refs/heads/main'
-    needs: [build-and-test, rust-check, python-check, windows-build]
+    needs: [build-and-test, rust-check, python-check, ts-check, windows-build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
