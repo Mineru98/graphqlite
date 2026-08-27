@@ -1,0 +1,24 @@
+# before — origin/main pure (#22 착수 직전)
+
+## HEAD
+09a71e9e6b1943cd77f92092d48d26b2db23b930
+
+## manager.ts 존재 여부
+ls: bindings/typescript/src/manager.ts: No such file or directory
+  (없음 — 예상대로)
+
+## src 최상위
+algorithms
+connection.ts
+errors.ts
+graph
+index.ts
+platform.ts
+result.ts
+utils.ts
+
+## 테스트 수 (실제 확장)
+ℹ tests 183
+ℹ pass 183
+ℹ fail 0
+ℹ skipped 0
