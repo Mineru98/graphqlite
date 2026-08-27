@@ -1,0 +1,8 @@
+# task_test.py 문법·구조 검증 (angreal 미설치 환경)
+문법 파싱 OK
+test_ts 정의: True
+test_bindings 정의: True
+name="ts" 커맨드: True
+test_bindings 본문에 test_ts 호출: True
+
+angreal 실행 파일: 없음 — 이 환경 미설치, angreal test ts 실행 검증 불가

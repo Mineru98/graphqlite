@@ -1,0 +1,12 @@
+# make -n test ts — 레시피 (test-ts → install-bundled-ts → node --test)
+
+mkdir -p bindings/typescript/npm/darwin-arm64
+cp build/graphqlite.dylib bindings/typescript/npm/darwin-arm64/graphqlite.dylib
+echo "Running TypeScript binding tests..."
+cd bindings/typescript && node --test
+
+# make -n test bindings — 체인에 test-ts 포함
+echo "Running Rust binding tests..."
+echo "Running Python binding tests..."
+echo "Running TypeScript binding tests..."
+cd bindings/typescript && node --test
