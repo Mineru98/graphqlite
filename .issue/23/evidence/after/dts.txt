@@ -1,0 +1,24 @@
+# tsc -p tsconfig.build.json → 생성된 .d.ts
+총 22개
+dist/algorithms/centrality.d.ts
+dist/algorithms/community.d.ts
+dist/algorithms/components.d.ts
+dist/algorithms/parsing.d.ts
+dist/algorithms/paths.d.ts
+dist/algorithms/similarity.d.ts
+dist/algorithms/traversal.d.ts
+dist/async.d.ts
+dist/connection.d.ts
+dist/errors.d.ts
+dist/graph/batch.d.ts
+dist/graph/cache.d.ts
+dist/graph/edges.d.ts
+dist/graph/index.d.ts
+dist/graph/nodes.d.ts
+dist/graph/queries.d.ts
+dist/index.d.ts
+dist/manager.d.ts
+dist/platform.d.ts
+dist/result.d.ts
+dist/utils.d.ts
+dist/version.d.ts

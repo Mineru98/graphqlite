@@ -1,0 +1,9 @@
+# 동작 실증 — Node v24.13.0
+
+VERSION                   "0.7.0"
+package.json version      "0.7.0" (VERSION과 일치: true )
+exports 필드              {".":"./src/index.ts","./async":"./src/async.ts","./package.json":"./package.json"}
+팩토리 typeof             connect:function wrap:function graph:function graphs:function
+에러 클래스 export        true
+graphqlite/async 표면 동일 true
+공개 export 총 개수        66
