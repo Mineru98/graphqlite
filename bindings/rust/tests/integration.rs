@@ -258,6 +258,20 @@ fn test_graph_algorithms() {
 // =============================================================================
 
 #[test]
+fn test_node_similarity_topk_only() {
+    // #71: topK alone (threshold 0.0) must be honored and emit the 2-arg core
+    // path nodeSimilarity(0, topK) instead of falling through to the no-arg form.
+    let g = test_graph();
+    g.upsert_node("a", [("name", "A")], "N").unwrap();
+    g.upsert_node("b", [("name", "B")], "N").unwrap();
+    g.upsert_node("c", [("name", "C")], "N").unwrap();
+
+    // Must not error; the core must accept nodeSimilarity(0, 2) and cap results.
+    let res = g.node_similarity(None, None, 0.0, 2).unwrap();
+    assert!(res.len() <= 2);
+}
+
+#[test]
 fn test_graph_upsert_node() {
     let g = test_graph();
 

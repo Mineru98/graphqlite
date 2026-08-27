@@ -50,11 +50,11 @@ export interface KnnOptions {
 
 /**
  * Node similarity (Jaccard). The query is chosen by a **4-way branch** in
- * priority order — note that giving only `topK` (with `threshold === 0`) falls
- * through to branch 4, i.e. `topK` is ignored (Python inconsistency kept):
+ * priority order. `topK` is honored on its own: giving only `topK` (with
+ * `threshold === 0`) selects branch 2 and emits `nodeSimilarity(0, topK)`.
  *
  * 1. `node1 && node2`          → `nodeSimilarity('n1', 'n2')`
- * 2. `threshold>0 && topK>0`   → `nodeSimilarity(threshold, topK)`
+ * 2. `topK>0`                  → `nodeSimilarity(threshold, topK)`
  * 3. `threshold>0`             → `nodeSimilarity(threshold)`
  * 4. else                      → `nodeSimilarity()`
  *
@@ -69,7 +69,7 @@ export function nodeSimilarity(
   let query: string;
   if (node1 && node2) {
     query = `RETURN nodeSimilarity('${escapeString(node1)}', '${escapeString(node2)}')`;
-  } else if (threshold > 0 && topK > 0) {
+  } else if (topK > 0) {
     query = `RETURN nodeSimilarity(${threshold}, ${topK})`;
   } else if (threshold > 0) {
     query = `RETURN nodeSimilarity(${threshold})`;
