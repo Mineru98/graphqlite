@@ -1,0 +1,4 @@
+npm notice 634.2kB graphqlite.dylib
+npm notice 434B package.json
+npm notice package size: 257.0 kB
+npm notice total files: 2
