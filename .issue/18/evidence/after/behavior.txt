@@ -1,0 +1,8 @@
+shortestPath(a,c,{weightProp:w})         {"path":["a","b","c"],"distance":2,"found":true}
+  (큰따옴표+column_0 언랩 → 경로 반환)             
+astar(a,c)                               {"path":[],"distance":null,"found":false,"nodesExplored":0}
+  (작은따옴표+언랩 X → 기본값, Python 비일관성 재현)     
+allPairsShortestPath() 개수                3
+  apsp()[0]                              {"source":"a","target":"b","distance":1}
+dijkstra===shortestPath                  true
+astar 잘못된 latProp                        ValidationError
