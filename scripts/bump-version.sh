@@ -2,12 +2,14 @@
 #
 # bump-version.sh — GraphQLite 버전 진실의 원천을 한 번에 동기화한다.
 #
-# 버전 소스 (8곳):
+# 버전 소스:
 #   1. bindings/python/src/graphqlite/__init__.py   __version__
 #   2. bindings/rust/Cargo.toml                     [package] version
 #   3. bindings/rust/Cargo.lock                     graphqlite 패키지 블록 version
 #   4. bindings/typescript/package.json             version
 #   5. bindings/typescript/package.json             optionalDependencies["@graphqlite/*"] 5핀
+#   6. bindings/typescript/src/version.ts           export const VERSION
+#   7. bindings/typescript/package-lock.json        root version + packages[""].version
 #
 # 사용법:
 #   scripts/bump-version.sh <version>          # 8곳을 <version> 으로 갱신
@@ -25,6 +27,8 @@ PY_INIT="$ROOT/bindings/python/src/graphqlite/__init__.py"
 CARGO_TOML="$ROOT/bindings/rust/Cargo.toml"
 CARGO_LOCK="$ROOT/bindings/rust/Cargo.lock"
 TS_PKG="$ROOT/bindings/typescript/package.json"
+TS_VERSION_TS="$ROOT/bindings/typescript/src/version.ts"
+TS_LOCK="$ROOT/bindings/typescript/package-lock.json"
 
 # optionalDependencies 에 핀되는 플랫폼 서브패키지
 SUBPACKAGES=(darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64)
@@ -73,6 +77,9 @@ read_cargo_lock() {
 }
 read_ts_version() { jq -r '.version' "$TS_PKG"; }
 read_ts_pin()     { jq -r --arg k "@graphqlite/$1" '.optionalDependencies[$k] // ""' "$TS_PKG"; }
+read_ts_const()   { perl -ne "if (/export const VERSION = '([^']+)'/) { print \$1; exit }" "$TS_VERSION_TS"; }
+read_ts_lock_root() { jq -r '.version' "$TS_LOCK"; }
+read_ts_lock_pkg()  { jq -r '.packages[""].version // ""' "$TS_LOCK"; }
 
 # ---- 갱신 ---------------------------------------------------------------
 
@@ -104,6 +111,15 @@ update_all() {
       )
   ' "$TS_PKG" > "$tmp_pkg"
   mv "$tmp_pkg" "$TS_PKG"
+
+  # 6. src/version.ts VERSION 상수 (exports.test.ts 가 package.json 과 일치를 검증)
+  perl -i -pe "s/(export const VERSION = ')[^']*(')/\${1}$v\${2}/" "$TS_VERSION_TS"
+
+  # 7. package-lock.json 의 self version 2곳 (root + packages[""]); npm ci 정합성 유지
+  local tmp_lock2
+  tmp_lock2="$(mktemp)"
+  jq --arg v "$v" '.version = $v | .packages[""].version = $v' "$TS_LOCK" > "$tmp_lock2"
+  mv "$tmp_lock2" "$TS_LOCK"
 }
 
 # ---- 검증 ---------------------------------------------------------------
@@ -118,14 +134,19 @@ collect() {
   for p in "${SUBPACKAGES[@]}"; do
     printf 'ts      @graphqlite/%s\t%s\n' "$p" "$(read_ts_pin "$p")"
   done
+  printf 'ts      src/version.ts VERSION\t%s\n' "$(read_ts_const)"
+  printf 'ts      package-lock.json root\t%s\n' "$(read_ts_lock_root)"
+  printf 'ts      package-lock.json pkg\t%s\n'  "$(read_ts_lock_pkg)"
 }
 
 check_all() {
   local expected="$1"
   local mismatch=0
+  local total=0
   local label value
 
   while IFS=$'\t' read -r label value; do
+    total=$((total + 1))
     if [ "$value" = "$expected" ]; then
       printf '  ok    %-32s %s\n' "$label" "$value"
     else
@@ -136,10 +157,10 @@ check_all() {
 
   echo ""
   if [ "$mismatch" -ne 0 ]; then
-    echo "✗ $mismatch 곳이 $expected 과 일치하지 않습니다" >&2
+    echo "✗ $total 곳 중 $mismatch 곳이 $expected 과 일치하지 않습니다" >&2
     return 1
   fi
-  echo "✓ 8곳 모두 $expected 로 동기화되어 있습니다"
+  echo "✓ 버전 소스 $total 곳 모두 $expected 로 동기화되어 있습니다"
   return 0
 }
 
@@ -152,6 +173,8 @@ main() {
   require_file "$CARGO_TOML"
   require_file "$CARGO_LOCK"
   require_file "$TS_PKG"
+  require_file "$TS_VERSION_TS"
+  require_file "$TS_LOCK"
 
   if [ "$1" = "--check" ]; then
     [ "$#" -eq 2 ] || usage
