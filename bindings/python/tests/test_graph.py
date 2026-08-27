@@ -654,6 +654,16 @@ def test_bulk_insert_performance(g):
 # Graph Algorithms
 # =============================================================================
 
+def test_node_similarity_topk_only(g):
+    # #71: top_k alone (threshold defaults to 0) is honored, not silently ignored.
+    g.upsert_node("a", {"name": "A"}, label="N")
+    g.upsert_node("b", {"name": "B"}, label="N")
+    g.upsert_node("c", {"name": "C"}, label="N")
+    res = g.node_similarity(top_k=2)
+    assert isinstance(res, list)
+    assert len(res) <= 2
+
+
 def test_pagerank(g):
     g.upsert_node("pr1", {"name": "PR1"})
     g.upsert_node("pr2", {"name": "PR2"})

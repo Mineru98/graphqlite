@@ -19,7 +19,7 @@
 | 5 | `GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다 | `bindings/typescript/src/manager.ts` | #68 |
 | 6 | `namespace` 파라미터가 저장만 되고 어디서도 쓰이지 않는다 (dead parameter) | `bindings/typescript/src/graph/index.ts:113-119` | #69 |
 | 7 | `upsertNode` 의 생성/갱신 경로가 `id` 덮어쓰기에서 비대칭이다 | `bindings/typescript/src/graph/nodes.ts:99-124` | #70 |
-| 8 | `nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다 | `bindings/typescript/src/algorithms/similarity.ts:53-67` | #71 |
+| 8 | ~~`nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다~~ **수정됨(#71)** — 세 바인딩에서 분기 2 조건을 `topK>0` 로 앞당겨 `topK` 만 줘도 `nodeSimilarity(threshold, topK)` 를 방출. 기존 threshold 케이스는 방출·동작 불변 | `bindings/typescript/src/algorithms/similarity.ts` · `python/algorithms/similarity.py` · `rust/src/algorithms/similarity.rs` | #71 |
 
 ### 상세
 
@@ -39,8 +39,11 @@
 6. **`namespace` dead parameter** — 생성 시 `this.namespace` 에 저장되지만 어떤 쿼리에서도 쓰이지 않는다.
 7. **`upsertNode` 생성/갱신 비대칭** — 생성은 `{id: nodeId, ...nodeData}` 라 `nodeData.id` 가 `nodeId` 를
    덮어쓰지만(나중 spread 승), 갱신은 `nodeData` 항목만 `SET` 하고 `id` 는 건드리지 않는다.
-8. **`nodeSimilarity` topK 무시** — 인자 우선순위 분기상 `threshold === 0 && topK > 0` 은
-   인자 없는 `nodeSimilarity()` 분기로 떨어져 `topK` 가 조용히 무시된다.
+8. **`nodeSimilarity` topK 무시 — 수정됨(#71)** — 과거 인자 우선순위 분기 2 가 `threshold>0 && topK>0` 이라
+   `threshold === 0 && topK > 0` 은 인자 없는 `nodeSimilarity()` 분기로 떨어져 `topK` 가 무시됐다. #71 에서
+   세 바인딩의 분기 2 조건을 `topK>0` 로 바꿔 `topK` 만 줘도 `nodeSimilarity(threshold, topK)`(threshold 0 포함)
+   를 방출하게 했다. 코어(`graph_algorithms.c`)는 `nodeSimilarity(0, topK)` 를 top_k 로 정상 처리한다. 기존
+   threshold 케이스의 방출·동작은 불변이라 parity 게이트에 영향이 없다.
 
 ## 코어 제안
 
