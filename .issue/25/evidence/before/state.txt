@@ -1,0 +1,15 @@
+# before — origin/main pure (#25 착수 직전)
+
+## HEAD
+a49bde65de3fae9dda24c969a7a93e4a2976b779
+
+## ci.yml ts-check 존재 여부
+  ts-check 매치: 0
+## needs 배열(4개 체크) 수
+  6
+## engines.node
+  "engines": {
+    "node": ">=22.5.0"
+  },
+## eslint devDep 매치
+0
