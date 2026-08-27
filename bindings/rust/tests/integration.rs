@@ -619,6 +619,32 @@ fn test_graph_shortest_path() {
 }
 
 #[test]
+fn test_graph_astar() {
+    let g = test_graph();
+
+    // Create a path: as1 -> as2 -> as3
+    g.upsert_node("as1", [("name", "AS1")], "Node").unwrap();
+    g.upsert_node("as2", [("name", "AS2")], "Node").unwrap();
+    g.upsert_node("as3", [("name", "AS3")], "Node").unwrap();
+    let empty: [(&str, &str); 0] = [];
+    g.upsert_edge("as1", "as2", empty, "CONNECTS").unwrap();
+    g.upsert_edge("as2", "as3", empty, "CONNECTS").unwrap();
+
+    // Regression for #64: astar must unwrap column_0 and return the real path,
+    // not the empty default.
+    let result = g.astar("as1", "as3", None, None).unwrap();
+    assert!(result.found);
+    assert_eq!(result.distance, Some(2.0));
+    assert_eq!(result.path, vec!["as1", "as2", "as3"]);
+    assert!(result.nodes_explored >= 1);
+
+    // Test no path (reverse direction)
+    let result = g.astar("as3", "as1", None, None).unwrap();
+    assert!(!result.found);
+    assert!(result.path.is_empty());
+}
+
+#[test]
 fn test_graph_degree_centrality() {
     let g = test_graph();
 

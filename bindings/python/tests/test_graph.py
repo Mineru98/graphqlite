@@ -728,6 +728,35 @@ def test_shortest_path_same_node(g):
     assert result["path"] == ["same1"]
 
 
+def test_astar(g):
+    # Create a simple path: as1 -> as2 -> as3
+    g.upsert_node("as1", {"name": "AS1"})
+    g.upsert_node("as2", {"name": "AS2"})
+    g.upsert_node("as3", {"name": "AS3"})
+    g.upsert_edge("as1", "as2", {})
+    g.upsert_edge("as2", "as3", {})
+
+    # Regression for #64: astar must unwrap column_0 and return the real path,
+    # not the empty default.
+    result = g.astar("as1", "as3")
+    assert isinstance(result, dict)
+    assert result["found"] is True
+    assert result["path"] == ["as1", "as2", "as3"]
+    assert result["distance"] == 2
+    assert result["nodes_explored"] >= 1
+
+
+def test_astar_no_path(g):
+    g.upsert_node("asx1", {"name": "ASX1"})
+    g.upsert_node("asx2", {"name": "ASX2"})
+
+    result = g.astar("asx1", "asx2")
+    assert isinstance(result, dict)
+    assert result["found"] is False
+    assert result["path"] == []
+    assert result["distance"] is None
+
+
 def test_degree_centrality(g):
     # Create a simple graph: dc1 -> dc2 -> dc3, dc1 -> dc3
     g.upsert_node("dc1", {"name": "DC1"})

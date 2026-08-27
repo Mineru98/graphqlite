@@ -159,6 +159,54 @@ impl Graph {
 
         let row = &result[0];
 
+        // Handle nested column_0 structure
+        if let Some(Value::Object(data)) = row.get_value("column_0") {
+            let path = data
+                .get("path")
+                .and_then(|v| match v {
+                    Value::Array(arr) => Some(
+                        arr.iter()
+                            .filter_map(|v| match v {
+                                Value::String(s) => Some(s.clone()),
+                                _ => None,
+                            })
+                            .collect(),
+                    ),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            let distance = data.get("distance").and_then(|v| match v {
+                Value::Float(f) => Some(*f),
+                Value::Integer(i) => Some(*i as f64),
+                _ => None,
+            });
+
+            let found = data
+                .get("found")
+                .and_then(|v| match v {
+                    Value::Bool(b) => Some(*b),
+                    _ => None,
+                })
+                .unwrap_or(false);
+
+            let nodes_explored = data
+                .get("nodes_explored")
+                .map(|v| match v {
+                    Value::Integer(i) => *i,
+                    _ => 0,
+                })
+                .unwrap_or(0);
+
+            return Ok(AStarResult {
+                path,
+                distance,
+                found,
+                nodes_explored,
+            });
+        }
+
+        // Direct access
         let path = row
             .get_value("path")
             .and_then(|v| match v {
