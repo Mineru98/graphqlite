@@ -13,7 +13,7 @@
 | # | 결함 | 근거 (TS) | 추적 이슈 |
 |---|------|-----------|-----------|
 | 1 | ~~`astar` 가 `column_0` 언랩을 하지 않는다 — `shortestPath` 와 비대칭~~ **수정됨(#64)**: 세 바인딩 astar 가 이제 `column_0` 을 언랩한다 | `bindings/typescript/src/algorithms/paths.ts` astar | #64 |
-| 2 | `ALGO_COLUMN_NAMES` 가 snake_case(`pagerank()`)인데 실제 Cypher 는 camelCase(`pageRank(...)`)라 대부분 매칭되지 않는다 | `bindings/typescript/src/algorithms/parsing.ts:16-17` | #65 |
+| 2 | ~~`ALGO_COLUMN_NAMES` 가 snake_case(`pagerank()`)인데 실제 Cypher 는 camelCase(`pageRank(...)`)라 대부분 매칭되지 않는다~~ **수정됨(#65)** — 세 바인딩의 named 항목을 실제 camelCase 함수명으로 교정. `column_0` 이 항상 먼저 매칭되어 동작은 불변 | `bindings/typescript/src/algorithms/parsing.ts:16` | #65 |
 | 3 | `sanitizeRelType` 이 두 벌 존재한다 (`utils` vs `bulk`) — 예약어 처리와 빈 문자열 결과가 다르다 | `bindings/typescript/src/utils.ts`, `src/graph/bulk.ts:321` | #66 |
 | 4 | `unloadGraph` 만 `nodes`/`edges` → `nodeCount`/`edgeCount` 키 rename 을 하지 않는다 | `bindings/typescript/src/graph/cache.ts:59` | #67 |
 | 5 | `GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다 | `bindings/typescript/src/manager.ts` | #68 |

@@ -15,7 +15,7 @@ import { ValidationError } from '../src/errors.ts';
 
 // --- Connection test double -------------------------------------------------
 // The algorithm result comes back as a single row with an array column that
-// extractAlgoArray() unwraps — `pagerank()` is one of ALGO_COLUMN_NAMES.
+// extractAlgoArray() unwraps — `pageRank()` is one of ALGO_COLUMN_NAMES.
 interface Call {
   query: string;
   params?: Record<string, unknown> | null;
@@ -34,7 +34,7 @@ function makeConn(columnName: string, rows: CypherRow[]) {
 
 // --- No parameter binding — all string interpolation -----------------------
 test('numeric args are interpolated into the query, never bound', () => {
-  const { conn, calls } = makeConn('pagerank()', []);
+  const { conn, calls } = makeConn('pageRank()', []);
   pagerank(conn, 0.9, 30);
   assert.equal(calls[0]?.query, 'RETURN pageRank(0.9, 30)');
   assert.equal(calls[0]?.params, undefined); // no binding
@@ -42,12 +42,12 @@ test('numeric args are interpolated into the query, never bound', () => {
 
 test('default args match Python (0.85 / 20 / 100)', () => {
   {
-    const { conn, calls } = makeConn('pagerank()', []);
+    const { conn, calls } = makeConn('pageRank()', []);
     pagerank(conn);
     assert.equal(calls[0]?.query, 'RETURN pageRank(0.85, 20)');
   }
   {
-    const { conn, calls } = makeConn('eigenvector_centrality()', []);
+    const { conn, calls } = makeConn('eigenvectorCentrality()', []);
     eigenvectorCentrality(conn);
     assert.equal(calls[0]?.query, 'RETURN eigenvectorCentrality(100)');
   }
@@ -55,17 +55,17 @@ test('default args match Python (0.85 / 20 / 100)', () => {
 
 test('degreeCentrality / betweenness / closeness emit their bare RETURN queries', () => {
   {
-    const { conn, calls } = makeConn('degree_centrality()', []);
+    const { conn, calls } = makeConn('degreeCentrality()', []);
     degreeCentrality(conn);
     assert.equal(calls[0]?.query, 'RETURN degreeCentrality()');
   }
   {
-    const { conn, calls } = makeConn('betweenness_centrality()', []);
+    const { conn, calls } = makeConn('betweennessCentrality()', []);
     betweennessCentrality(conn);
     assert.equal(calls[0]?.query, 'RETURN betweennessCentrality()');
   }
   {
-    const { conn, calls } = makeConn('closeness_centrality()', []);
+    const { conn, calls } = makeConn('closenessCentrality()', []);
     closenessCentrality(conn);
     assert.equal(calls[0]?.query, 'RETURN closenessCentrality()');
   }
@@ -73,7 +73,7 @@ test('degreeCentrality / betweenness / closeness emit their bare RETURN queries'
 
 // --- pagerank asymmetry (acceptance #2) ------------------------------------
 test('pagerank drops rows where score is null; keeps the rest as CentralityScore', () => {
-  const { conn } = makeConn('pagerank()', [
+  const { conn } = makeConn('pageRank()', [
     { node_id: 'a', user_id: 'alice', score: 0.4 },
     { node_id: 'b', user_id: 'bob', score: null }, // dropped — pagerank checks score
     { node_id: null, user_id: 'x', score: 0.1 }, // dropped — nodeId null
@@ -82,7 +82,7 @@ test('pagerank drops rows where score is null; keeps the rest as CentralityScore
 });
 
 test('score centralities keep score-null rows (nodeId-only filter); score → 0', () => {
-  const { conn } = makeConn('betweenness_centrality()', [
+  const { conn } = makeConn('betweennessCentrality()', [
     { node_id: 'a', user_id: 'alice', score: 1.5 },
     { node_id: 'b', user_id: 'bob', score: null }, // kept, score coerced to 0
     { node_id: null, user_id: 'x', score: 9 }, // dropped — nodeId null
@@ -95,7 +95,7 @@ test('score centralities keep score-null rows (nodeId-only filter); score → 0'
 
 // --- degreeCentrality keys (acceptance #3) ---------------------------------
 test('degreeCentrality returns nodeId/userId/inDegree/outDegree/degree (safeInt)', () => {
-  const { conn } = makeConn('degree_centrality()', [
+  const { conn } = makeConn('degreeCentrality()', [
     { node_id: 'a', user_id: 'alice', in_degree: 2, out_degree: 3, degree: 5 },
   ]);
   assert.deepEqual(degreeCentrality(conn), [
@@ -105,7 +105,7 @@ test('degreeCentrality returns nodeId/userId/inDegree/outDegree/degree (safeInt)
 
 // --- Finite-number validation (acceptance #6) ------------------------------
 test('non-finite numeric args are rejected before interpolation', () => {
-  const { conn } = makeConn('pagerank()', []);
+  const { conn } = makeConn('pageRank()', []);
   assert.throws(() => pagerank(conn, Number.NaN, 20), ValidationError);
   assert.throws(() => pagerank(conn, 0.85, Number.POSITIVE_INFINITY), ValidationError);
   assert.throws(() => pagerank(conn, 'x' as never, 20), ValidationError);

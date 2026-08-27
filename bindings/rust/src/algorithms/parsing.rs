@@ -19,16 +19,19 @@ pub(crate) fn extract_algo_array(result: &[&Row]) -> Vec<Row> {
     // Single row - check if it has an array column
     let row = result[0];
 
-    // Try common column names for wrapped array results
+    // Try common column names for wrapped array results.
+    // The core wraps results under "column_0" (first here), so it matches first;
+    // the named entries are a fallback. Casing corrected to the real camelCase
+    // function names the algorithm modules emit (#65); behavior unchanged.
     for col_name in [
         "column_0",
         "wcc()",
         "scc()",
-        "pagerank()",
-        "degree_centrality()",
-        "betweenness_centrality()",
-        "closeness_centrality()",
-        "eigenvector_centrality()",
+        "pageRank()",
+        "degreeCentrality()",
+        "betweennessCentrality()",
+        "closenessCentrality()",
+        "eigenvectorCentrality()",
         "labelPropagation()",
         "louvain()",
     ] {
