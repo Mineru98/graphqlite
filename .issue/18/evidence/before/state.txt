@@ -1,0 +1,9 @@
+# BEFORE — 경로 알고리즘 착수 전 baseline (origin/main)
+
+## src/algorithms/ 목록 (paths.ts 없음)
+centrality.ts
+community.ts
+components.ts
+parsing.ts
+
+## baseline 테스트: 149 pass / 0 fail (paths 테스트 이전)

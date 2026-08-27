@@ -1,0 +1,11 @@
+# AFTER — node --test
+## 실제 확장
+ℹ tests 158
+ℹ pass 158
+ℹ fail 0
+ℹ skipped 0
+## 확장 없이 (skip)
+ℹ tests 158
+ℹ pass 139
+ℹ fail 0
+ℹ skipped 19
