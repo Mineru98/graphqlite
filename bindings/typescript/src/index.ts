@@ -50,4 +50,17 @@ export {
   scc,
   type ComponentResult,
 } from './algorithms/components.ts';
+export {
+  shortestPath,
+  astar,
+  allPairsShortestPath,
+  dijkstra,
+  aStar,
+  apsp,
+  type ShortestPathResult,
+  type AStarResult,
+  type AllPairsPath,
+  type ShortestPathOptions,
+  type AStarOptions,
+} from './algorithms/paths.ts';
 export { UnsupportedOperationError } from './errors.ts';

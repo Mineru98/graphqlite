@@ -53,6 +53,19 @@ import {
   scc,
   type ComponentResult,
 } from '../algorithms/components.ts';
+import {
+  shortestPath,
+  astar,
+  allPairsShortestPath,
+  dijkstra,
+  aStar,
+  apsp,
+  type ShortestPathResult,
+  type AStarResult,
+  type AllPairsPath,
+  type ShortestPathOptions,
+  type AStarOptions,
+} from '../algorithms/paths.ts';
 import { UnsupportedOperationError } from '../errors.ts';
 
 export interface GraphOptions extends ConnectionOptions {
@@ -108,7 +121,7 @@ export class Graph {
   //   centrality  — #15 [A-01] 중심성 알고리즘 5종  ← 아래 구현됨
   //   community   — #16 [A-02] 커뮤니티 탐지  ← 아래 구현됨
   //   components  — #17 [A-03] 연결 요소 (WCC/SCC)  ← 아래 구현됨
-  //   paths       — #18 [A-04] 경로 알고리즘 (dijkstra/astar/apsp)
+  //   paths       — #18 [A-04] 경로 알고리즘 (dijkstra/astar/apsp)  ← 아래 구현됨
   //   traversal   — #19 [A-05] 순회 (BFS/DFS)
   //   similarity  — #20 [A-06] 유사도 (nodeSimilarity/knn/triangleCount)
   // ──────────────────────────────────────────────────────────────────────────
@@ -317,6 +330,41 @@ export class Graph {
   /** Alias for {@link Graph.stronglyConnectedComponents}. */
   scc(): ComponentResult[] {
     return scc(this.#conn);
+  }
+
+  // ── paths — #18 [A-04] ─────────────────────────────────────────────────────
+  /** Dijkstra shortest path (double quotes, unwraps column_0). */
+  shortestPath(
+    sourceId: string,
+    targetId: string,
+    options?: ShortestPathOptions,
+  ): ShortestPathResult {
+    return shortestPath(this.#conn, sourceId, targetId, options);
+  }
+
+  /** A* shortest path (single quotes, no column_0 unwrap — Python inconsistency kept). */
+  astar(sourceId: string, targetId: string, options?: AStarOptions): AStarResult {
+    return astar(this.#conn, sourceId, targetId, options);
+  }
+
+  /** All-pairs shortest path (Floyd–Warshall). */
+  allPairsShortestPath(): AllPairsPath[] {
+    return allPairsShortestPath(this.#conn);
+  }
+
+  /** Alias for {@link Graph.shortestPath}. */
+  dijkstra(sourceId: string, targetId: string, options?: ShortestPathOptions): ShortestPathResult {
+    return dijkstra(this.#conn, sourceId, targetId, options);
+  }
+
+  /** Alias for {@link Graph.astar}. */
+  aStar(sourceId: string, targetId: string, options?: AStarOptions): AStarResult {
+    return aStar(this.#conn, sourceId, targetId, options);
+  }
+
+  /** Alias for {@link Graph.allPairsShortestPath}. */
+  apsp(): AllPairsPath[] {
+    return apsp(this.#conn);
   }
 }
 
