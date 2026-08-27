@@ -58,19 +58,23 @@ test('findExtension short-circuits on an existing explicit path', () => {
 });
 
 test('findExtension throws ExtensionLoadError listing searched paths', () => {
+  // Use win32 so the dev-build candidate is `build/graphqlite.dll`, which never
+  // exists on the linux CI runner (make builds .so) or a macOS dev box (.dylib),
+  // and the win32 bundled package is not installed off-Windows. That guarantees
+  // *no* search path resolves, so the error path is exercised everywhere.
   try {
     findExtension(undefined, {
-      platform: 'linux',
+      platform: 'win32',
       arch: 'x64',
-      env: { GRAPHQLITE_EXTENSION_PATH: '/definitely/missing/graphqlite.so' },
+      env: { GRAPHQLITE_EXTENSION_PATH: 'C:\\definitely\\missing\\graphqlite.dll' },
     });
     assert.fail('expected findExtension to throw');
   } catch (err) {
     assert.ok(err instanceof ExtensionLoadError);
-    assert.ok(err.searchedPaths.includes('/definitely/missing/graphqlite.so'));
+    assert.ok(err.searchedPaths.includes('C:\\definitely\\missing\\graphqlite.dll'));
     assert.match(err.message, /Searched/);
     // The dlopen doubled-extension artifact must never surface here.
-    assert.doesNotMatch(err.message, /\.so\.so/);
+    assert.doesNotMatch(err.message, /\.dll\.dll/);
   }
 });
 
