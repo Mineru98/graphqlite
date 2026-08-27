@@ -1,0 +1,23 @@
+# ci.yml 검증
+YAML 파싱 OK, 잡 수: 13
+ts-check 잡 존재: True / 스텝 수: 9
+ts-check 위치: python-check 직후: True
+
+# needs 배열 6곳 ts-check 편입
+  full-build-unix: True
+  full-rust-tests: True
+  full-python-tests-linux: True
+  full-python-tests-macos: True
+  full-windows-tests: True
+  performance-tests: True
+
+# ts-check 스텝(순서)
+  - actions/checkout@v4
+  - Set up Node
+  - Install dependencies
+  - Build extension
+  - Stage bundled extension for the TS binding
+  - Install TypeScript deps
+  - Type check
+  - Lint
+  - Run tests
