@@ -11,13 +11,13 @@ import {
   parseTraversalResult,
 } from '../src/algorithms/parsing.ts';
 
-test('ALGO_COLUMN_NAMES has 13 entries in Python order, snake_case preserved', () => {
+test('ALGO_COLUMN_NAMES has 13 entries in Python order, camelCase names (#65)', () => {
   assert.equal(ALGO_COLUMN_NAMES.length, 13);
   assert.equal(ALGO_COLUMN_NAMES[0], 'column_0');
-  // Intentional mismatch kept: snake_case, NOT camelCase.
-  assert.ok(ALGO_COLUMN_NAMES.includes('pagerank()'));
-  assert.ok(ALGO_COLUMN_NAMES.includes('degree_centrality()'));
-  assert.ok(!ALGO_COLUMN_NAMES.includes('pageRank()'));
+  // Casing corrected (#65): names match the real camelCase Cypher functions.
+  assert.ok(ALGO_COLUMN_NAMES.includes('pageRank()'));
+  assert.ok(ALGO_COLUMN_NAMES.includes('degreeCentrality()'));
+  assert.ok(!ALGO_COLUMN_NAMES.includes('pagerank()'));
   assert.deepEqual(ALGO_COLUMN_NAMES.slice(-3), ['bfs()', 'dfs()', 'apsp()']);
 });
 
