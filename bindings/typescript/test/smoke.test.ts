@@ -13,6 +13,7 @@ test('index module exposes the connection + graph facade surface', async () => {
   assert.deepEqual(Object.keys(mod).sort(), [
     'Connection',
     'Graph',
+    'GraphManager',
     'UnsupportedOperationError',
     'aStar',
     'allPairsShortestPath',
@@ -45,6 +46,7 @@ test('index module exposes the connection + graph facade surface', async () => {
     'getNodeEdges',
     'graph',
     'graphLoaded',
+    'graphs',
     'hasEdge',
     'hasNode',
     'knn',
