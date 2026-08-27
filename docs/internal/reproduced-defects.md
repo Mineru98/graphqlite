@@ -19,7 +19,7 @@
 | 5 | ~~`GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다~~ **문서 교정됨(#68)** — 자동 감지를 구현하지 않고, 세 바인딩의 문서/주석에서 거짓 자동 감지 주장을 제거해 "graphs 명시 필수"로 정정. 동작 불변 | `bindings/typescript/src/manager.ts` (이미 정직) · `python/manager.py` · `rust/manager.rs` | #68 |
 | 6 | ~~`namespace` 파라미터가 저장만 되고 어디서도 쓰이지 않는다 (dead parameter)~~ **문서 교정됨(#69)** — 파라미터를 구현하거나 제거하지 않고, Python docstring·참조 문서의 "isolating graphs" 거짓 격리 주장을 "stored, unused (dead parameter)"로 정정. TS 는 이미 정직. 동작·API 불변 | `bindings/typescript/src/graph/index.ts:96-119` (이미 정직) · `python/graph/__init__.py` | #69 |
 | 7 | ~~`upsertNode` 의 생성/갱신 경로가 `id` 덮어쓰기에서 비대칭이다~~ **수정됨(#70)** — 세 바인딩에서 `nodeId` 가 항상 노드 `id` 를 결정하도록 대칭화. 생성은 `nodeData.id` 를 무시(`{id: nodeId, ...rest}`), 갱신은 `id` 키를 SET 에서 제외. 정상 케이스(nodeData 에 id 없음)는 동작·속성순서 불변 | `bindings/typescript/src/graph/nodes.ts` · `python/graph/nodes.py` · `rust/src/graph/nodes.rs` | #70 |
-| 8 | `nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다 | `bindings/typescript/src/algorithms/similarity.ts:53-67` | #71 |
+| 8 | ~~`nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다~~ **수정됨(#71)** — 세 바인딩에서 분기 2 조건을 `topK>0` 로 앞당겨 `topK` 만 줘도 `nodeSimilarity(threshold, topK)` 를 방출. 기존 threshold 케이스는 방출·동작 불변 | `bindings/typescript/src/algorithms/similarity.ts` · `python/algorithms/similarity.py` · `rust/src/algorithms/similarity.rs` | #71 |
 
 ### 상세
 
@@ -47,8 +47,11 @@
    `nodeId` 가 항상 노드 `id` 를 결정하게 했다 — 생성은 `{id: nodeId, ...(id 제외한 rest)}`, 갱신은 `id` 키를
    `SET` 에서 건너뛴다. `nodeData` 에 `id` 가 없는 정상 케이스는 동작도 방출 Cypher 도 불변이라 parity 게이트에
    영향이 없다.
-8. **`nodeSimilarity` topK 무시** — 인자 우선순위 분기상 `threshold === 0 && topK > 0` 은
-   인자 없는 `nodeSimilarity()` 분기로 떨어져 `topK` 가 조용히 무시된다.
+8. **`nodeSimilarity` topK 무시 — 수정됨(#71)** — 과거 인자 우선순위 분기 2 가 `threshold>0 && topK>0` 이라
+   `threshold === 0 && topK > 0` 은 인자 없는 `nodeSimilarity()` 분기로 떨어져 `topK` 가 무시됐다. #71 에서
+   세 바인딩의 분기 2 조건을 `topK>0` 로 바꿔 `topK` 만 줘도 `nodeSimilarity(threshold, topK)`(threshold 0 포함)
+   를 방출하게 했다. 코어(`graph_algorithms.c`)는 `nodeSimilarity(0, topK)` 를 top_k 로 정상 처리한다. 기존
+   threshold 케이스의 방출·동작은 불변이라 parity 게이트에 영향이 없다.
 
 ## 코어 제안
 

@@ -32,7 +32,8 @@ class SimilarityMixin(BaseMixin):
         """
         if node1_id and node2_id:
             query = f"RETURN nodeSimilarity('{self._escape(node1_id)}', '{self._escape(node2_id)}')"
-        elif threshold > 0 and top_k > 0:
+        elif top_k > 0:
+            # topK is honored on its own: threshold defaults to 0 (#71).
             query = f"RETURN nodeSimilarity({threshold}, {top_k})"
         elif threshold > 0:
             query = f"RETURN nodeSimilarity({threshold})"
