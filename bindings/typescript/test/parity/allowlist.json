@@ -13,6 +13,11 @@
       "reason": "Numeric-formatting divergence surfaced by cypher mode only: Python interpolates the resolution float via str(1.0) -> 'RETURN louvain(1.0)', while TS interpolates via template literal -> 'RETURN louvain(1)' (JS has no int/float distinction; 1.0 === 1). The C core parses both to the same value, so results mode agrees exactly — this affects the emitted Cypher string alone."
     },
     {
+      "id": "bulk-float-int-quirk.prop-table",
+      "modes": ["results"],
+      "reason": "#31 [X-01] AC#2: bulk insertProperty routes values by JS runtime type. JavaScript has no int/float distinction (1.0 === 1, Number.isInteger(1.0) === true), so a value written as 1.0 lands in node_props_int, whereas Python's isinstance(1.0, float) sends it to node_props_real. The insert return value (external-id -> rowid map) is identical on both sides; only the storage table differs, which this diagnostic step surfaces. Results-mode only — bulk uses raw SQL and emits no Cypher, so cypher mode captures nothing on either side."
+    },
+    {
       "id": "known-divergences.getAllNodes-bad-label",
       "modes": ["results", "cypher"],
       "reason": "F-05: TS assertIdentifier rejects the interpolated label 'bad-label' with ValidationError before any query; Python interpolates it unchecked and the C core raises a parse error. Different error surface by design."
