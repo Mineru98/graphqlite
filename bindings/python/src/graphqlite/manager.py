@@ -211,15 +211,20 @@ class GraphManager:
         """
         Execute a cross-graph Cypher query.
 
-        Uses the FROM clause syntax to query across multiple graphs.
-        Graphs are automatically attached to the coordinator connection.
+        Uses the FROM clause syntax to query across multiple graphs. The named
+        graphs are attached to the coordinator connection before the query runs.
+
+        There is no auto-detection: omitting ``graphs`` (or passing ``None`` or an
+        empty list) attaches nothing, so a query that references a graph will not
+        see it unless that graph is named explicitly.
 
         Note: Open graph connections are committed before the query runs
         to ensure their changes are visible to the coordinator.
 
         Args:
             cypher: Cypher query with FROM clauses specifying graphs
-            graphs: List of graph names to attach (auto-detected from query if None)
+            graphs: Graph names to attach. Required to reach any graph; omitting
+                it (None/empty) attaches nothing — not auto-detected from the query
             params: Optional query parameters
 
         Returns:

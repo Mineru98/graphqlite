@@ -1,0 +1,117 @@
+diff --git a/bindings/typescript/src/result.ts b/bindings/typescript/src/result.ts
+index c0b2cbd..81b3193 100644
+--- a/bindings/typescript/src/result.ts
++++ b/bindings/typescript/src/result.ts
+@@ -4,7 +4,8 @@
+ //   ① row set    [{"name":"Alice","age":30}, ...]
+ //   ② node object[{"n": {"id":1,"labels":["Person"],"properties":{...}}}]
+ //   ③ algorithm  [{"column_0":[{"node_id":2,...}]}]
+-//   ④ DDL summary "Query executed successfully - nodes created: 1, ..."  (plain text)
++//   ④ DDL summary {"nodes_created":1,"relationships_created":0}  (JSON object, #72;
++//                 pre-#72 plain "Query executed successfully - ..." still parsed as fallback)
+ //
+ // This mirrors the branch structure of Python's connection.py:162-192. The one
+ // intentional divergence: Python raises on error-looking non-JSON strings here;
+@@ -116,11 +117,31 @@ const NODES_CREATED = /nodes created:\s*(\d+)/i;
+ const RELATIONSHIPS_CREATED = /relationships created:\s*(\d+)/i;
+ 
+ /**
+- * Best-effort parse of the ④ DDL summary text into counts. This string is not
+- * the core's official contract, so a format change must not raise: on no match
+- * the count is `0` and the original text is preserved in `raw`.
++ * Parse the ④ DDL summary into counts. As of #72 the core returns a JSON object
++ * `{"nodes_created":N,"relationships_created":M}`, which is read directly. For
++ * backward compatibility the pre-#72 human string ("... nodes created: N,
++ * relationships created: M") is still parsed by regex as a fallback. Never
++ * raises: on no match the count is `0` and the original text is preserved in `raw`.
+  */
+ export function parseMutationSummary(raw: string): MutationSummary {
++  // Preferred: structured JSON object from the core (#72).
++  try {
++    const parsed: unknown = JSON.parse(raw);
++    if (
++      isPlainObject(parsed) &&
++      ('nodes_created' in parsed || 'relationships_created' in parsed)
++    ) {
++      return {
++        nodesCreated: Number(parsed['nodes_created'] ?? 0),
++        relationshipsCreated: Number(parsed['relationships_created'] ?? 0),
++        raw,
++      };
++    }
++  } catch {
++    // Not JSON — fall through to the legacy plain-text parse.
++  }
++
++  // Legacy fallback: pre-#72 human-readable string.
+   const nodes = NODES_CREATED.exec(raw);
+   const relationships = RELATIONSHIPS_CREATED.exec(raw);
+   return {
+diff --git a/bindings/typescript/test/result.test.ts b/bindings/typescript/test/result.test.ts
+index 983d4cf..ebeb767 100644
+--- a/bindings/typescript/test/result.test.ts
++++ b/bindings/typescript/test/result.test.ts
+@@ -47,6 +47,19 @@ test('④ DDL summary: normalize keeps raw; parseMutationSummary structures it',
+   assert.deepEqual(summary, { nodesCreated: 1, relationshipsCreated: 0, raw });
+ });
+ 
++test('④ DDL summary: JSON object from core (#72) parsed directly', () => {
++  const raw = '{"nodes_created":3,"relationships_created":2}';
++  // normalizeCypherResult treats the object as a single structured row.
++  const res = normalizeCypherResult(raw);
++  assert.deepEqual(res.columns, ['nodes_created', 'relationships_created']);
++  assert.equal(res[0]?.['nodes_created'], 3);
++  assert.equal(res[0]?.['relationships_created'], 2);
++
++  // parseMutationSummary reads the counts straight from the JSON.
++  const summary = parseMutationSummary(raw);
++  assert.deepEqual(summary, { nodesCreated: 3, relationshipsCreated: 2, raw });
++});
++
+ test('parseMutationSummary never throws; unknown format yields 0 counts + raw', () => {
+   const raw = 'totally unexpected output shape';
+   const summary = parseMutationSummary(raw);
+diff --git a/docs/internal/reproduced-defects.md b/docs/internal/reproduced-defects.md
+index 5ecee61..2bca24a 100644
+--- a/docs/internal/reproduced-defects.md
++++ b/docs/internal/reproduced-defects.md
+@@ -46,11 +46,14 @@
+ 
+ | # | 제안 | 추적 이슈 |
+ |---|------|-----------|
+-| 9 | **DDL 요약을 평문이 아니라 JSON 으로 반환**하면 세 바인딩 모두에 이롭다 | #72 |
+-
+-현재 `Query executed successfully - nodes created: 1, relationships created: 0` 은 공식 계약이 아닌
+-사람용 문자열이라 각 바인딩이 best-effort 로 파싱하고 있다. JSON 반환은 코어(C) 변경이며 세 바인딩의
+-파싱 로직에 영향을 준다.
++| 9 | ~~**DDL 요약을 평문이 아니라 JSON 으로 반환**하면 세 바인딩 모두에 이롭다~~ **구현됨(#72)** — 코어가 `{"nodes_created":N,"relationships_created":M}` JSON 객체를 반환. 바인딩은 이를 구조화 row 로 파싱(TS `parseMutationSummary` 는 JSON 우선·평문 폴백) | #72 |
++
++과거 `Query executed successfully - nodes created: 1, relationships created: 0` 은 공식 계약이 아닌
++사람용 문자열이라 각 바인딩이 best-effort 로 파싱했다. #72 에서 코어(`src/extension.c`)가 RETURN 없는
++수정 쿼리에 대해 `{"nodes_created":N,"relationships_created":M}` JSON 객체를 반환하도록 바꿨다. JSON 객체(`{`)
++는 RETURN row set(`[`)과 구분되어 바인딩이 통계를 구조화 row 로 곧장 파싱한다(Python·Rust 는 자동, TS
++`parseMutationSummary` 는 JSON 우선 + 평문 폴백으로 하위호환 유지). 코어 재빌드는 bison 3+ 가 필요하다
++(`make extension`).
+ 
+ ## 진행 방식
+ 
+diff --git a/src/extension.c b/src/extension.c
+index 0264093..6d6293c 100644
+--- a/src/extension.c
++++ b/src/extension.c
+@@ -394,9 +394,13 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
+             /* Query with RETURN clause but zero rows - return empty array */
+             sqlite3_result_text(context, "[]", -1, SQLITE_STATIC);
+         } else {
+-            /* Modification query without RETURN - show statistics */
++            /* Modification query without RETURN - return a structured JSON
++             * summary object (#72). A JSON object ("{") is distinguishable from
++             * a RETURN row set ("[") by the bindings, which parse the counts
++             * directly instead of best-effort scraping a human string. */
+             char response[256];
+-            snprintf(response, sizeof(response), "Query executed successfully - nodes created: %d, relationships created: %d",
++            snprintf(response, sizeof(response),
++                    "{\"nodes_created\":%d,\"relationships_created\":%d}",
+                     result->nodes_created, result->relationships_created);
+             sqlite3_result_text(context, response, -1, SQLITE_TRANSIENT);
+         }
