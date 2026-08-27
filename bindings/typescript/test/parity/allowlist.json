@@ -1,0 +1,36 @@
+{
+  "$comment": [
+    "Intentional Python<->TS divergences. A step listed here is allowed to differ",
+    "between the two bindings without failing the parity gate. Keyed by",
+    "'<scenario-id>.<step-id>'. Every entry needs a documented reason.",
+    "See #30 [V-01] AC3 and docs: TS added an identifier-validation boundary (F-05)",
+    "that Python lacks, and two Python-only methods were never ported to TS."
+  ],
+  "allow": [
+    {
+      "id": "algorithms.louvain",
+      "modes": ["cypher"],
+      "reason": "Numeric-formatting divergence surfaced by cypher mode only: Python interpolates the resolution float via str(1.0) -> 'RETURN louvain(1.0)', while TS interpolates via template literal -> 'RETURN louvain(1)' (JS has no int/float distinction; 1.0 === 1). The C core parses both to the same value, so results mode agrees exactly — this affects the emitted Cypher string alone."
+    },
+    {
+      "id": "known-divergences.getAllNodes-bad-label",
+      "modes": ["results", "cypher"],
+      "reason": "F-05: TS assertIdentifier rejects the interpolated label 'bad-label' with ValidationError before any query; Python interpolates it unchecked and the C core raises a parse error. Different error surface by design."
+    },
+    {
+      "id": "known-divergences.upsertNode-bad-key",
+      "modes": ["results", "cypher"],
+      "reason": "F-05: TS assertIdentifier rejects the interpolated property key 'bad-key' with ValidationError before writing; Python interpolates it unchecked and the C core raises a parse error. Different error surface by design."
+    },
+    {
+      "id": "known-divergences.leidenCommunities",
+      "modes": ["results", "cypher"],
+      "reason": "Not ported to TS: Graph.leidenCommunities throws UnsupportedOperationError; Python's leiden_communities depends on the Python-only 'graspologic' package (raises ImportError when absent)."
+    },
+    {
+      "id": "known-divergences.toRustworkx",
+      "modes": ["results", "cypher"],
+      "reason": "Not ported to TS: no toRustworkx method exists on the TS Graph; Python's to_rustworkx depends on the Python-only 'rustworkx' package (raises ImportError when absent)."
+    }
+  ]
+}
