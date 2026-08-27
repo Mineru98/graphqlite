@@ -17,7 +17,7 @@
 | 3 | `sanitizeRelType` 이 두 벌 존재한다 (`utils` vs `bulk`) — 예약어 처리와 빈 문자열 결과가 다르다 | `bindings/typescript/src/utils.ts`, `src/graph/bulk.ts:321` | #66 |
 | 4 | ~~`unloadGraph` 만 `nodes`/`edges` → `nodeCount`/`edgeCount` 키 rename 을 하지 않는다~~ **정리됨(#67)** — unloadGraph 도 remap 을 통과시켜 대칭화. 코어 unload 응답엔 `nodes`/`edges` 키가 없어 동작 불변 | `bindings/typescript/src/graph/cache.ts:59` | #67 |
 | 5 | `GraphManager.query(graphs=None)` 의 자동 감지가 docstring 에만 있고 구현이 없다 | `bindings/typescript/src/manager.ts` | #68 |
-| 6 | `namespace` 파라미터가 저장만 되고 어디서도 쓰이지 않는다 (dead parameter) | `bindings/typescript/src/graph/index.ts:113-119` | #69 |
+| 6 | ~~`namespace` 파라미터가 저장만 되고 어디서도 쓰이지 않는다 (dead parameter)~~ **문서 교정됨(#69)** — 파라미터를 구현하거나 제거하지 않고, Python docstring·참조 문서의 "isolating graphs" 거짓 격리 주장을 "stored, unused (dead parameter)"로 정정. TS 는 이미 정직. 동작·API 불변 | `bindings/typescript/src/graph/index.ts:96-119` (이미 정직) · `python/graph/__init__.py` | #69 |
 | 7 | `upsertNode` 의 생성/갱신 경로가 `id` 덮어쓰기에서 비대칭이다 | `bindings/typescript/src/graph/nodes.ts:99-124` | #70 |
 | 8 | `nodeSimilarity` 에서 `topK` 만 주고 `threshold === 0` 이면 `topK` 가 조용히 무시된다 | `bindings/typescript/src/algorithms/similarity.ts:53-67` | #71 |
 
@@ -36,7 +36,10 @@
    `unloadGraph` 는 raw 키(`nodes`/`edges`)를 그대로 반환한다.
 5. **`GraphManager.query` 자동 감지 부재** — `graphs` 를 생략/빈 배열로 주면 `#attach` 가 호출되지 않아
    아무 그래프도 ATTACH 되지 않는다. docstring 만 자동 감지를 주장한다.
-6. **`namespace` dead parameter** — 생성 시 `this.namespace` 에 저장되지만 어떤 쿼리에서도 쓰이지 않는다.
+6. **`namespace` dead parameter — 문서 교정됨(#69)** — 생성 시 `this.namespace`(TS)·`self.namespace`(Python)에
+   저장되지만 어떤 쿼리에서도 쓰이지 않는다. 과거 Python docstring·참조 문서가 "isolating graphs"로 격리를
+   주장했다. #69 에서 파라미터를 구현/제거하지 않고 거짓 격리 주장만 걷어내 "stored, unused"로 정정했다.
+   TS 는 이미 정직(`index.ts:96-102`, `typescript-api.md:180-182`). Rust 에는 namespace 개념이 없다. 동작 불변.
 7. **`upsertNode` 생성/갱신 비대칭** — 생성은 `{id: nodeId, ...nodeData}` 라 `nodeData.id` 가 `nodeId` 를
    덮어쓰지만(나중 spread 승), 갱신은 `nodeData` 항목만 `SET` 하고 `id` 는 건드리지 않는다.
 8. **`nodeSimilarity` topK 무시** — 인자 우선순위 분기상 `threshold === 0 && topK > 0` 은

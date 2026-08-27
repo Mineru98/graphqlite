@@ -192,7 +192,7 @@ graphqlite.graph(db_path=":memory:", namespace="default", extension_path=None) -
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `db_path` | str | `":memory:"` | SQLite database path |
-| `namespace` | str | `"default"` | Graph namespace identifier |
+| `namespace` | str | `"default"` | Stored on the instance but never used by any query (dead parameter; does not isolate graphs) |
 | `extension_path` | str \| None | `None` | Path to extension; auto-detected if `None` |
 
 ---
