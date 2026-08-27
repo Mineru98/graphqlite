@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
-    "test": "node --test"
+    "test": "node --test \"test/**/*.test.ts\""
   },
   "optionalDependencies": {
     "@graphqlite/darwin-arm64": "0.6.1",
