@@ -88,4 +88,5 @@ export {
   type NodeBatchItem,
   type EdgeBatchItem,
 } from './graph/batch.ts';
+export { GraphManager, graphs, type GraphManagerOptions } from './manager.ts';
 export { UnsupportedOperationError } from './errors.ts';
