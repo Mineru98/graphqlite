@@ -1,0 +1,4 @@
+# .gitignore 반영 (check-ignore)
+  무시됨: bindings/typescript/dist/x.d.ts
+  무시됨: bindings/typescript/npm/linux-x64/graphqlite.so
+  package.json 추적됨(정상)
