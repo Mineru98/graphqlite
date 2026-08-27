@@ -5,17 +5,16 @@
 
 // Known column names for graph algorithm results.
 //
-// INTENTIONAL QUIRK — do NOT "fix" the casing. This list is snake_case
-// (`pagerank()`, `degree_centrality()`), but the actual queries the algorithm
-// modules emit are camelCase (`pageRank(...)`, `degreeCentrality()`). As a
-// result most names here never match, and the wrapped array is caught by the
-// generic `column_0` entry instead. "Correcting" the names to camelCase would
-// change which column extractAlgoArray unwraps and break the algorithm modules.
-// Preserved verbatim from Python for byte-compatible behavior; the mismatch
-// should be addressed in a dedicated follow-up issue, not here.
+// The core wraps every algorithm result under `column_0`, which is first in
+// this list, so `extractAlgoArray` matches it first and the remaining named
+// entries act only as a fallback for a hypothetical directly-named column. The
+// names below were snake_case (`pagerank()`, …) but the queries the algorithm
+// modules actually emit are camelCase (`pageRank(...)`, …); the casing is now
+// corrected to match the real function names (#65). Runtime behavior is
+// unchanged — `column_0` still matches first for current core output.
 export const ALGO_COLUMN_NAMES: readonly string[] = [
-  'column_0', 'wcc()', 'scc()', 'pagerank()', 'degree_centrality()',
-  'betweenness_centrality()', 'closeness_centrality()', 'eigenvector_centrality()',
+  'column_0', 'wcc()', 'scc()', 'pageRank()', 'degreeCentrality()',
+  'betweennessCentrality()', 'closenessCentrality()', 'eigenvectorCentrality()',
   'labelPropagation()', 'louvain()', 'bfs()', 'dfs()', 'apsp()',
 ];
 

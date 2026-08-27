@@ -3,10 +3,14 @@
 from typing import Any, List, Optional
 
 
-# Known column names for graph algorithm results
+# Known column names for graph algorithm results.
+# The core wraps every algorithm result under "column_0" (first here), so
+# extract_algo_array matches it first; the named entries are a fallback for a
+# hypothetical directly-named column. Casing corrected to the real camelCase
+# function names the algorithm modules emit (#65); runtime behavior unchanged.
 ALGO_COLUMN_NAMES = [
-    "column_0", "wcc()", "scc()", "pagerank()", "degree_centrality()",
-    "betweenness_centrality()", "closeness_centrality()", "eigenvector_centrality()",
+    "column_0", "wcc()", "scc()", "pageRank()", "degreeCentrality()",
+    "betweennessCentrality()", "closenessCentrality()", "eigenvectorCentrality()",
     "labelPropagation()", "louvain()", "bfs()", "dfs()", "apsp()"
 ]
 
