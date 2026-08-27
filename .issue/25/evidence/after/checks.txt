@@ -1,0 +1,13 @@
+# engines.node (F-01 잠정 >=22.5.0 → 갱신)
+    "node": ">=22.13.0"
+
+# eslint / tsc / node --test
+eslint: 통과 (No issues)
+tsc --noEmit: 무오류
+ℹ tests 200
+ℹ pass 200
+ℹ fail 0
+ℹ skipped 0
+
+# npm ci 동작
+npm ci: OK (lockfile 동기화)
