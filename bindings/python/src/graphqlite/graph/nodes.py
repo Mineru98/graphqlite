@@ -63,11 +63,18 @@ class NodesMixin(BaseMixin):
             node_data: Dictionary of properties to set
             label: Node label (only used on creation)
         """
-        props = {"id": node_id, **node_data}
+        # id is the node identity: node_id always wins, a node_data["id"] is
+        # dropped, so the create and update paths agree on id.
+        rest = {k: v for k, v in node_data.items() if k != "id"}
+        props = {"id": node_id, **rest}
 
         if self.has_node(node_id):
-            # Update existing node
+            # Update existing node. `id` is the node identity and is never
+            # reassigned — a node_data["id"] is skipped so the node keeps
+            # node_id, symmetric with the create path.
             for k, v in node_data.items():
+                if k == "id":
+                    continue
                 self._conn.cypher(
                     f"MATCH (n {{id: $id}}) "
                     f"SET n.{k} = $val RETURN n",
