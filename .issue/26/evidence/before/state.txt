@@ -1,0 +1,11 @@
+# before — origin/main pure (#26 착수 직전)
+
+## HEAD
+bf29e7fcf47c98512502b54fc802a2c2d1425544
+## release.yml npm 잡 존재?
+  npm 잡 매치: 0
+## npm/*/package.json 존재?
+(eval):1: no matches found: bindings/typescript/npm/*/package.json
+  (없음)
+## .gitignore 관련
+117:dist/

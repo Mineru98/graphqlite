@@ -1,0 +1,5 @@
+# release.yml 검증
+YAML 파싱 OK, 잡 수: 8
+build-npm-packages: needs=build-and-test, 매트릭스=5
+발행 순서 강제: build-npm-packages → publish-npm-platforms(needs=build-npm-packages) → publish-npm-main(needs=publish-npm-platforms)
+platforms/main if-tag: True True
