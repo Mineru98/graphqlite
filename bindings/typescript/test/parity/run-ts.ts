@@ -19,7 +19,16 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { graph, type Graph } from '../../src/index.ts';
+import {
+  graph,
+  type Graph,
+  insertNodesBulk,
+  insertEdgesBulk,
+  insertGraphBulk,
+  resolveNodeIds,
+  type BulkNodeItem,
+  type BulkEdgeItem,
+} from '../../src/index.ts';
 import type { CypherResult } from '../../src/result.ts';
 
 type Mode = 'results' | 'cypher';
@@ -75,6 +84,35 @@ function num(value: unknown): number {
 
 function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
+}
+
+// Diagnostic used only by the bulk parity scenario: report which typed table
+// (int/real/text/bool) a node property landed in. This is what surfaces the
+// intentional 1.0→int divergence — the return VALUE of insertNodesBulk is
+// identical across bindings, but the storage table differs. Raw SQL via the
+// driver escape hatch (`g.connection.database`); it emits no cypher, so
+// cypher-mode captures stay empty on both sides.
+function propTableOf(g: Graph, externalId: string, key: string): string | null {
+  const db = g.connection.database;
+  const idKeyRow = db.prepare("SELECT id FROM property_keys WHERE key = 'id'").get() as
+    | { id?: number }
+    | undefined;
+  if (!idKeyRow || idKeyRow.id === undefined) return null;
+  const nodeRow = db
+    .prepare('SELECT node_id FROM node_props_text WHERE key_id = ? AND value = ?')
+    .get(idKeyRow.id, externalId) as { node_id?: number } | undefined;
+  if (!nodeRow || nodeRow.node_id === undefined) return null;
+  const keyRow = db.prepare('SELECT id FROM property_keys WHERE key = ?').get(key) as
+    | { id?: number }
+    | undefined;
+  if (!keyRow || keyRow.id === undefined) return null;
+  for (const suffix of ['int', 'real', 'text', 'bool']) {
+    const r = db
+      .prepare(`SELECT 1 AS x FROM node_props_${suffix} WHERE node_id = ? AND key_id = ?`)
+      .get(nodeRow.node_id, keyRow.id);
+    if (r !== undefined) return suffix;
+  }
+  return null;
 }
 
 // ── Dispatch: camelCase method -> TS binding call ──────────────────────────────
@@ -150,6 +188,27 @@ const DISPATCH: Record<string, (g: Graph, a: unknown[]) => unknown> = {
     }),
   knn: (g, a) => g.knn(str(a[0]), a[1] === undefined ? undefined : { k: num(a[1]) }),
   triangleCount: (g) => g.triangleCount(),
+  // bulk — raw SQL, bypasses Cypher (so cypher-mode captures are empty both sides).
+  // Map returns are converted to plain objects so JSON matches Python's dict.
+  insertNodesBulk: (g, a) => Object.fromEntries(insertNodesBulk(g.connection, a[0] as BulkNodeItem[])),
+  insertEdgesBulk: (g, a) =>
+    insertEdgesBulk(
+      g.connection,
+      a[0] as BulkEdgeItem[],
+      a[1] == null
+        ? undefined
+        : new Map(Object.entries(record(a[1])).map(([k, v]) => [k, num(v)])),
+    ),
+  insertGraphBulk: (g, a) => {
+    const r = insertGraphBulk(g.connection, a[0] as BulkNodeItem[], a[1] as BulkEdgeItem[]);
+    return {
+      nodesInserted: r.nodesInserted,
+      edgesInserted: r.edgesInserted,
+      idMap: Object.fromEntries(r.idMap),
+    };
+  },
+  resolveNodeIds: (g, a) => Object.fromEntries(resolveNodeIds(g.connection, a[0] as string[])),
+  bulkPropTable: (g, a) => propTableOf(g, str(a[0]), str(a[1])),
   // export — Python-only; the TS binding has no such method (allowlisted divergence).
   toRustworkx: () => {
     throw new Error('toRustworkx is not available in the TypeScript binding (Python-only rustworkx export).');

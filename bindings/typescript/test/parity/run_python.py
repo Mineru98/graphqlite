@@ -43,6 +43,49 @@ def _arg(args, i, default=None):
     return args[i] if len(args) > i else default
 
 
+def _bulk_prop_table(g, external_id, key):
+    """Report which typed table (int/real/text/bool) a node property landed in.
+
+    This is what surfaces the intentional 1.0->int divergence: the bulk insert
+    RETURN value is identical across bindings, but the storage table differs
+    (Python float 1.0 -> node_props_real, JS 1.0 -> node_props_int). Raw SQL via
+    the driver escape hatch; emits no cypher, so cypher-mode stays empty.
+    """
+    conn = g.connection.sqlite_connection
+    row = conn.execute("SELECT id FROM property_keys WHERE key = 'id'").fetchone()
+    if row is None:
+        return None
+    id_key_id = row[0]
+    row = conn.execute(
+        "SELECT node_id FROM node_props_text WHERE key_id = ? AND value = ?",
+        (id_key_id, external_id),
+    ).fetchone()
+    if row is None:
+        return None
+    node_id = row[0]
+    row = conn.execute("SELECT id FROM property_keys WHERE key = ?", (key,)).fetchone()
+    if row is None:
+        return None
+    key_id = row[0]
+    for suffix in ("int", "real", "text", "bool"):
+        r = conn.execute(
+            f"SELECT 1 FROM node_props_{suffix} WHERE node_id = ? AND key_id = ?",
+            (node_id, key_id),
+        ).fetchone()
+        if r is not None:
+            return suffix
+    return None
+
+
+def _graph_bulk(g, a):
+    r = g.insert_graph_bulk(a[0], a[1])
+    return {
+        "nodesInserted": r.nodes_inserted,
+        "edgesInserted": r.edges_inserted,
+        "idMap": r.id_map,
+    }
+
+
 DISPATCH = {
     # nodes
     "upsertNode": lambda g, a: g.upsert_node(a[0], a[1], *( [a[2]] if len(a) > 2 else [] )),
@@ -89,6 +132,12 @@ DISPATCH = {
     "nodeSimilarity": lambda g, a: g.node_similarity(*a),
     "knn": lambda g, a: g.knn(a[0], *( [a[1]] if len(a) > 1 else [] )),
     "triangleCount": lambda g, a: g.triangle_count(),
+    # bulk — raw SQL, bypasses Cypher (cypher-mode captures are empty both sides).
+    "insertNodesBulk": lambda g, a: g.insert_nodes_bulk(a[0]),
+    "insertEdgesBulk": lambda g, a: g.insert_edges_bulk(a[0], _arg(a, 1)),
+    "insertGraphBulk": lambda g, a: _graph_bulk(g, a),
+    "resolveNodeIds": lambda g, a: g.resolve_node_ids(a[0]),
+    "bulkPropTable": lambda g, a: _bulk_prop_table(g, a[0], a[1]),
     # export (Python-only; allowlisted divergence)
     "toRustworkx": lambda g, a: g.to_rustworkx(),
 }
