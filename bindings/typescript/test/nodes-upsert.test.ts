@@ -45,12 +45,12 @@ test('create path: custom label is interpolated', () => {
   assert.equal(writes()[0]?.query, "CREATE (n:Person {id: 'alice', name: 'Alice'})");
 });
 
-// --- Asymmetry (acceptance criterion #1) -----------------------------------
-test('create path: nodeData.id overwrites nodeId (later spread wins)', () => {
+// --- id symmetry (#70) -----------------------------------------------------
+test('create path: nodeData.id is ignored, nodeId wins', () => {
   const { conn, writes } = makeConn(false);
   upsertNode(conn, 'alice', { id: 'override', name: 'A' });
-  // props = { id: 'alice', ...{ id: 'override' } } → id is 'override'.
-  assert.equal(writes()[0]?.query, "CREATE (n:Entity {id: 'override', name: 'A'})");
+  // props = { id: 'alice', ...rest } where rest drops nodeData.id → id is 'alice'.
+  assert.equal(writes()[0]?.query, "CREATE (n:Entity {id: 'alice', name: 'A'})");
 });
 
 // --- Update path (acceptance criteria #4, #5) ------------------------------
@@ -73,6 +73,19 @@ test('update path: empty nodeData issues no SET queries', () => {
   const { conn, writes } = makeConn(true);
   upsertNode(conn, 'alice', {});
   assert.equal(writes().length, 0);
+});
+
+test('update path: nodeData.id is skipped, id is never reassigned', () => {
+  const { conn, writes } = makeConn(true);
+  upsertNode(conn, 'alice', { id: 'override', name: 'A' });
+  const w = writes();
+  // Only name is SET; the id entry is skipped so the node keeps 'alice',
+  // symmetric with the create path.
+  assert.equal(w.length, 1);
+  assert.deepEqual(w[0], {
+    query: 'MATCH (n {id: $id}) SET n.name = $val RETURN n',
+    params: { id: 'alice', val: 'A' },
+  });
 });
 
 // --- Identifier validation (acceptance criterion #3) -----------------------

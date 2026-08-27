@@ -50,8 +50,13 @@ impl Graph {
             .collect();
 
         if self.has_node(node_id)? {
-            // Update existing node
+            // Update existing node. `id` is the node identity and is never
+            // reassigned — a props "id" entry is skipped so the node keeps
+            // node_id, symmetric with the create path.
             for (k, v) in props {
+                if k == "id" {
+                    continue;
+                }
                 let query = format!(
                     "MATCH (n {{id: $id}}) SET n.{} = {} RETURN n",
                     k,
@@ -63,9 +68,13 @@ impl Graph {
                     .run()?;
             }
         } else {
-            // Create new node
+            // Create new node. node_id always wins: a props "id" entry is
+            // skipped so `id` is exactly node_id, symmetric with the update path.
             let mut prop_parts = vec![format!("id: '{}'", escape_string(node_id))];
             for (k, v) in props {
+                if k == "id" {
+                    continue;
+                }
                 prop_parts.push(format!("{}: {}", k, v.to_cypher()));
             }
             let prop_str = prop_parts.join(", ");
