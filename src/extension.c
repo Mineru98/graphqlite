@@ -394,9 +394,13 @@ static void graphqlite_cypher_func(sqlite3_context *context, int argc, sqlite3_v
             /* Query with RETURN clause but zero rows - return empty array */
             sqlite3_result_text(context, "[]", -1, SQLITE_STATIC);
         } else {
-            /* Modification query without RETURN - show statistics */
+            /* Modification query without RETURN - return a structured JSON
+             * summary object (#72). A JSON object ("{") is distinguishable from
+             * a RETURN row set ("[") by the bindings, which parse the counts
+             * directly instead of best-effort scraping a human string. */
             char response[256];
-            snprintf(response, sizeof(response), "Query executed successfully - nodes created: %d, relationships created: %d",
+            snprintf(response, sizeof(response),
+                    "{\"nodes_created\":%d,\"relationships_created\":%d}",
                     result->nodes_created, result->relationships_created);
             sqlite3_result_text(context, response, -1, SQLITE_TRANSIENT);
         }

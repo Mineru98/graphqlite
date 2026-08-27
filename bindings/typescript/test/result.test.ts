@@ -47,6 +47,19 @@ test('④ DDL summary: normalize keeps raw; parseMutationSummary structures it',
   assert.deepEqual(summary, { nodesCreated: 1, relationshipsCreated: 0, raw });
 });
 
+test('④ DDL summary: JSON object from core (#72) parsed directly', () => {
+  const raw = '{"nodes_created":3,"relationships_created":2}';
+  // normalizeCypherResult treats the object as a single structured row.
+  const res = normalizeCypherResult(raw);
+  assert.deepEqual(res.columns, ['nodes_created', 'relationships_created']);
+  assert.equal(res[0]?.['nodes_created'], 3);
+  assert.equal(res[0]?.['relationships_created'], 2);
+
+  // parseMutationSummary reads the counts straight from the JSON.
+  const summary = parseMutationSummary(raw);
+  assert.deepEqual(summary, { nodesCreated: 3, relationshipsCreated: 2, raw });
+});
+
 test('parseMutationSummary never throws; unknown format yields 0 counts + raw', () => {
   const raw = 'totally unexpected output shape';
   const summary = parseMutationSummary(raw);
