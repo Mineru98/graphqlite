@@ -58,7 +58,34 @@ test('package.json defines the "." and "./async" subpath exports', () => {
   assert.equal(pkg.exports['./async'], './src/async.ts');
 });
 
-test('the graphqlite/async subpath re-exports the same surface', async () => {
+test('the graphqlite/async subpath re-exports the full sync surface plus the async variants', async () => {
   const asyncMod = await import('../src/async.ts');
-  assert.deepEqual(Object.keys(asyncMod).sort(), Object.keys(mod).sort());
+  const asyncKeys = new Set(Object.keys(asyncMod));
+
+  // 1. Every sync export is still reachable via the async subpath.
+  for (const name of Object.keys(mod)) {
+    assert.ok(asyncKeys.has(name), `async surface should include sync export "${name}"`);
+  }
+
+  // 2. The six worker_threads-backed async variants are exported as functions.
+  const asyncFns = [
+    'pagerankAsync',
+    'louvainAsync',
+    'betweennessCentralityAsync',
+    'apspAsync',
+    'nodeSimilarityAsync',
+    'knnAsync',
+  ] as const;
+  for (const name of asyncFns) {
+    assert.equal(
+      typeof (asyncMod as Record<string, unknown>)[name],
+      'function',
+      `${name} should be exported as a function`,
+    );
+  }
+
+  // 3. The async surface adds *exactly* those six runtime exports on top of the
+  //    sync surface — no accidental extras leak from the worker plumbing.
+  const extras = Object.keys(asyncMod).filter((name) => !(name in mod));
+  assert.deepEqual(extras.sort(), [...asyncFns].sort());
 });
