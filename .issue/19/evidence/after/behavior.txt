@@ -1,0 +1,11 @@
+# 동작 실증 — 실제 확장 build/graphqlite.dylib, Node v24.13.0, a→b→c→d 경로 그래프
+
+bfs('a') 무제한               ["a","b","c","d"]
+dfs('a') 무제한               ["a","b","c","d"]
+bfs('a',{maxDepth:0})         ["a"] (0은 무제한 아님)
+bfs('a',{maxDepth:1})         ["a","b"]
+bfs 반환 키                   ["user_id","depth","order"]
+bfs 첫 행                     {"user_id":"a","depth":0,"order":0}
+breadthFirstSearch===bfs      true
+depthFirstSearch===dfs        true
+bfs("x'y") escape 안전        []
