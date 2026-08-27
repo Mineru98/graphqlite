@@ -35,6 +35,12 @@ ts-check › npm test → SyntaxError: Unexpected identifier 'g'   (exit 1)
 → `engines.node` **`>=24.0.0`**, CI `node-version: '24'`. (개발 검증도 v24.13.0.)
 바인딩은 `[Symbol.dispose]` 로 `using g = graph()` 를 문서화된 사용법으로 제공하므로, 그 사용법이 동작하는 Node 24 가 정직한 하한입니다.
 
+### CI 실측이 노출한 크로스 플랫폼 테스트 취약성 2건 (견고화)
+node 24 로 올린 뒤에도 ts-check 가 한 번 더 실패했는데, **linux CI 에서만** 깨지는 기존 테스트 2건(#2·#7 유래)을 드러냈습니다:
+1. `platform.test.ts › findExtension throws …`: linux 러너엔 `make extension` 이 만든 `build/graphqlite.so` 가 있어 findExtension 이 그걸 찾아 **throw 하지 않음**(darwin 로컬은 `.dylib` 만 있어 통과). → 검색이 어느 환경에서도 실패하도록 `platform:'win32'`(빌드에 `.dll` 없음, win32 번들도 미설치)로 변경.
+2. `connection.test.ts › …restores the warning`: node:sqlite 가 안정화되며 **새 Node 24.x 는 ExperimentalWarning 을 안 냄** → 복원할 경고가 없어 실패(dev v24.13.0 은 아직 냄). → 자식 프로세스로 경고 방출 여부를 탐지해, 안 내는 Node 에선 이 단언을 skip(억제 기능이 올바른 no-op 인 경우).
+두 수정 뒤 **ts-check 및 ts-check 로 게이트된 full-build-unix·full-rust-tests·full-python-tests-* 가 실제 CI 에서 전부 통과**했고 mergeStateStatus 는 CLEAN 이 됐습니다(needs 배선이 실제로 작동함을 확증).
+
 ### eslint 도입 (step 8 `npx eslint .` 가 실제 통과하도록)
 step 8 은 동작하는 eslint 설정을 전제합니다. 리포지토리에 eslint 설정·devDep 이 없어, 최소 구성을 추가했습니다:
 - `eslint.config.js` (flat, typescript-eslint recommended, `dist`/`node_modules`/`npm` 무시)
@@ -56,6 +62,7 @@ GitHub Actions 실제 실행은 push 후 CI 가 수행하며 로컬에서 재현
 - `bindings/typescript/package-lock.json` — eslint 의존 반영(npm ci)
 - `bindings/typescript/eslint.config.js` (신규)
 - `bindings/typescript/src/manager.ts` — 빈 인터페이스 → type alias (lint)
+- `bindings/typescript/test/platform.test.ts`·`test/connection.test.ts` — CI 실측이 노출한 크로스 플랫폼 취약성 2건 견고화
 
 ### 증거 원본
 - baseline: `.issue/25/evidence/before/state.txt`
