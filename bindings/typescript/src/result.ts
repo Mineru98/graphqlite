@@ -4,7 +4,8 @@
 //   ① row set    [{"name":"Alice","age":30}, ...]
 //   ② node object[{"n": {"id":1,"labels":["Person"],"properties":{...}}}]
 //   ③ algorithm  [{"column_0":[{"node_id":2,...}]}]
-//   ④ DDL summary "Query executed successfully - nodes created: 1, ..."  (plain text)
+//   ④ DDL summary {"nodes_created":1,"relationships_created":0}  (JSON object, #72;
+//                 pre-#72 plain "Query executed successfully - ..." still parsed as fallback)
 //
 // This mirrors the branch structure of Python's connection.py:162-192. The one
 // intentional divergence: Python raises on error-looking non-JSON strings here;
@@ -116,11 +117,31 @@ const NODES_CREATED = /nodes created:\s*(\d+)/i;
 const RELATIONSHIPS_CREATED = /relationships created:\s*(\d+)/i;
 
 /**
- * Best-effort parse of the ④ DDL summary text into counts. This string is not
- * the core's official contract, so a format change must not raise: on no match
- * the count is `0` and the original text is preserved in `raw`.
+ * Parse the ④ DDL summary into counts. As of #72 the core returns a JSON object
+ * `{"nodes_created":N,"relationships_created":M}`, which is read directly. For
+ * backward compatibility the pre-#72 human string ("... nodes created: N,
+ * relationships created: M") is still parsed by regex as a fallback. Never
+ * raises: on no match the count is `0` and the original text is preserved in `raw`.
  */
 export function parseMutationSummary(raw: string): MutationSummary {
+  // Preferred: structured JSON object from the core (#72).
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      isPlainObject(parsed) &&
+      ('nodes_created' in parsed || 'relationships_created' in parsed)
+    ) {
+      return {
+        nodesCreated: Number(parsed['nodes_created'] ?? 0),
+        relationshipsCreated: Number(parsed['relationships_created'] ?? 0),
+        raw,
+      };
+    }
+  } catch {
+    // Not JSON — fall through to the legacy plain-text parse.
+  }
+
+  // Legacy fallback: pre-#72 human-readable string.
   const nodes = NODES_CREATED.exec(raw);
   const relationships = RELATIONSHIPS_CREATED.exec(raw);
   return {
