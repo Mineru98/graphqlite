@@ -82,4 +82,10 @@ export {
   type NodeSimilarityOptions,
   type KnnOptions,
 } from './algorithms/similarity.ts';
+export {
+  upsertNodesBatch,
+  upsertEdgesBatch,
+  type NodeBatchItem,
+  type EdgeBatchItem,
+} from './graph/batch.ts';
 export { UnsupportedOperationError } from './errors.ts';
