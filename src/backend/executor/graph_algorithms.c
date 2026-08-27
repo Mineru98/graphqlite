@@ -611,7 +611,10 @@ graph_algo_params detect_graph_algorithm(cypher_return *return_clause, const cha
 
         /* Check for top_k as last argument */
         if (func->args && func->args->count >= 2 && !params.source_id) {
-            /* nodeSimilarity(threshold, top_k) */
+            /* nodeSimilarity(threshold, top_k) — both numeric args. The count>=2
+             * branch above only resolves string source/target, so for numeric
+             * pairs the threshold (arg0) is read here too, not just top_k (#82). */
+            params.threshold = resolve_double_arg((ast_node *)func->args->items[0], params_json, params.threshold);
             params.top_k = resolve_int_arg((ast_node *)func->args->items[1], params_json, params.top_k);
         }
 
