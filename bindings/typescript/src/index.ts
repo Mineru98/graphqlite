@@ -71,4 +71,15 @@ export {
   type TraversalResult,
   type TraversalOptions,
 } from './algorithms/traversal.ts';
+export {
+  nodeSimilarity,
+  knn,
+  triangleCount,
+  triangles,
+  type NodeSimilarityPair,
+  type KnnNeighbor,
+  type TriangleCount,
+  type NodeSimilarityOptions,
+  type KnnOptions,
+} from './algorithms/similarity.ts';
 export { UnsupportedOperationError } from './errors.ts';
