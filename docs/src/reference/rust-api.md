@@ -233,7 +233,7 @@ fn create(&self, name: &str) -> Result<Graph>
 fn open(&self, name: &str) -> Result<Graph>
 fn open_or_create(&self, name: &str) -> Result<Graph>
 fn drop(&self, name: &str) -> Result<()>
-fn query(&self, cypher: &str, graphs: Option<&[&str]>, params: Option<&serde_json::Value>) -> Result<Vec<serde_json::Value>>
+fn query(&mut self, cypher: &str, graph_names: &[&str]) -> Result<CypherResult> // graph_names required; not auto-detected
 fn query_sql(&self, sql: &str, graphs: &[&str], parameters: &[&dyn rusqlite::ToSql]) -> Result<Vec<serde_json::Value>>
 fn close(self) -> Result<()>
 ```

@@ -146,6 +146,18 @@ def test_upsert_node_updates(g):
     assert g.stats()["node_count"] == 1
 
 
+def test_upsert_node_id_symmetry(g):
+    # #70: node_id always wins over a node_data["id"] on BOTH create and update,
+    # so the two paths agree on identity.
+    g.upsert_node("alice", {"id": "bob", "name": "Alice"}, label="Person")
+    assert g.has_node("alice")
+    assert not g.has_node("bob")
+    # Updating the existing node must not reassign its id either.
+    g.upsert_node("alice", {"id": "carol", "age": 31}, label="Person")
+    assert g.has_node("alice")
+    assert not g.has_node("carol")
+
+
 def test_delete_node(g):
     g.upsert_node("dave", {"name": "Dave"}, label="Person")
     assert g.has_node("dave")
@@ -653,6 +665,16 @@ def test_bulk_insert_performance(g):
 # =============================================================================
 # Graph Algorithms
 # =============================================================================
+
+def test_node_similarity_topk_only(g):
+    # #71: top_k alone (threshold defaults to 0) is honored, not silently ignored.
+    g.upsert_node("a", {"name": "A"}, label="N")
+    g.upsert_node("b", {"name": "B"}, label="N")
+    g.upsert_node("c", {"name": "C"}, label="N")
+    res = g.node_similarity(top_k=2)
+    assert isinstance(res, list)
+    assert len(res) <= 2
+
 
 def test_pagerank(g):
     g.upsert_node("pr1", {"name": "PR1"})

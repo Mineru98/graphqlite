@@ -32,7 +32,8 @@ impl Graph {
                     escape_string(n2)
                 )
             }
-            _ if threshold > 0.0 && top_k > 0 => {
+            // topK is honored on its own: threshold defaults to 0.0 (#71).
+            _ if top_k > 0 => {
                 format!("RETURN nodeSimilarity({}, {})", threshold, top_k)
             }
             _ if threshold > 0.0 => {

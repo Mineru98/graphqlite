@@ -53,10 +53,10 @@ test('nodeSimilarity: branch 3 — threshold>0 only', () => {
   assert.equal(calls[0]?.query, 'RETURN nodeSimilarity(0.3)');
 });
 
-test('nodeSimilarity: branch 4 — topK ONLY (threshold 0) is ignored → nodeSimilarity()', () => {
+test('nodeSimilarity: branch 2 — topK ONLY (threshold 0) is honored → nodeSimilarity(0, topK)', () => {
   const { conn, calls } = makeConn(new CypherResult([], []));
-  nodeSimilarity(conn, { topK: 5 }); // threshold defaults to 0 → topK ignored
-  assert.equal(calls[0]?.query, 'RETURN nodeSimilarity()');
+  nodeSimilarity(conn, { topK: 5 }); // threshold defaults to 0 → still emits topK (#71)
+  assert.equal(calls[0]?.query, 'RETURN nodeSimilarity(0, 5)');
 });
 
 test('nodeSimilarity: no options → nodeSimilarity()', () => {
