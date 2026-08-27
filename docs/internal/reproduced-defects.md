@@ -46,11 +46,14 @@
 
 | # | 제안 | 추적 이슈 |
 |---|------|-----------|
-| 9 | **DDL 요약을 평문이 아니라 JSON 으로 반환**하면 세 바인딩 모두에 이롭다 | #72 |
+| 9 | ~~**DDL 요약을 평문이 아니라 JSON 으로 반환**하면 세 바인딩 모두에 이롭다~~ **구현됨(#72)** — 코어가 `{"nodes_created":N,"relationships_created":M}` JSON 객체를 반환. 바인딩은 이를 구조화 row 로 파싱(TS `parseMutationSummary` 는 JSON 우선·평문 폴백) | #72 |
 
-현재 `Query executed successfully - nodes created: 1, relationships created: 0` 은 공식 계약이 아닌
-사람용 문자열이라 각 바인딩이 best-effort 로 파싱하고 있다. JSON 반환은 코어(C) 변경이며 세 바인딩의
-파싱 로직에 영향을 준다.
+과거 `Query executed successfully - nodes created: 1, relationships created: 0` 은 공식 계약이 아닌
+사람용 문자열이라 각 바인딩이 best-effort 로 파싱했다. #72 에서 코어(`src/extension.c`)가 RETURN 없는
+수정 쿼리에 대해 `{"nodes_created":N,"relationships_created":M}` JSON 객체를 반환하도록 바꿨다. JSON 객체(`{`)
+는 RETURN row set(`[`)과 구분되어 바인딩이 통계를 구조화 row 로 곧장 파싱한다(Python·Rust 는 자동, TS
+`parseMutationSummary` 는 JSON 우선 + 평문 폴백으로 하위호환 유지). 코어 재빌드는 bison 3+ 가 필요하다
+(`make extension`).
 
 ## 진행 방식
 
