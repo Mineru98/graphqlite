@@ -16,7 +16,7 @@
     "database"
   ],
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -26,6 +26,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
     "test": "node --test"
   },
   "optionalDependencies": {
@@ -37,6 +38,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.5.0",
-    "typescript": "^5.5.0"
+    "eslint": "^9.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
   }
 }
