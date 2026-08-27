@@ -7,5 +7,10 @@
 // entry so callers can migrate their import path now and gain true async
 // behavior later without a second edit.
 //
-// Deliberately honest: nothing here runs off-thread yet. See #29.
+// #29 [I-06] has now landed: the sync surface is still re-exported here (so the
+// migrated import path keeps working), and the six worker_threads-backed async
+// variants (`pagerankAsync`, `louvainAsync`, `betweennessCentralityAsync`,
+// `apspAsync`, `nodeSimilarityAsync`, `knnAsync`) are exported alongside it from
+// `./async/index.ts`. The subpath (`./async`) is unchanged.
 export * from './index.ts';
+export * from './async/index.ts';
