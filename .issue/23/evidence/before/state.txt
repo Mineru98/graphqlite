@@ -1,0 +1,26 @@
+# before — origin/main pure (#23 착수 직전)
+
+## HEAD
+503173f881394f7f149770846e9cc87381e01a22
+
+## version.ts / async.ts / exports.test.ts 존재 여부
+ls: bindings/typescript/src/version.ts: No such file or directory
+  bindings/typescript/src/version.ts (없음)
+ls: bindings/typescript/src/async.ts: No such file or directory
+  bindings/typescript/src/async.ts (없음)
+ls: bindings/typescript/test/exports.test.ts: No such file or directory
+  bindings/typescript/test/exports.test.ts (없음)
+ls: bindings/typescript/tsconfig.build.json: No such file or directory
+  bindings/typescript/tsconfig.build.json (없음)
+
+## package.json exports 현황
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+
+## 테스트 수 (실제 확장)
+ℹ tests 193
+ℹ pass 193
+ℹ fail 0
+ℹ skipped 0
