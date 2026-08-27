@@ -42,4 +42,12 @@ export {
   type DegreeCentralityResult,
 } from './algorithms/centrality.ts';
 export { communityDetection, louvain, type CommunityResult } from './algorithms/community.ts';
+export {
+  weaklyConnectedComponents,
+  stronglyConnectedComponents,
+  wcc,
+  connectedComponents,
+  scc,
+  type ComponentResult,
+} from './algorithms/components.ts';
 export { UnsupportedOperationError } from './errors.ts';
