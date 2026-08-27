@@ -1,0 +1,12 @@
+# 동작 실증 — 실제 확장 build/graphqlite.dylib, Node v24.13.0, 임시 디렉터리
+
+basePath 재귀 생성         true
+list() 정렬               ["products","social"]
+open 캐시 재사용          true
+query(commit→attach→run)  [{"one":1}]        (열린 social 커밋 후 ATTACH → 코디네이터에서 실행)
+query(graphs 생략)        [{"answer":42}]    (attach 안 함 — auto-detect 미구현 재현)
+open 부재 에러            GRAPH_NOT_FOUND / Available: ['products', 'social']
+create 중복 에러          GRAPH_EXISTS
+이름 검증(../escape)       ValidationError    (디렉터리 이탈 거부 — Python은 ../x 허용)
+이름 검증(bad/name)        ValidationError    (assertIdentifier)
+drop 후 목록              ["social"]         (close→DETACH 무시→파일 삭제)
