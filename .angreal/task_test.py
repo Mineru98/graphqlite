@@ -163,8 +163,58 @@ def test_python(verbose: bool = False, python: str = "") -> int:
 
 @test()
 @angreal.command(
+    name="ts",
+    about="Run TypeScript binding tests",
+    tool=angreal.ToolDescription(
+        """
+Run the TypeScript binding tests using node --test.
+
+## When to use
+- After changes to TypeScript bindings
+- Validating TypeScript API compatibility
+
+## Examples
+```
+angreal test ts
+```
+
+## Prerequisites
+- Extension must be built first (auto-built if missing)
+- Node.js 22.5+ (node:sqlite, node --test)
+""",
+        risk_level="safe"
+    )
+)
+@angreal.argument(
+    name="verbose",
+    long="verbose",
+    short="v",
+    is_flag=True,
+    takes_value=False,
+    help="Show verbose output"
+)
+def test_ts(verbose: bool = False) -> int:
+    """Run TypeScript binding tests."""
+    if not ensure_extension_built():
+        return 1
+
+    root = get_project_root()
+    bindings_dir = os.path.join(root, "bindings", "typescript")
+
+    print("Running TypeScript binding tests...")
+    cmd = ["node", "--test"]
+
+    if verbose:
+        print(f"Running: {' '.join(cmd)} in {bindings_dir}")
+
+    result = subprocess.run(cmd, cwd=bindings_dir)
+    return result.returncode
+
+
+@test()
+@angreal.command(
     name="bindings",
-    about="Run all binding tests (Rust + Python)",
+    about="Run all binding tests (Rust + Python + TypeScript)",
     tool=angreal.ToolDescription(
         """
 Run all language binding tests (Rust and Python).
@@ -204,6 +254,11 @@ def test_bindings(verbose: bool = False) -> int:
     result = test_python(verbose=verbose)
     if result != 0:
         print("Python tests failed!")
+        return result
+
+    result = test_ts(verbose=verbose)
+    if result != 0:
+        print("TypeScript tests failed!")
         return result
 
     print("All binding tests passed!")

@@ -308,6 +308,32 @@ else
 	cp $(EXTENSION_LIB) $(RUST_BINDINGS_DIR)/libs/graphqlite-windows-x86_64.dll
 endif
 
+# Copy extension into the TypeScript binding's per-platform npm package dir.
+# Same UNAME_S/UNAME_M split as install-bundled; only the destination differs.
+# Keys match platform.ts getPlatformKey() (`<node platform>-<node arch>`), and
+# the filename stays `graphqlite.<ext>` so require.resolve('@graphqlite/<key>/...') finds it.
+install-bundled-ts: $(EXTENSION_LIB)
+ifeq ($(UNAME_S),Darwin)
+ifneq (,$(filter arm64 aarch64,$(UNAME_M)))
+	@mkdir -p $(TS_BINDINGS_DIR)/npm/darwin-arm64
+	cp $(EXTENSION_LIB) $(TS_BINDINGS_DIR)/npm/darwin-arm64/graphqlite.dylib
+else
+	@mkdir -p $(TS_BINDINGS_DIR)/npm/darwin-x64
+	cp $(EXTENSION_LIB) $(TS_BINDINGS_DIR)/npm/darwin-x64/graphqlite.dylib
+endif
+else ifeq ($(UNAME_S),Linux)
+ifneq (,$(filter arm64 aarch64,$(UNAME_M)))
+	@mkdir -p $(TS_BINDINGS_DIR)/npm/linux-arm64
+	cp $(EXTENSION_LIB) $(TS_BINDINGS_DIR)/npm/linux-arm64/graphqlite.so
+else
+	@mkdir -p $(TS_BINDINGS_DIR)/npm/linux-x64
+	cp $(EXTENSION_LIB) $(TS_BINDINGS_DIR)/npm/linux-x64/graphqlite.so
+endif
+else
+	@mkdir -p $(TS_BINDINGS_DIR)/npm/win32-x64
+	cp $(EXTENSION_LIB) $(TS_BINDINGS_DIR)/npm/win32-x64/graphqlite.dll
+endif
+
 
 # Standard gqlite build (dynamic linking)
 $(MAIN_APP): $(MAIN_OBJ) $(PARSER_OBJS) $(TRANSFORM_OBJS) $(EXECUTOR_OBJS) $(RUNTIME_OBJS) | dirs
@@ -363,7 +389,8 @@ help:
 	@echo "  make test unit - Run only CUnit tests"
 	@echo "  make test rust - Run Rust binding tests"
 	@echo "  make test python - Run Python binding tests"
-	@echo "  make test bindings - Run all binding tests (Rust + Python)"
+	@echo "  make test ts   - Run TypeScript binding tests"
+	@echo "  make test bindings - Run all binding tests (Rust + Python + TypeScript)"
 	@echo "  make test functional - Run functional SQL tests"
 	@echo "  make test-constraints - Run constraint tests (expected to fail)"
 	@echo "  make performance - Run all performance tests with summary table"
@@ -537,6 +564,7 @@ performance-full: extension
 # Bindings directories
 RUST_BINDINGS_DIR = bindings/rust
 PYTHON_BINDINGS_DIR = bindings/python
+TS_BINDINGS_DIR = bindings/typescript
 
 # Nested test commands: make test [unit|rust|python|bindings|functional]
 # Check what subcommand was passed
@@ -546,6 +574,8 @@ else ifneq ($(filter rust,$(MAKECMDGOALS)),)
 TEST_TARGET = rust
 else ifneq ($(filter python,$(MAKECMDGOALS)),)
 TEST_TARGET = python
+else ifneq ($(filter ts,$(MAKECMDGOALS)),)
+TEST_TARGET = ts
 else ifneq ($(filter bindings,$(MAKECMDGOALS)),)
 TEST_TARGET = bindings
 else ifneq ($(filter functional,$(MAKECMDGOALS)),)
@@ -555,7 +585,7 @@ TEST_TARGET = all
 endif
 
 # Dummy targets for subcommands (prevents "No rule to make target" errors)
-unit rust python bindings functional:
+unit rust python ts bindings functional:
 	@true
 
 # Individual test targets
@@ -574,7 +604,11 @@ test-python: extension
 	@cd $(PYTHON_BINDINGS_DIR) && $(PYTHON) -m pip install -q -e . 2>/dev/null || true
 	cd $(PYTHON_BINDINGS_DIR) && $(PYTHON) -m pytest tests/ -v
 
-test-bindings: test-rust test-python
+test-ts: extension install-bundled-ts
+	@echo "Running TypeScript binding tests..."
+	cd $(TS_BINDINGS_DIR) && node --test
+
+test-bindings: test-rust test-python test-ts
 
 test-functional: extension
 	@echo "Running functional tests..."
@@ -629,4 +663,4 @@ clean:
 	find . -name "*.gcno" -delete
 	find . -name "*.gcov" -delete
 
-.PHONY: all help dirs test test-unit test-rust test-python test-bindings test-functional test-cli test-all test-constraints test-perf test-perf-quick test-perf-scaled test-perf-pagerank performance coverage clean unit rust python bindings functional cli gqlite-portable
+.PHONY: all help dirs test test-unit test-rust test-python test-ts test-bindings test-functional test-cli test-all test-constraints test-perf test-perf-quick test-perf-scaled test-perf-pagerank performance coverage clean unit rust python ts bindings functional cli gqlite-portable install-bundled-ts
