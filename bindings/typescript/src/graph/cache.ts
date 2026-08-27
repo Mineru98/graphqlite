@@ -33,10 +33,11 @@ function callCacheFn(conn: Connection, sql: string): CacheStatus {
 }
 
 /**
- * Remap the core's `nodes`/`edges` keys to `nodeCount`/`edgeCount`. Applied to
- * `loadGraph`/`reloadGraph` only — `unloadGraph` deliberately keeps the raw keys
- * (Python's asymmetry, reproduced verbatim; improvement tracked in X-02). Other
- * keys (e.g. `previous_nodes`) are left untouched.
+ * Remap the core's `nodes`/`edges` keys to `nodeCount`/`edgeCount`. Applied
+ * uniformly to `loadGraph`/`reloadGraph`/`unloadGraph` (#67). The core's
+ * `unload` response carries no `nodes`/`edges` keys, so this is a no-op there
+ * today, but keeping it uniform removes the special case and future-proofs it.
+ * Other keys (e.g. `previous_nodes`) are left untouched.
  */
 function remapCacheStatus(status: CacheStatus): CacheStatus {
   if ('nodes' in status) {
@@ -55,9 +56,9 @@ export function loadGraph(conn: Connection): CacheStatus {
   return remapCacheStatus(callCacheFn(conn, 'SELECT gql_load_graph()'));
 }
 
-/** Free the cached graph. Returns the raw status **without** renaming (asymmetry). */
+/** Free the cached graph. Renames `nodes`/`edges` uniformly (#67; no-op today). */
 export function unloadGraph(conn: Connection): CacheStatus {
-  return callCacheFn(conn, 'SELECT gql_unload_graph()');
+  return remapCacheStatus(callCacheFn(conn, 'SELECT gql_unload_graph()'));
 }
 
 /** Reload the cache with the latest data. Renames `nodes`/`edges`. */
