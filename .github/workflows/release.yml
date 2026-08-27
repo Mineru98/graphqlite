@@ -401,3 +401,110 @@ jobs:
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # =============================================================================
+  # npm publish pipeline (#26) — platform binaries as optionalDependencies.
+  # Assemble one @graphqlite/<platform-key> package per built extension, then
+  # publish the 5 platform packages BEFORE the main package so the main
+  # package's optionalDependencies always resolve to already-published versions.
+  # =============================================================================
+  build-npm-packages:
+    needs: build-and-test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - key: linux-x64
+            artifact: graphqlite-linux-x86_64.so
+            binary: graphqlite.so
+          - key: linux-arm64
+            artifact: graphqlite-linux-aarch64.so
+            binary: graphqlite.so
+          - key: darwin-arm64
+            artifact: graphqlite-macos-arm64.dylib
+            binary: graphqlite.dylib
+          - key: darwin-x64
+            artifact: graphqlite-macos-x86_64.dylib
+            binary: graphqlite.dylib
+          - key: win32-x64
+            artifact: graphqlite-windows-x86_64.dll
+            binary: graphqlite.dll
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Download extension artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: bindings/typescript/npm/${{ matrix.key }}/
+
+      - name: Place binary at the package-manifest name
+        working-directory: bindings/typescript/npm/${{ matrix.key }}
+        run: mv ${{ matrix.artifact }} ${{ matrix.binary }}
+
+      - name: Verify the binary is packed
+        working-directory: bindings/typescript/npm/${{ matrix.key }}
+        run: |
+          npm pack --dry-run
+          npm pack --dry-run --json | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); const files=d[0].files.map(f=>f.path); if(!files.includes('${{ matrix.binary }}')){console.error('binary missing from pack:',files);process.exit(1)} console.log('packed:',files)"
+
+      - name: Upload assembled npm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.key }}
+          path: bindings/typescript/npm/${{ matrix.key }}/
+
+  publish-npm-platforms:
+    needs: build-npm-packages
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all assembled platform packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: npm-*
+          path: bindings/typescript/npm/
+          merge-multiple: false
+
+      - name: Publish each platform package
+        working-directory: bindings/typescript/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for key in linux-x64 linux-arm64 darwin-arm64 darwin-x64 win32-x64; do
+            echo "Publishing @graphqlite/$key ..."
+            npm publish "npm-$key/" --access public
+          done
+
+  publish-npm-main:
+    needs: publish-npm-platforms
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish the main package
+        working-directory: bindings/typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

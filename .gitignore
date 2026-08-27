@@ -145,3 +145,6 @@ src/generated/
 .issue/**/.auth.json
 .issue/**/storage-state.json
 .om*
+# TypeScript binding build/publish artifacts (#26)
+bindings/typescript/dist/
+bindings/typescript/npm/*/graphqlite.*
