@@ -45,6 +45,14 @@ import {
   louvain,
   type CommunityResult,
 } from '../algorithms/community.ts';
+import {
+  weaklyConnectedComponents,
+  stronglyConnectedComponents,
+  wcc,
+  connectedComponents,
+  scc,
+  type ComponentResult,
+} from '../algorithms/components.ts';
 import { UnsupportedOperationError } from '../errors.ts';
 
 export interface GraphOptions extends ConnectionOptions {
@@ -99,7 +107,7 @@ export class Graph {
   //   batch       — (batch ops)                     [+ cache 4종 → #14 C-01 ← 아래 구현됨]
   //   centrality  — #15 [A-01] 중심성 알고리즘 5종  ← 아래 구현됨
   //   community   — #16 [A-02] 커뮤니티 탐지  ← 아래 구현됨
-  //   components  — #17 [A-03] 연결 요소 (WCC/SCC)
+  //   components  — #17 [A-03] 연결 요소 (WCC/SCC)  ← 아래 구현됨
   //   paths       — #18 [A-04] 경로 알고리즘 (dijkstra/astar/apsp)
   //   traversal   — #19 [A-05] 순회 (BFS/DFS)
   //   similarity  — #20 [A-06] 유사도 (nodeSimilarity/knn/triangleCount)
@@ -283,6 +291,32 @@ export class Graph {
       'leidenCommunities is not available in the TypeScript binding: it relies on ' +
         "Python-only 'graspologic'. Use communityDetection() or louvain() instead.",
     );
+  }
+
+  // ── components — #17 [A-03] ────────────────────────────────────────────────
+  /** Weakly connected components (undirected). */
+  weaklyConnectedComponents(): ComponentResult[] {
+    return weaklyConnectedComponents(this.#conn);
+  }
+
+  /** Strongly connected components (direction-aware). */
+  stronglyConnectedComponents(): ComponentResult[] {
+    return stronglyConnectedComponents(this.#conn);
+  }
+
+  /** Alias for {@link Graph.weaklyConnectedComponents}. */
+  wcc(): ComponentResult[] {
+    return wcc(this.#conn);
+  }
+
+  /** Alias for {@link Graph.weaklyConnectedComponents}. */
+  connectedComponents(): ComponentResult[] {
+    return connectedComponents(this.#conn);
+  }
+
+  /** Alias for {@link Graph.stronglyConnectedComponents}. */
+  scc(): ComponentResult[] {
+    return scc(this.#conn);
   }
 }
 
