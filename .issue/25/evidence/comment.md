@@ -9,7 +9,7 @@
 | 수용 기준 | 결과 |
 | --- | --- |
 | **`needs:` 배열 6곳에 `ts-check` 추가** | ✅ full-build-unix·full-rust-tests·full-python-tests-linux·full-python-tests-macos·full-windows-tests·performance-tests **전부** ts-check 포함(YAML 파싱으로 검증) |
-| **Node 버전 하한 실측 확정** | ✅ `engines.node` `>=22.5.0`(F-01 잠정) → **`>=22.13.0`**. 근거 아래 |
+| **Node 버전 하한 실측 확정** | ✅ `engines.node` `>=22.5.0`(F-01 잠정) → **`>=24.0.0`**. **CI 실측으로 확정**(아래) |
 
 ### ts-check 잡 (python-check 직후, 9 스텝)
 ```text
@@ -26,9 +26,14 @@ npm test          200/200
 YAML 파싱         잡 13개, ts-check 9스텝, needs 6곳 전부 ts-check 포함
 ```
 
-### Node 하한 결정 근거 (정직하게)
-- `node:sqlite` `DatabaseSync` 는 v22.5.0 도입이지만 `loadExtension`/`enableLoadExtension`/`allowExtension` 은 이후 릴리스에 추가되어 **22.x LTS(22.13.0)로 백포트**된 것으로 문서화됩니다. 바인딩은 이 API 들에 의존하므로 22.5.0 은 하한으로 부적절 → **`>=22.13.0`**.
-- **로컬 환경 제약**: 이 머신엔 **v24.13.0 만** 있어 22.x 를 직접 실행 검증하지 못했습니다(이슈도 "개발 검증은 v24.13.0" 명시). 따라서 `>=22.13.0` 은 문서 기반값이며, **실측 게이트는 ts-check CI 잡이 node 22 에서 수행**합니다(이 잡이 곧 하한 검증기).
+### Node 하한 결정 근거 — CI 실측으로 확정
+처음엔 문서 기반으로 `>=22.13.0`(node:sqlite `loadExtension`/`allowExtension` 의 22.x LTS 백포트)을 잠정 설정하고 ts-check CI 를 **node 22** 로 돌렸습니다. **그 CI 잡이 실패**했습니다:
+```text
+ts-check › npm test → SyntaxError: Unexpected identifier 'g'   (exit 1)
+```
+테스트가 쓰는 **`using g = graph(...)`(명시적 자원 관리)** 구문은 **Node 24 부터 무플래그 지원**됩니다. node 22 는 이를 파싱하지 못합니다(앞 스텝 make extension·npm ci·tsc·eslint 는 전부 통과). 즉 **CI 가 "Node 하한 실측"을 실제로 수행**해, 하한이 22.13.0 이 아니라 **Node 24** 임을 증명했습니다.
+→ `engines.node` **`>=24.0.0`**, CI `node-version: '24'`. (개발 검증도 v24.13.0.)
+바인딩은 `[Symbol.dispose]` 로 `using g = graph()` 를 문서화된 사용법으로 제공하므로, 그 사용법이 동작하는 Node 24 가 정직한 하한입니다.
 
 ### eslint 도입 (step 8 `npx eslint .` 가 실제 통과하도록)
 step 8 은 동작하는 eslint 설정을 전제합니다. 리포지토리에 eslint 설정·devDep 이 없어, 최소 구성을 추가했습니다:
@@ -43,7 +48,7 @@ GitHub Actions 실제 실행은 push 후 CI 가 수행하며 로컬에서 재현
 
 ### Before → After
 - **Before** (`origin/main` `a49bde6`): ci.yml 에 ts-check 부재, needs 배열 6곳 4개-체크, engines `>=22.5.0`, eslint 설정 전무.
-- **After**: ts-check 잡 + needs 6곳 편입, engines `>=22.13.0`, eslint 설정·통과.
+- **After**: ts-check 잡(node 24) + needs 6곳 편입, engines `>=24.0.0`(CI 실측), eslint 설정·통과.
 
 ### 변경 파일
 - `.github/workflows/ci.yml` — ts-check 잡(9스텝) + needs 6곳
