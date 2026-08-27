@@ -6,7 +6,21 @@ on:
       - 'v*'
 
 jobs:
+  # 태그(vX.Y.Z)와 저장소 안 8곳의 버전이 일치하는지 먼저 게이트한다.
+  # 불일치하면 이후 빌드·배포 잡이 모두 막혀 어긋난 버전으로 릴리스되지 않는다.
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches version sources
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "태그 버전: $VERSION"
+          bash scripts/bump-version.sh --check "$VERSION"
+
   build-and-test:
+    needs: verify-version
     strategy:
       fail-fast: false
       matrix:
