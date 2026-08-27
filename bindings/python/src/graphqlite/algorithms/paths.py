@@ -98,6 +98,19 @@ class PathsMixin(BaseMixin):
             return {"path": [], "distance": None, "found": False, "nodes_explored": 0}
 
         row = result[0]
+
+        # Handle nested column_0 structure from algorithm return
+        if "column_0" in row:
+            data = row["column_0"]
+            if isinstance(data, dict):
+                return {
+                    "path": data.get("path", []),
+                    "distance": data.get("distance"),
+                    "found": data.get("found", False),
+                    "nodes_explored": safe_int(data.get("nodes_explored"))
+                }
+
+        # Direct access if already unpacked
         return {
             "path": row.get("path", []),
             "distance": row.get("distance"),

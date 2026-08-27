@@ -794,10 +794,11 @@ interface AStarOptions { latProp?: string; lonProp?: string }
 ```
 
 > **Reproduced Python inconsistencies:** `shortestPath` quotes identifiers with
-> `"` and unwraps the core's `column_0` wrapper; `astar` quotes with `'` and
-> does **not** unwrap it (so against the current core it returns its defaults);
-> only `allPairsShortestPath` unwraps via `extractAlgoArray`. These quirks are
-> kept intact for byte-compatibility with the Python binding.
+> `"` while `astar` quotes with `'`. Both unwrap the core's `column_0` wrapper
+> (with a defensive fallback to direct field access), and `allPairsShortestPath`
+> unwraps via `extractAlgoArray`. (`astar` historically skipped the unwrap and
+> always returned defaults; fixed in #64.) The quoting quirk is kept intact for
+> byte-compatibility with the Python binding.
 
 #### `shortestPath`
 

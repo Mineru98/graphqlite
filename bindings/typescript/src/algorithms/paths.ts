@@ -3,10 +3,10 @@
 // This is the **most inconsistent** algorithm module and the asymmetries are
 // reproduced verbatim from bindings/python/src/graphqlite/algorithms/paths.py:
 //   1. `shortestPath` quotes with " ; `astar` quotes with ' .
-//   2. `shortestPath` unwraps the `column_0` wrapper; `astar` does NOT — it reads
-//      fields off `result[0]` directly, so against this core (which wraps
-//      everything in `column_0`) astar returns its defaults. That mismatch is
-//      Python's, kept intact.
+//   2. Both `shortestPath` and `astar` unwrap the `column_0` wrapper that this
+//      core wraps results in, then fall back to direct `result[0]` field access
+//      when it is absent. (Historically `astar` skipped the unwrap and always
+//      returned defaults; fixed in #64.)
 //   3. `astar`'s lat/lon props are interpolated unescaped in Python; here they
 //      are validated with `assertIdentifier` instead.
 //   4. Only `apsp` goes through `.toList()` → `extractAlgoArray` (which unwraps
@@ -90,8 +90,9 @@ export function shortestPath(
 export const dijkstra = shortestPath;
 
 /**
- * A* shortest path. **Uses single quotes** and **does NOT unwrap `column_0`** —
- * it reads fields off `result[0]` directly (Python's inconsistency, reproduced).
+ * A* shortest path. **Uses single quotes** and **unwraps `column_0`** (like
+ * {@link shortestPath}), reading `path`/`distance`/`found`/`nodes_explored` off
+ * the unwrapped object, with a defensive fallback to direct `result[0]` access.
  * `latProp`/`lonProp` are interpolated, so they are validated with
  * {@link assertIdentifier}. Empty result → the documented default (with
  * `nodesExplored: 0`).
@@ -119,7 +120,18 @@ export function astar(
     return { path: [], distance: null, found: false, nodesExplored: 0 };
   }
 
-  const row = result[0]!; // NB: no column_0 unwrap — direct field access (Python parity).
+  const row = result[0]!;
+  const col0 = row['column_0'];
+  if (col0 && typeof col0 === 'object' && !Array.isArray(col0)) {
+    const data = col0 as Record<string, unknown>;
+    return {
+      path: (data['path'] as unknown[]) ?? [],
+      distance: (data['distance'] as number | null) ?? null,
+      found: (data['found'] as boolean) ?? false,
+      nodesExplored: safeInt(data['nodes_explored']),
+    };
+  }
+  // Already unpacked (defensive — Python's direct-access branch).
   return {
     path: (row['path'] as unknown[]) ?? [],
     distance: (row['distance'] as number | null) ?? null,
