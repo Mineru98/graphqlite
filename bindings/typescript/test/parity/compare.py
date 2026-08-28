@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""Normalize + compare the Python and TS parity runner outputs (#30 [V-01]).
+"""Normalize + compare the parity runner outputs (#30 [V-01], N-way for #84).
 
-Reads the two JSON documents produced by run_python.py and run-ts.ts, normalizes
-both with the *same* canonicalization so cosmetic differences collapse (the
-bindings differ only in key casing — TS camelCase vs Python snake_case), then
-compares every scenario/step. Genuine value or behavior divergences fail the
-gate (exit 1) with a report naming the scenario, step, method, args, and both
-sides' values. Intended divergences listed in allowlist.json are reported but do
-not fail.
+Reads the JSON documents produced by run-ts.ts (the pivot), run_python.py, and
+run rust `parity_runner`, normalizes them all with the *same* canonicalization
+so cosmetic differences collapse (the bindings differ only in key casing — TS
+camelCase vs Python/Rust snake_case), then compares every scenario/step. TS is
+the subject-under-test: each other binding is diffed against TS as a pair
+(TS↔Python, TS↔Rust). Genuine value or behavior divergences fail the gate
+(exit 1) with a report naming the scenario, step, method, args, and both sides'
+values. Intended divergences listed in allowlist.json are reported but do not
+fail; each allowlist entry declares which binding *pairs* it applies to via its
+`bindings` field (e.g. ["python-ts"], ["rust-ts"], or both).
+
+Backward compatible: `--python X --ts Y` still runs the original 2-way check.
+Add `--rust Z` to also run the TS↔Rust pair. At least one of --python/--rust is
+required; --ts is always required (it is the pivot).
 
 Normalization (results mode):
   * dict keys camelCase -> snake_case (recursively), then sorted
@@ -76,12 +83,19 @@ def comparable_cypher(step: dict) -> str:
     return canon(norm)
 
 
-def load_allowlist(path: str, mode: str) -> dict:
+def load_allowlist(path: str, mode: str, pair: str) -> dict:
+    """Load allowlist entries that apply to this (mode, pair).
+
+    Each entry may declare `bindings` — the list of binding pairs it applies to
+    (e.g. ["python-ts", "rust-ts"]). An entry with no `bindings` field applies to
+    every pair (backward compatible with pre-#84 allowlists).
+    """
     data = json.loads(Path(path).read_text())
     allowed = {}
     for entry in data.get("allow", []):
         modes = entry.get("modes", ["results", "cypher"])
-        if mode in modes:
+        bindings = entry.get("bindings")  # None => applies to all pairs
+        if mode in modes and (bindings is None or pair in bindings):
             allowed[entry["id"]] = entry.get("reason", "")
     return allowed
 
@@ -94,25 +108,13 @@ def index_steps(doc: dict) -> dict:
     return idx
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Compare Python vs TS parity output")
-    parser.add_argument("--python", required=True)
-    parser.add_argument("--ts", required=True)
-    parser.add_argument("--mode", choices=["results", "cypher"], default="results")
-    parser.add_argument(
-        "--allowlist",
-        default=str(Path(__file__).with_name("allowlist.json")),
-    )
-    args = parser.parse_args()
+def _load(path: str) -> dict:
+    return json.loads(Path(path).read_text())
 
-    py_doc = json.loads(Path(args.python).read_text())
-    ts_doc = json.loads(Path(args.ts).read_text())
-    allowlist = load_allowlist(args.allowlist, args.mode)
 
-    py_idx = index_steps(py_doc)
-    ts_idx = index_steps(ts_doc)
-
-    all_keys = list(dict.fromkeys(list(py_idx) + list(ts_idx)))
+def compare_pair(ts_idx: dict, other_idx: dict, other_name: str, mode: str, allowlist: dict):
+    """Diff the TS pivot against one other binding. Returns (matched, allowlisted, mismatches)."""
+    all_keys = list(dict.fromkeys(list(ts_idx) + list(other_idx)))
 
     matched = 0
     allowlisted = 0
@@ -121,31 +123,32 @@ def main() -> int:
     for key in all_keys:
         scenario_id, step_id = key
         dotted = f"{scenario_id}.{step_id}"
-        py_step = py_idx.get(key)
         ts_step = ts_idx.get(key)
+        other_step = other_idx.get(key)
 
-        if py_step is None or ts_step is None:
-            side = "TS" if py_step is not None else "Python"
+        if ts_step is None or other_step is None:
+            missing_side = "TS" if ts_step is None else other_name
             if dotted in allowlist:
                 allowlisted += 1
                 continue
+            present = ts_step or other_step or {}
             mismatches.append({
                 "scenario": scenario_id, "step": step_id,
-                "method": (py_step or ts_step or {}).get("method"),
-                "args": (py_step or ts_step or {}).get("args"),
-                "reason": f"missing on {side} side",
-                "python": py_step, "ts": ts_step,
+                "method": present.get("method"),
+                "args": present.get("args"),
+                "reason": f"missing on {missing_side} side",
+                "ts": ts_step, "other": other_step,
             })
             continue
 
-        if args.mode == "cypher":
-            py_cmp = comparable_cypher(py_step)
+        if mode == "cypher":
             ts_cmp = comparable_cypher(ts_step)
+            other_cmp = comparable_cypher(other_step)
         else:
-            py_cmp = comparable_results(py_step)
             ts_cmp = comparable_results(ts_step)
+            other_cmp = comparable_results(other_step)
 
-        if py_cmp == ts_cmp:
+        if ts_cmp == other_cmp:
             matched += 1
             continue
 
@@ -155,13 +158,48 @@ def main() -> int:
 
         mismatches.append({
             "scenario": scenario_id, "step": step_id,
-            "method": py_step.get("method"), "args": py_step.get("args"),
-            "python": _display(py_step, args.mode),
-            "ts": _display(ts_step, args.mode),
+            "method": ts_step.get("method"), "args": ts_step.get("args"),
+            "ts": _display(ts_step, mode),
+            "other": _display(other_step, mode),
         })
 
-    _report(args.mode, matched, allowlisted, mismatches, allowlist)
-    return 1 if mismatches else 0
+    return matched, allowlisted, mismatches
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Compare TS vs Python/Rust parity output (N-way)")
+    parser.add_argument("--ts", required=True, help="TS runner output (pivot / subject-under-test)")
+    parser.add_argument("--python", help="Python runner output (optional)")
+    parser.add_argument("--rust", help="Rust runner output (optional)")
+    parser.add_argument("--mode", choices=["results", "cypher"], default="results")
+    parser.add_argument(
+        "--allowlist",
+        default=str(Path(__file__).with_name("allowlist.json")),
+    )
+    args = parser.parse_args()
+
+    ts_idx = index_steps(_load(args.ts))
+
+    others = []
+    if args.python:
+        others.append(("python", index_steps(_load(args.python))))
+    if args.rust:
+        others.append(("rust", index_steps(_load(args.rust))))
+
+    if not others:
+        print("ERROR: at least one of --python / --rust must be provided.", file=sys.stderr)
+        return 2
+
+    overall_fail = False
+    for name, other_idx in others:
+        pair = f"{name}-ts"
+        allowlist = load_allowlist(args.allowlist, args.mode, pair)
+        matched, allowlisted, mismatches = compare_pair(ts_idx, other_idx, name, args.mode, allowlist)
+        _report(args.mode, name, pair, matched, allowlisted, mismatches, allowlist)
+        if mismatches:
+            overall_fail = True
+
+    return 1 if overall_fail else 0
 
 
 def _display(step: dict, mode: str):
@@ -172,21 +210,21 @@ def _display(step: dict, mode: str):
     return {"value": normalize(step.get("value"))}
 
 
-def _report(mode, matched, allowlisted, mismatches, allowlist) -> None:
+def _report(mode, other_name, pair, matched, allowlisted, mismatches, allowlist) -> None:
     print("=" * 72)
-    print(f"GraphQLite parity report — mode: {mode}")
+    print(f"GraphQLite parity report — pair: {pair} (TS vs {other_name}) — mode: {mode}")
     print("=" * 72)
     print(f"  matched (identical)   : {matched}")
     print(f"  allowlisted (skipped) : {allowlisted}")
     print(f"  mismatches (failures) : {len(mismatches)}")
     if allowlist:
-        print("  allowlist entries active for this mode:")
+        print(f"  allowlist entries active for {pair} / {mode}:")
         for k, reason in allowlist.items():
             print(f"    - {k}: {reason}")
     if not mismatches:
-        print("\nRESULT: PASS — all scenarios agree (allowlisted divergences aside).")
+        print(f"\nRESULT ({pair}): PASS — all scenarios agree (allowlisted divergences aside).")
         return
-    print("\nRESULT: FAIL — divergences found:\n")
+    print(f"\nRESULT ({pair}): FAIL — divergences found:\n")
     for m in mismatches:
         print("-" * 72)
         print(f"  scenario : {m['scenario']}")
@@ -195,8 +233,8 @@ def _report(mode, matched, allowlisted, mismatches, allowlist) -> None:
         print(f"  input    : {json.dumps(m.get('args'), ensure_ascii=False)}")
         if "reason" in m:
             print(f"  reason   : {m['reason']}")
-        print(f"  python   : {json.dumps(m.get('python'), ensure_ascii=False)}")
         print(f"  ts       : {json.dumps(m.get('ts'), ensure_ascii=False)}")
+        print(f"  {other_name:<8} : {json.dumps(m.get('other'), ensure_ascii=False)}")
     print("-" * 72)
 
 
