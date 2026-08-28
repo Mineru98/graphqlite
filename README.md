@@ -58,6 +58,34 @@ g.dijkstra("alice", "bob");
 g.close();
 ```
 
+### TypeScript / Node.js Binding
+
+The TypeScript binding targets Node.js 24+ and exposes the graph API with
+camelCase method names and option objects. It uses the same compiled C core as
+the Python and Rust bindings.
+
+The cross-binding parity check exercises the TypeScript, Python, and Rust
+implementations against the same scenarios and shared extension. Run both
+checks with:
+
+```bash
+bash scripts/parity-check.sh --mode results
+bash scripts/parity-check.sh --mode cypher
+```
+
+The normal scenarios currently agree across all three bindings, with a small
+documented allowlist for intentional differences. TypeScript-specific behavior
+to keep in mind:
+
+- `leidenCommunities()` and `toRustworkx()` are not available in the TypeScript
+  binding because they depend on Python-only packages.
+- TypeScript validates interpolated identifiers and finite numeric arguments
+  before sending a query to the core.
+- JavaScript has one `number` type, so a bulk value such as `1.0` is stored as
+  an integer, unlike Python and Rust.
+- `getNodeEdges()` returns `[source, target, relationship]` tuples, matching
+  Python; Rust returns object rows in a `CypherResult`.
+
 ## Features
 
 - **Cypher queries** — MATCH, CREATE, MERGE, SET, DELETE, WITH, UNWIND, RETURN
