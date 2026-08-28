@@ -21,7 +21,18 @@ thiserror = "1.0"
 
 [dev-dependencies]
 tempfile = "3.10"
+# The parity_runner example (issue #84) parses the shared scenarios.json and must
+# preserve object key order so the Cypher it drives the binding to emit matches
+# the TS/Python runners byte-for-byte (JS objects and Python dicts both keep
+# insertion order). Dev-only: published production builds never pull this in.
+serde_json = { version = "1.0", features = ["preserve_order"] }
 
 [features]
 default = ["bundled-extension"]
 bundled-extension = []  # Bundle the compiled extension (recommended)
+# Opt-in Cypher recording sink used only by the parity harness (issue #84).
+# Off by default → production builds are byte-identical to before. The
+# parity_runner example builds with `--no-default-features --features parity-spy`
+# so it loads the extension via GRAPHQLITE_EXTENSION_PATH (shared dylib) and can
+# capture the emitted Cypher for cypher-mode parity.
+parity-spy = []
