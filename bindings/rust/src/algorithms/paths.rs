@@ -1,6 +1,6 @@
 //! Path finding algorithm implementations.
 
-use super::parsing::extract_float;
+use super::parsing::{extract_algo_array, extract_float};
 use super::{AStarResult, ApspResult, ShortestPathResult};
 use crate::graph::Graph;
 use crate::utils::escape_string;
@@ -257,9 +257,12 @@ impl Graph {
     /// Uses Floyd-Warshall algorithm with O(V³) time complexity.
     pub fn apsp(&self) -> Result<Vec<ApspResult>> {
         let result = self.connection().cypher("RETURN apsp()")?;
+        // The core wraps the pair rows in a single `column_0` array, like the
+        // other algorithms; unwrap it before reading source/target/distance (#84).
+        let rows = extract_algo_array(result.iter().collect::<Vec<_>>().as_slice());
 
         let mut paths = Vec::new();
-        for row in result.iter() {
+        for row in rows.iter() {
             let source = row.get_value("source").and_then(|v| match v {
                 Value::String(s) => Some(s.clone()),
                 _ => None,

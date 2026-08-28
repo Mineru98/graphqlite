@@ -1,6 +1,6 @@
 //! Graph traversal algorithm implementations.
 
-use super::parsing::{extract_int, extract_string};
+use super::parsing::{extract_algo_array, extract_int, extract_string};
 use super::TraversalResult;
 use crate::graph::Graph;
 use crate::utils::escape_string;
@@ -22,9 +22,12 @@ impl Graph {
         };
 
         let result = self.connection().cypher(&query)?;
+        // The core wraps traversal rows in a single `column_0` array, exactly like
+        // the centrality/component algorithms; unwrap it the same way (#84).
+        let rows = extract_algo_array(result.iter().collect::<Vec<_>>().as_slice());
 
         let mut nodes = Vec::new();
-        for row in result.iter() {
+        for row in rows.iter() {
             if let Some(user_id) = extract_string(row, "user_id") {
                 nodes.push(TraversalResult {
                     user_id,
@@ -51,9 +54,11 @@ impl Graph {
         };
 
         let result = self.connection().cypher(&query)?;
+        // Same `column_0` unwrap as bfs (#84).
+        let rows = extract_algo_array(result.iter().collect::<Vec<_>>().as_slice());
 
         let mut nodes = Vec::new();
-        for row in result.iter() {
+        for row in rows.iter() {
             if let Some(user_id) = extract_string(row, "user_id") {
                 nodes.push(TraversalResult {
                     user_id,
