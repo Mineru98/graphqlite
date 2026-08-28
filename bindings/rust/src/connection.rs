@@ -3,6 +3,8 @@
 use crate::query_builder::CypherQuery;
 use crate::{CypherResult, Error, Result};
 
+#[cfg(feature = "parity-spy")]
+use std::cell::RefCell;
 use std::path::Path;
 #[cfg(not(feature = "bundled-extension"))]
 use std::path::PathBuf;
@@ -13,9 +15,68 @@ use std::path::PathBuf;
 /// providing Cypher query support.
 pub struct Connection {
     conn: rusqlite::Connection,
+    /// Cypher recording sink used only by the parity harness (issue #84).
+    ///
+    /// `None` unless [`Connection::parity_start_recording`] has been called.
+    /// This field (and every method that touches it) only exists under the
+    /// off-by-default `parity-spy` feature, so normal builds are unaffected.
+    #[cfg(feature = "parity-spy")]
+    recorder: RefCell<Option<Vec<serde_json::Value>>>,
 }
 
 impl Connection {
+    /// Wrap a raw rusqlite connection into a `Connection`.
+    ///
+    /// Centralizes struct construction so the parity-spy `recorder` field is
+    /// initialized in exactly one place. Under the default (no `parity-spy`)
+    /// build this compiles down to the original `Connection { conn }` literal.
+    #[cfg(feature = "parity-spy")]
+    fn wrap(conn: rusqlite::Connection) -> Self {
+        Connection {
+            conn,
+            recorder: RefCell::new(None),
+        }
+    }
+
+    #[cfg(not(feature = "parity-spy"))]
+    fn wrap(conn: rusqlite::Connection) -> Self {
+        Connection { conn }
+    }
+
+    /// Begin recording every Cypher query (+ params) this connection emits.
+    ///
+    /// Only available under the `parity-spy` feature; used by the parity
+    /// harness's cypher mode. Resets any prior recording buffer.
+    #[cfg(feature = "parity-spy")]
+    pub fn parity_start_recording(&self) {
+        *self.recorder.borrow_mut() = Some(Vec::new());
+    }
+
+    /// Take (and clear) the recorded Cypher calls captured since recording
+    /// started or since the last take. Recording stays active. Returns an
+    /// empty vec if recording was never started.
+    #[cfg(feature = "parity-spy")]
+    pub fn parity_take_recording(&self) -> Vec<serde_json::Value> {
+        let mut guard = self.recorder.borrow_mut();
+        match guard.as_mut() {
+            Some(buf) => std::mem::take(buf),
+            None => Vec::new(),
+        }
+    }
+
+    /// Push one `{query, params}` record onto the recording buffer if active.
+    /// Whitespace in the query is normalized the same way as the TS/Python
+    /// spies (`normWs`: collapse runs of whitespace, trim).
+    #[cfg(feature = "parity-spy")]
+    fn parity_record(&self, query: &str, params: Option<&serde_json::Value>) {
+        if let Some(buf) = self.recorder.borrow_mut().as_mut() {
+            buf.push(serde_json::json!({
+                "query": parity_norm_ws(query),
+                "params": params.cloned().unwrap_or(serde_json::Value::Null),
+            }));
+        }
+    }
+
     /// Open a database at the given path.
     ///
     /// # Arguments
@@ -66,7 +127,7 @@ impl Connection {
     pub fn from_rusqlite(conn: rusqlite::Connection) -> Result<Self> {
         // Load the bundled extension (extracts from embedded binary)
         crate::platform::load_bundled_extension(&conn)?;
-        Ok(Connection { conn })
+        Ok(Self::wrap(conn))
     }
 
     /// Create a GraphQLite connection from an existing rusqlite Connection.
@@ -74,7 +135,7 @@ impl Connection {
     pub fn from_rusqlite(conn: rusqlite::Connection) -> Result<Self> {
         let extension_path = find_extension()?;
         load_extension(&conn, &extension_path)?;
-        Ok(Connection { conn })
+        Ok(Self::wrap(conn))
     }
 
     /// Create a connection with a custom extension path.
@@ -92,7 +153,7 @@ impl Connection {
     ) -> Result<Self> {
         let conn = rusqlite::Connection::open(path)?;
         load_extension(&conn, extension_path.as_ref())?;
-        Ok(Connection { conn })
+        Ok(Self::wrap(conn))
     }
 
     /// Execute a Cypher query.
@@ -116,6 +177,9 @@ impl Connection {
     /// # Ok::<(), graphqlite::Error>(())
     /// ```
     pub fn cypher(&self, query: &str) -> Result<CypherResult> {
+        #[cfg(feature = "parity-spy")]
+        self.parity_record(query, None);
+
         let result: Option<String> = self
             .conn
             .query_row("SELECT cypher(?1)", [query], |row| row.get(0))?;
@@ -171,6 +235,9 @@ impl Connection {
         query: &str,
         params: &serde_json::Value,
     ) -> Result<CypherResult> {
+        #[cfg(feature = "parity-spy")]
+        self.parity_record(query, Some(params));
+
         let params_json = serde_json::to_string(params)
             .map_err(|e| Error::Cypher(format!("Failed to serialize params: {}", e)))?;
         let result: Option<String> = self.conn.query_row(
@@ -275,7 +342,11 @@ fn load_extension(conn: &rusqlite::Connection, path: &std::path::Path) -> Result
 
     unsafe {
         conn.load_extension_enable()?;
-        conn.load_extension(&load_path, None)?;
+        // `None` needs an explicit type since rusqlite 0.39 made the entry-point
+        // parameter generic (`Option<N: Name>`); `Option<&str>` = "default entry
+        // point", identical to the pre-0.39 behavior. Without this the
+        // `--no-default-features` build fails to infer the type parameter.
+        conn.load_extension(&load_path, None::<&str>)?;
         conn.load_extension_disable()?;
     }
 
@@ -299,6 +370,13 @@ fn parse_structured_error(s: &str) -> Error {
         }
     }
     Error::Cypher(s.to_string())
+}
+
+/// Normalize whitespace the same way the TS/Python parity spies do
+/// (`normWs`: collapse every run of whitespace to a single space and trim).
+#[cfg(feature = "parity-spy")]
+fn parity_norm_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
