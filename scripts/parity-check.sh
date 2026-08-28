@@ -108,10 +108,11 @@ if [[ ! -d "$TS_DIR/node_modules" ]]; then
   ( cd "$TS_DIR" && npm ci --silent )
 fi
 
-# ── 4. Run both runners ───────────────────────────────────────────────────────
+# ── 4. Run all three runners ──────────────────────────────────────────────────
 PY_OUT="$(mktemp -t gqlite-parity-py.XXXXXX.json)"
 TS_OUT="$(mktemp -t gqlite-parity-ts.XXXXXX.json)"
-trap 'rm -f "$PY_OUT" "$TS_OUT"' EXIT
+RS_OUT="$(mktemp -t gqlite-parity-rs.XXXXXX.json)"
+trap 'rm -f "$PY_OUT" "$TS_OUT" "$RS_OUT"' EXIT
 
 echo ">> running Python runner"
 python "$PARITY_DIR/run_python.py" --mode "$MODE" > "$PY_OUT"
@@ -119,10 +120,18 @@ python "$PARITY_DIR/run_python.py" --mode "$MODE" > "$PY_OUT"
 echo ">> running TypeScript runner"
 ( cd "$TS_DIR" && node "$PARITY_DIR/run-ts.ts" --mode "$MODE" ) > "$TS_OUT"
 
-# ── 5. Compare + report ───────────────────────────────────────────────────────
+# The Rust leg shares the exact same GRAPHQLITE_EXTENSION_PATH dylib. Built with
+# --no-default-features so it loads that env dylib instead of an embedded binary,
+# and --features parity-spy so cypher mode can capture the emitted Cypher.
+echo ">> running Rust runner"
+( cd "$ROOT/bindings/rust" && cargo run --quiet --example parity_runner \
+    --no-default-features --features parity-spy -- --mode "$MODE" ) > "$RS_OUT"
+
+# ── 5. Compare + report (TS pivot vs Python and vs Rust) ──────────────────────
 echo ">> comparing"
 set +e
-python "$PARITY_DIR/compare.py" --mode "$MODE" --python "$PY_OUT" --ts "$TS_OUT"
+python "$PARITY_DIR/compare.py" --mode "$MODE" \
+  --python "$PY_OUT" --ts "$TS_OUT" --rust "$RS_OUT"
 STATUS=$?
 set -e
 
