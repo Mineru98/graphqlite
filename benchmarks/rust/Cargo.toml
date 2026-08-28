@@ -1,0 +1,23 @@
+[package]
+name = "graphqlite-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone benchmark crate for #86. Depends on the Rust binding with
+# default-features = false so the binding loads the *shared* dylib via
+# GRAPHQLITE_EXTENSION_PATH (set by benchmarks/run.sh) instead of the embedded
+# extension — guaranteeing all three language benchmarks exercise the identical
+# C core.
+[dependencies]
+graphqlite = { path = "../../bindings/rust", default-features = false }
+serde_json = "1.0"
+
+[[bin]]
+name = "graphqlite-bench"
+path = "src/main.rs"
+
+# Release profile is the default for `cargo run --release`; kept explicit so the
+# benchmark's build profile is documented next to the crate.
+[profile.release]
+opt-level = 3
