@@ -1,0 +1,16 @@
+{
+  "//": "Standalone benchmark script (#86). Lives outside the TS package, so it needs its own tsconfig to resolve Node globals (process, node:os). @types/node is reused from the TypeScript binding's installed devDependencies.",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "lib": ["es2023"],
+    "types": ["node"],
+    "typeRoots": ["../../bindings/typescript/node_modules/@types"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true
+  },
+  "include": ["bench.ts"]
+}
