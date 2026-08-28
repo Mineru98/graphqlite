@@ -86,7 +86,7 @@ CREATE/SET/DELETE/REMOVE, UNION, and SKIP/LIMIT are at 100%.
 
 ## Performance
 
-GraphQLite ships a reproducible cross-binding benchmark that runs the **same**
+GraphQLite ships a re-runnable cross-binding benchmark that runs the **same**
 operations through the **Python, TypeScript, and Rust** bindings against the
 **same** compiled C-core dylib. Run it yourself with `bash benchmarks/run.sh`
 (see [`benchmarks/README.md`](benchmarks/README.md)).
