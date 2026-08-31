@@ -1,0 +1,38 @@
+>> GraphQLite parity check (mode=cypher)
+>> repo: /Users/mineru/SourceCode/graphqlite-issue-102
+>> extension: /Users/mineru/SourceCode/graphqlite/build/graphqlite.dylib
+>> staged Python bundled dylib: /Users/mineru/SourceCode/graphqlite-issue-102/bindings/python/src/graphqlite/graphqlite.dylib
+>> running Python runner
+>> running TypeScript runner
+>> running Rust runner
+>> comparing
+========================================================================
+GraphQLite parity report — pair: python-ts (TS vs python) — mode: cypher
+========================================================================
+  matched (identical)   : 52
+  allowlisted (skipped) : 3
+  mismatches (failures) : 0
+  allowlist entries active for python-ts / cypher:
+    - algorithms.louvain: Numeric-formatting divergence surfaced by cypher mode only: Python interpolates the resolution float via str(1.0) -> 'RETURN louvain(1.0)', while TS interpolates via template literal -> 'RETURN louvain(1)' (JS has no int/float distinction; 1.0 === 1). The C core parses both to the same value, so results mode agrees exactly — this affects the emitted Cypher string alone. Rust's Display for f64 also prints 1.0 as '1', so rust-ts AGREES here and is not listed.
+    - known-divergences.getAllNodes-bad-label: F-05: TS assertIdentifier rejects the interpolated label 'bad-label' with ValidationError before any query; Python and Rust both interpolate it unchecked (MATCH (n:bad-label) ...) and the C core raises a parse error. Different error surface by design — TS fails early with a validation error type, Python/Rust fail in the core with a Cypher/parse error type.
+    - known-divergences.upsertNode-bad-key: F-05: TS assertIdentifier rejects the interpolated property key 'bad-key' with ValidationError before writing; Python and Rust both interpolate it unchecked (CREATE (... {bad-key: 1})) and the C core raises a parse error. Different error surface by design.
+    - known-divergences.leidenCommunities: Not ported to TS or Rust: Graph.leidenCommunities throws UnsupportedOperationError (TS); the Rust binding has no such method (runner returns an UnsupportedOperation error); Python's leiden_communities depends on the Python-only 'graspologic' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+    - known-divergences.toRustworkx: Not ported to TS or Rust: no toRustworkx method exists on the TS or Rust Graph (both surface an error); Python's to_rustworkx depends on the Python-only 'rustworkx' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+
+RESULT (python-ts): PASS — all scenarios agree (allowlisted divergences aside).
+========================================================================
+GraphQLite parity report — pair: rust-ts (TS vs rust) — mode: cypher
+========================================================================
+  matched (identical)   : 50
+  allowlisted (skipped) : 5
+  mismatches (failures) : 0
+  allowlist entries active for rust-ts / cypher:
+    - crud-nodes.upsert-update: Cypher-construction divergence surfaced by cypher mode only (#84). Updating an existing node's property, the TS/Python bindings emit the SET clause with a bound parameter ('SET n.age = $val', value carried in params), while the Rust binding inlines the value literally into the query via PropertyValue::to_cypher() ('SET n.age = 41'). The core applies the same value either way, so results mode agrees exactly — only the emitted query string + params differ. Directly analogous to the algorithms.louvain numeric-formatting entry.
+    - crud-edges.upsert-new: Cypher-construction divergence surfaced by cypher mode only (#84). After MERGE-ing the edge, TS/Python set edge properties via a bound parameter ('SET r.weight = $v0', value in params) whereas the Rust binding inlines the value literally ('SET r.weight = 9'). The MERGE query and end result are identical; only the SET query string + params differ. Same class as crud-nodes.upsert-update / algorithms.louvain.
+    - crud-edges.upsert-update: Cypher-construction divergence surfaced by cypher mode only (#84). Updating an existing edge's property, TS/Python emit 'SET r.weight = $v0' (parameterized) while the Rust binding inlines the value ('SET r.weight = 10'). Results agree; only the emitted Cypher string + params differ. Same class as crud-edges.upsert-new.
+    - known-divergences.getAllNodes-bad-label: F-05: TS assertIdentifier rejects the interpolated label 'bad-label' with ValidationError before any query; Python and Rust both interpolate it unchecked (MATCH (n:bad-label) ...) and the C core raises a parse error. Different error surface by design — TS fails early with a validation error type, Python/Rust fail in the core with a Cypher/parse error type.
+    - known-divergences.upsertNode-bad-key: F-05: TS assertIdentifier rejects the interpolated property key 'bad-key' with ValidationError before writing; Python and Rust both interpolate it unchecked (CREATE (... {bad-key: 1})) and the C core raises a parse error. Different error surface by design.
+    - known-divergences.leidenCommunities: Not ported to TS or Rust: Graph.leidenCommunities throws UnsupportedOperationError (TS); the Rust binding has no such method (runner returns an UnsupportedOperation error); Python's leiden_communities depends on the Python-only 'graspologic' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+    - known-divergences.toRustworkx: Not ported to TS or Rust: no toRustworkx method exists on the TS or Rust Graph (both surface an error); Python's to_rustworkx depends on the Python-only 'rustworkx' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+
+RESULT (rust-ts): PASS — all scenarios agree (allowlisted divergences aside).
