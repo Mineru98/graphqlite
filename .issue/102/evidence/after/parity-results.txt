@@ -1,0 +1,37 @@
+>> GraphQLite parity check (mode=results)
+>> repo: /Users/mineru/SourceCode/graphqlite-issue-102
+>> extension: /Users/mineru/SourceCode/graphqlite/build/graphqlite.dylib
+>> staged Python bundled dylib: /Users/mineru/SourceCode/graphqlite-issue-102/bindings/python/src/graphqlite/graphqlite.dylib
+>> running Python runner
+>> running TypeScript runner
+>> running Rust runner
+>> comparing
+========================================================================
+GraphQLite parity report — pair: python-ts (TS vs python) — mode: results
+========================================================================
+  matched (identical)   : 50
+  allowlisted (skipped) : 5
+  mismatches (failures) : 0
+  allowlist entries active for python-ts / results:
+    - bulk-float-int-quirk.prop-table: #31 [X-01] AC#2: bulk insertProperty routes values by runtime type. JavaScript has no int/float distinction (1.0 === 1, Number.isInteger(1.0) === true), so a value written as 1.0 lands in node_props_int, whereas Python's isinstance(1.0, float) and Rust's serde_json float (as_i64() == None for 1.0 -> PropertyValue::Float) both send it to node_props_real. The insert return value (external-id -> rowid map) is identical on all sides; only the storage table differs, which this diagnostic step surfaces. TS disagrees with BOTH Python and Rust (int vs real). Results-mode only — bulk uses raw SQL and emits no Cypher, so cypher mode captures nothing on any side.
+    - known-divergences.getAllNodes-bad-label: F-05: TS assertIdentifier rejects the interpolated label 'bad-label' with ValidationError before any query; Python and Rust both interpolate it unchecked (MATCH (n:bad-label) ...) and the C core raises a parse error. Different error surface by design — TS fails early with a validation error type, Python/Rust fail in the core with a Cypher/parse error type.
+    - known-divergences.upsertNode-bad-key: F-05: TS assertIdentifier rejects the interpolated property key 'bad-key' with ValidationError before writing; Python and Rust both interpolate it unchecked (CREATE (... {bad-key: 1})) and the C core raises a parse error. Different error surface by design.
+    - known-divergences.leidenCommunities: Not ported to TS or Rust: Graph.leidenCommunities throws UnsupportedOperationError (TS); the Rust binding has no such method (runner returns an UnsupportedOperation error); Python's leiden_communities depends on the Python-only 'graspologic' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+    - known-divergences.toRustworkx: Not ported to TS or Rust: no toRustworkx method exists on the TS or Rust Graph (both surface an error); Python's to_rustworkx depends on the Python-only 'rustworkx' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+
+RESULT (python-ts): PASS — all scenarios agree (allowlisted divergences aside).
+========================================================================
+GraphQLite parity report — pair: rust-ts (TS vs rust) — mode: results
+========================================================================
+  matched (identical)   : 49
+  allowlisted (skipped) : 6
+  mismatches (failures) : 0
+  allowlist entries active for rust-ts / results:
+    - bulk-float-int-quirk.prop-table: #31 [X-01] AC#2: bulk insertProperty routes values by runtime type. JavaScript has no int/float distinction (1.0 === 1, Number.isInteger(1.0) === true), so a value written as 1.0 lands in node_props_int, whereas Python's isinstance(1.0, float) and Rust's serde_json float (as_i64() == None for 1.0 -> PropertyValue::Float) both send it to node_props_real. The insert return value (external-id -> rowid map) is identical on all sides; only the storage table differs, which this diagnostic step surfaces. TS disagrees with BOTH Python and Rust (int vs real). Results-mode only — bulk uses raw SQL and emits no Cypher, so cypher mode captures nothing on any side.
+    - queries.getNodeEdges: Result-shape divergence surfaced by the Rust leg (#84). For the identical emitted query (MATCH (n {id})-[r]-(m) RETURN n.id AS source, m.id AS target, r), the TS and Python bindings return getNodeEdges as a list of [source, target, r] TUPLES, whereas every other edge-listing method (getEdgesFrom/getEdgesTo/getEdgesByType/getAllEdges) returns objects — the Rust binding is internally consistent and returns a CypherResult (object rows: {source, target, r}) for all of them, matching TS/Python on the others and diverging only on this one method. The underlying edge data (id/type/startNode/endNode/properties) is identical; only the row container differs. Cypher mode agrees (same query), so results-mode only.
+    - known-divergences.getAllNodes-bad-label: F-05: TS assertIdentifier rejects the interpolated label 'bad-label' with ValidationError before any query; Python and Rust both interpolate it unchecked (MATCH (n:bad-label) ...) and the C core raises a parse error. Different error surface by design — TS fails early with a validation error type, Python/Rust fail in the core with a Cypher/parse error type.
+    - known-divergences.upsertNode-bad-key: F-05: TS assertIdentifier rejects the interpolated property key 'bad-key' with ValidationError before writing; Python and Rust both interpolate it unchecked (CREATE (... {bad-key: 1})) and the C core raises a parse error. Different error surface by design.
+    - known-divergences.leidenCommunities: Not ported to TS or Rust: Graph.leidenCommunities throws UnsupportedOperationError (TS); the Rust binding has no such method (runner returns an UnsupportedOperation error); Python's leiden_communities depends on the Python-only 'graspologic' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+    - known-divergences.toRustworkx: Not ported to TS or Rust: no toRustworkx method exists on the TS or Rust Graph (both surface an error); Python's to_rustworkx depends on the Python-only 'rustworkx' package (raises ImportError when absent). All three error, but the error type strings differ by design.
+
+RESULT (rust-ts): PASS — all scenarios agree (allowlisted divergences aside).

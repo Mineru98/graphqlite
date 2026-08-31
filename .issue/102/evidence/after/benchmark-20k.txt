@@ -1,0 +1,36 @@
+>> GraphQLite binding benchmark
+>> repo: /Users/mineru/SourceCode/graphqlite-issue-102
+>> params: nodes=20000 edges=40000 repeats=5 lookups=0
+>> extension: /Users/mineru/SourceCode/graphqlite/build/graphqlite.dylib
+>> sha256:    231b2477efb6d498920389013566c6d5aefb2e3643e6845d7b53834bddeaed8b
+>> [python] running
+>> [typescript] running
+>> [rust] building + running (cargo --release --no-default-features)
+## Benchmark results — binding-layer overhead (shared C core)
+
+- Machine: `arm64` (Darwin), OS: macOS 26.5
+- Dataset: 20000 nodes, 40000 edges, 0 lookups; repeats=5 (median of 5, 1 warm-up discarded)
+- Extension dylib: `graphqlite.dylib` sha256 `231b2477efb6d498920389013566c6d5aefb2e3643e6845d7b53834bddeaed8b`
+- Python: 3.14.4 cpython | Node: v25.9.0 (V8 14.1.146.11-node.25) | Rust: rustc 1.95.0 (release build)
+
+### Median time per op (ms; lower is faster)
+
+| op | Python (ms) | TypeScript (ms) | Rust (ms) |
+|----|------|------|------|
+| build | 163.584 | 195.503 | 157.054 |
+| lookup | 0.001 | 0.003 | 0.000 |
+| scan | 29.191 | 29.807 | 27.980 |
+| pagerank | 31.803 | 28.808 | 31.371 |
+| bfs | 20.572 | 20.697 | 18.193 |
+
+### Result-size sanity check (count per op; should match across bindings)
+
+| op | Python (count) | TypeScript (count) | Rust (count) |
+|----|------|------|------|
+| build | 20000 | 20000 | 20000 |
+| lookup | 0 | 0 | 0 |
+| scan | 20000 | 20000 | 20000 |
+| pagerank | 20000 | 20000 | 20000 |
+| bfs | 2000 | 2000 | 2000 |
+
+_Note: op values are the median of N measured runs (warm-up discarded); `lookup` is the TOTAL wall time for all individual round-trips, not per call. The three bindings share one C core, so differences reflect binding-layer overhead (marshalling, round-trips, bulk strategy), not core algorithm speed._
