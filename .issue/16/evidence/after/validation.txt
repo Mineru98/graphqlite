@@ -1,0 +1,23 @@
+Issue #16 final validation behavior
+===================================
+
+Implementation commit: 2627ef3bdec50ccac36c7819a25687b248a4a954
+Extension SHA-256: 1d008d3ae989471f0ffc3e7f6197160eadfa8a357eac4f0b4ecff624067ec317
+Driver: Python sqlite3 in-memory connection with the extension loaded explicitly
+
+valid|{"valid": true}
+parse|{"valid": false, "error": "Line 2, Col 7: syntax error, unexpected end of file", "code": "PARSE_ERROR", "line": 2, "column": 7}
+scanner|{"valid": false, "error": "Unexpected character: '@' (0x40)", "code": "PARSE_ERROR", "line": 1, "column": 9}
+semantic|{"valid": false, "error": "SyntaxError: InvalidArgumentType: Type mismatch: expected Boolean but was Integer", "code": "VALIDATION_ERROR", "line": null, "column": null}
+quoted|{"valid": false, "error": "Unexpected character: '\"' (0x22)", "code": "PARSE_ERROR", "line": 1, "column": 9}
+before_count|0
+validate_write|{"valid": true}
+after_count|0
+
+Observed changes:
+
+- Scanner failures now preserve their one-based source column.
+- Parse failures carry `PARSE_ERROR`; static semantic failures carry `VALIDATION_ERROR`.
+- Diagnostic messages remain valid JSON when they contain a quote.
+- A valid write query is accepted but not executed.
+- The Rust integration scenario exercised `Connection::validate()` and `Graph::validate()` end to end.
