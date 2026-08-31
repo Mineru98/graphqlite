@@ -1,1 +1,3 @@
-tsc --noEmit: No errors found
+Rust changed-file formatting: pass
+Rust Clippy (`--no-default-features --lib -- -D warnings`): pass
+Repository whitespace check (`git diff --check`): pass

@@ -1,5 +1,6 @@
-communityDetection()[0]          {"nodeId":"1","userId":"a","community":0}
-communityDetection() 개수          4
-louvain() 개수                     4
-leidenCommunities()              UnsupportedOperationError (code=UNSUPPORTED_OPERATION)
-communityDetection(NaN) 검증       ValidationError
+parse|{"valid": false, "error": "Line 2, Col 7: syntax error, unexpected end of file", "code": "PARSE_ERROR", "line": 2, "column": 7}
+scanner|{"valid": false, "error": "Unexpected character: '@' (0x40)", "code": "PARSE_ERROR", "line": 1, "column": 9}
+semantic|{"valid": false, "error": "SyntaxError: InvalidArgumentType: Type mismatch: expected Boolean but was Integer", "code": "VALIDATION_ERROR", "line": null, "column": null}
+before_count|0
+validate_write|{"valid": true}
+after_count|0

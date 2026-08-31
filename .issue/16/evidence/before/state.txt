@@ -1,7 +1,9 @@
-# BEFORE — 커뮤니티 탐지 착수 전 baseline (origin/main)
+# BEFORE — query validation baseline (`origin/main`)
 
-## src/algorithms/ 목록 (community.ts 없음)
-centrality.ts
-parsing.ts
+- Source commit: `23fc6c3fbb6bf32d302033570d145e53d4c7c3f9`
+- `cypher_validate('RETURN NOT 1')` incorrectly returned `{"valid": true}`.
+- `cypher_validate('RETURN @')` reported column 0.
+- No Rust `validate`, `ValidationResult`, or `ValidationDiagnostic` API existed.
+- Validating `CREATE (:Issue16Probe)` did not execute the write; node count stayed 0.
 
-## baseline 테스트: 138 pass / 0 fail (community 테스트 이전)
+See `validation.txt` for the raw baseline output.

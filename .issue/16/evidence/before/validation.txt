@@ -1,0 +1,24 @@
+Issue #16 baseline validation behavior
+======================================
+
+Source commit: 23fc6c3fbb6bf32d302033570d145e53d4c7c3f9
+Extension SHA-256: 231b2477efb6d498920389013566c6d5aefb2e3643e6845d7b53834bddeaed8b
+Driver: Python sqlite3 in-memory connection with the extension loaded explicitly
+
+valid|{"valid": true}
+parse|{"valid": false, "error": "Line 2, Col 7: syntax error, unexpected end of file", "line": 2, "column": 7}
+scanner|{"valid": false, "error": "Unexpected character: '@' (0x40)", "line": 1, "column": 0}
+semantic|{"valid": true}
+before_count|0
+validate_write|{"valid": true}
+after_count|0
+
+Rust API search (`fn validate|ValidationDiagnostic|ValidationResult`): no matches.
+
+Baseline conclusions:
+
+- Bison syntax failures already include a clear reason and line/column.
+- Scanner failures lose the column and report zero.
+- Static semantic failures are incorrectly accepted.
+- Parse-only validation does not execute a valid write query.
+- The Rust binding has no structured validation API.

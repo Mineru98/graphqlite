@@ -1,11 +1,30 @@
-# AFTER — node --test
-## 실제 확장
-ℹ tests 145
-ℹ pass 145
-ℹ fail 0
-ℹ skipped 0
-## 확장 없이 (skip)
-ℹ tests 145
-ℹ pass 128
-ℹ fail 0
-ℹ skipped 17
+Issue #16 verification summary
+==============================
+
+Implementation commit: 2627ef3bdec50ccac36c7819a25687b248a4a954
+
+- Native extension build: PASS
+  - `PATH=/opt/homebrew/opt/bison/bin:$PATH make extension`
+- CUnit suite: PASS
+  - 47 suites
+  - 948 tests passed, 0 failed
+  - 5,627 assertions passed, 0 failed
+- Issue regression SQL: PASS
+  - 24 hard assertions, 0 failures
+  - Executed through Python sqlite3 because the system `/usr/bin/sqlite3` disables `.load`.
+- Rust bundled-extension suite: PASS
+  - 14 unit tests passed
+  - 248 integration tests passed, 7 intentionally ignored, 0 failed
+  - 26 documentation tests passed, 3 intentionally ignored, 0 failed
+- Rust non-bundled suite against the just-built extension: PASS
+  - 14 unit tests passed
+  - 248 integration tests passed, 7 intentionally ignored, 0 failed
+  - 25 documentation tests passed, 3 intentionally ignored, 0 failed
+- Rust Clippy library gate: PASS
+  - `cargo clippy --no-default-features --lib -- -D warnings`
+- Rust formatting for changed files: PASS
+- `git diff --check`: PASS
+
+Pre-existing warnings remain in unrelated C sources and three deprecated
+`cypher_with_params` calls in the Rust integration suite. They did not fail any
+gate and were not changed by issue #16.
