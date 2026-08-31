@@ -32,6 +32,6 @@ Capability metadata is intentionally not duplicated in this change. The reposito
 
 ### Evidence files
 
-- Before behavior: `.issue/16/evidence/before/validation.txt`
-- After behavior: `.issue/16/evidence/after/validation.txt`
-- Verification summary: `.issue/16/evidence/after/tests.txt`
+- [Before behavior](https://github.com/Mineru98/graphqlite/blob/main/.issue/16/evidence/before/validation.txt)
+- [After behavior](https://github.com/Mineru98/graphqlite/blob/main/.issue/16/evidence/after/validation.txt)
+- [Verification summary](https://github.com/Mineru98/graphqlite/blob/main/.issue/16/evidence/after/tests.txt)
