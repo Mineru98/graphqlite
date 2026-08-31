@@ -17,11 +17,11 @@
 
 | op | Python (ms) | TypeScript (ms) | Rust (ms) |
 |----|------|------|------|
-| build | 163.584 | 195.503 | 157.054 |
+| build | 158.313 | 194.956 | 157.262 |
 | lookup | 0.001 | 0.003 | 0.000 |
-| scan | 29.191 | 29.807 | 27.980 |
-| pagerank | 31.803 | 28.808 | 31.371 |
-| bfs | 20.572 | 20.697 | 18.193 |
+| scan | 28.936 | 29.667 | 27.991 |
+| pagerank | 31.995 | 28.268 | 31.332 |
+| bfs | 20.802 | 20.577 | 18.117 |
 
 ### Result-size sanity check (count per op; should match across bindings)
 
