@@ -106,7 +106,8 @@ export function upsertNode(
   label: string = 'Entity',
 ): void {
   // `id` is the node identity: nodeId always wins, a nodeData.id is dropped.
-  const { id: _ignoredId, ...rest } = nodeData;
+  const rest = { ...nodeData };
+  delete rest['id'];
   const props: Record<string, unknown> = { id: nodeId, ...rest };
 
   if (hasNode(conn, nodeId)) {

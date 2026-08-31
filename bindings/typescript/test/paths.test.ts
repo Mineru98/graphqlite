@@ -142,9 +142,11 @@ test('path algorithms end-to-end against the real extension', gate, () => {
   assert.equal(sp.found, true);
   assert.deepEqual(sp.path, ['a', 'b', 'c']);
 
-  // astar does NOT unwrap column_0 → defaults (Python inconsistency, reproduced).
   const as = g.astar('a', 'c');
-  assert.deepEqual(as, { path: [], distance: null, found: false, nodesExplored: 0 });
+  assert.equal(as.found, true);
+  assert.deepEqual(as.path, ['a', 'b', 'c']);
+  assert.equal(as.distance, 2);
+  assert.ok(as.nodesExplored >= 1);
 
   // apsp goes through extractAlgoArray → reachable pairs.
   const all = g.allPairsShortestPath();
