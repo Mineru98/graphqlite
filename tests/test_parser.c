@@ -1234,6 +1234,17 @@ static void test_parser_scanner_edge_cases(void)
     printf("\nScanner edge cases test completed\n");
 }
 
+static void test_parser_scanner_error_location(void)
+{
+    cypher_parse_result *result = parse_cypher_query_ext("RETURN @");
+    CU_ASSERT_PTR_NOT_NULL_FATAL(result);
+    CU_ASSERT_PTR_NULL(result->ast);
+    CU_ASSERT_PTR_NOT_NULL(result->error_message);
+    CU_ASSERT_EQUAL(result->error_line, 1);
+    CU_ASSERT(result->error_column > 0);
+    cypher_parse_result_free(result);
+}
+
 /* Test parser with various special token types */
 static void test_parser_special_tokens(void)
 {
@@ -2238,6 +2249,7 @@ int init_parser_suite(void)
         !CU_add_test(suite, "Parser keyword utilities", test_parser_keyword_utilities) ||
         !CU_add_test(suite, "Parser token names", test_parser_token_names) ||
         !CU_add_test(suite, "Parser scanner edge cases", test_parser_scanner_edge_cases) ||
+        !CU_add_test(suite, "Parser scanner error location", test_parser_scanner_error_location) ||
         !CU_add_test(suite, "Parser special tokens", test_parser_special_tokens) ||
         !CU_add_test(suite, "Parser NULL result handling", test_parser_null_result_handling) ||
         !CU_add_test(suite, "Parser complex nesting", test_parser_complex_nesting) ||

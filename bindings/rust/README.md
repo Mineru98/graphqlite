@@ -114,6 +114,7 @@ let g = graph(":memory:")?;
 | `get_neighbors(id)` | Get adjacent nodes |
 | `stats()` | Get node/edge counts |
 | `query(cypher)` | Execute raw Cypher query |
+| `validate(cypher)` | Return structured diagnostics without executing the query |
 
 #### Graph Algorithms
 
@@ -229,6 +230,7 @@ let conn = Connection::from_rusqlite(sqlite_conn)?;
 | Method | Description |
 |--------|-------------|
 | `cypher(query)` | Execute Cypher query, return results |
+| `validate(query)` | Parse and statically validate without executing |
 | `execute(sql)` | Execute raw SQL |
 | `sqlite_connection()` | Access underlying rusqlite connection |
 

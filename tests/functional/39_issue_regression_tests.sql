@@ -117,6 +117,37 @@ INSERT INTO _assert SELECT 'GH-97 3.3 targeted update',
     json_array_length(cypher('MATCH ()-[e:G97_REL]->() WHERE e.seq = 10 RETURN e.eid AS eid')) = 1;
 
 -- =======================================================================
+-- SECTION 4: GitHub #16 — structured, non-executing query validation
+-- =======================================================================
+SELECT '=== Section 4: GH-16 query validation diagnostics ===' as section;
+
+INSERT INTO _assert SELECT 'GH-16 4.1 parse error code',
+    json_extract(cypher_validate('MATCH (n)
+RETURN'), '$.code') = 'PARSE_ERROR';
+INSERT INTO _assert SELECT 'GH-16 4.2 parse line and column',
+    json_extract(cypher_validate('MATCH (n)
+RETURN'), '$.line') = 2
+    AND json_extract(cypher_validate('MATCH (n)
+RETURN'), '$.column') > 0;
+INSERT INTO _assert SELECT 'GH-16 4.3 clear parse reason',
+    instr(json_extract(cypher_validate('MATCH (n)
+RETURN'), '$.error'), 'unexpected end of file') > 0;
+INSERT INTO _assert SELECT 'GH-16 4.4 scanner column preserved',
+    json_extract(cypher_validate('RETURN @'), '$.column') > 0;
+INSERT INTO _assert SELECT 'GH-16 4.5 semantic validation',
+    json_extract(cypher_validate('RETURN NOT 1'), '$.valid') = 0
+    AND json_extract(cypher_validate('RETURN NOT 1'), '$.code') = 'VALIDATION_ERROR';
+
+CREATE TEMP TABLE _g16_before AS
+SELECT json_extract(cypher('MATCH (n) RETURN count(n) AS c'), '$[0].c') AS node_count;
+INSERT INTO _assert SELECT 'GH-16 4.6 valid write accepted',
+    json_extract(cypher_validate('CREATE (:Issue16Probe)'), '$.valid') = 1;
+INSERT INTO _assert SELECT 'GH-16 4.7 validation does not execute',
+    (SELECT node_count FROM _g16_before) =
+    json_extract(cypher('MATCH (n) RETURN count(n) AS c'), '$[0].c');
+DROP TABLE _g16_before;
+
+-- =======================================================================
 -- VERIFICATION SUMMARY
 -- =======================================================================
 SELECT '=== Assertions run (all must show ok=1) ===' as section;

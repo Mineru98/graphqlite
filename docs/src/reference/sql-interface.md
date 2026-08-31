@@ -83,7 +83,8 @@ For a single-column result the key is the expression text or alias from `RETURN`
 SELECT cypher_validate('MATCH (n:Person) RETURN n.name');
 ```
 
-Validates a Cypher query without executing it.
+Parses and statically validates a Cypher query without executing it. Validation
+does not resolve runtime parameter values or access graph data.
 
 **Returns**: TEXT — a JSON object:
 
@@ -94,8 +95,12 @@ Validates a Cypher query without executing it.
 or
 
 ```json
-{"valid": false, "error": "...", "line": 1, "column": 15}
+{"valid": false, "error": "...", "code": "PARSE_ERROR", "line": 1, "column": 15}
 ```
+
+`code` is `PARSE_ERROR` for grammar/scanner failures and `VALIDATION_ERROR`
+for static semantic failures. `line` and `column` are `null` when a semantic
+validator cannot associate the error with one source token.
 
 ---
 

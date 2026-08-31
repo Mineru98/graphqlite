@@ -1,7 +1,7 @@
 //! GraphQLite connection wrapper.
 
 use crate::query_builder::CypherQuery;
-use crate::{CypherResult, Error, Result};
+use crate::{CypherResult, Error, Result, ValidationResult};
 
 #[cfg(feature = "parity-spy")]
 use std::cell::RefCell;
@@ -194,6 +194,17 @@ impl Connection {
             }
             None => Ok(CypherResult::empty()),
         }
+    }
+
+    /// Validate a Cypher query without executing it.
+    ///
+    /// Syntax failures include a line, column, and detailed parser reason.
+    /// Static semantic failures include a `VALIDATION_ERROR` diagnostic.
+    pub fn validate(&self, query: &str) -> Result<ValidationResult> {
+        let json: String = self
+            .conn
+            .query_row("SELECT cypher_validate(?1)", [query], |row| row.get(0))?;
+        ValidationResult::from_json(&json).map_err(Error::from)
     }
 
     /// Execute a Cypher query with named parameters.

@@ -4,6 +4,15 @@ All notable changes to GraphQLite are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- Structured, non-executing Cypher validation (#16): `cypher_validate()` now
+  reports parse/validation error codes and runs static semantic validation;
+  the Rust `Connection::validate()` and `Graph::validate()` APIs expose typed
+  diagnostics with source line and column when available.
+
 ## [0.6.1] — 2026-08-25
 
 Patch release fixing three reported issues (#95, #96, #97). 947/947 unit
@@ -256,7 +265,6 @@ dispatch layer so future sibling-path regressions are caught by tests.
 
 - `GQLITE-T-0183` — UNWIND `$param` in CREATE/MERGE/SET write paths (pre-existing; distinct from #61.1 which was the read path).
 - `GQLITE-T-0100` — Capability metadata API (issue #17).
-- `GQLITE-T-0192` — Structured parse diagnostics + `validate(query)` API (issue #16).
 - `GQLITE-T-0181` / `T-0182` / `T-0184` — pre-existing bugs, out of scope this release.
 
 ## [0.4.3] — 2026-04-17

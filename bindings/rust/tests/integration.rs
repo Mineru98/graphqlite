@@ -21,6 +21,52 @@ fn test_open_memory() {
     assert!(conn.cypher("RETURN 1").is_ok());
 }
 
+#[test]
+fn test_structured_validation_does_not_execute() {
+    let conn = test_connection();
+
+    let valid = conn.validate("RETURN 1").unwrap();
+    assert!(valid.valid);
+    assert!(valid.diagnostic.is_none());
+
+    let parse = conn.validate("MATCH (n)\nRETURN").unwrap();
+    assert!(!parse.valid);
+    let parse_diagnostic = parse.diagnostic.unwrap();
+    assert_eq!(parse_diagnostic.code, "PARSE_ERROR");
+    assert_eq!(parse_diagnostic.line, Some(2));
+    assert!(parse_diagnostic.column.unwrap_or_default() > 0);
+    assert!(parse_diagnostic.message.contains("unexpected end of file"));
+
+    let scanner = conn.validate("RETURN @").unwrap();
+    assert!(
+        scanner
+            .diagnostic
+            .expect("scanner diagnostic")
+            .column
+            .unwrap_or_default()
+            > 0
+    );
+
+    let semantic = conn.validate("RETURN NOT 1").unwrap();
+    assert!(!semantic.valid);
+    assert_eq!(
+        semantic.diagnostic.expect("semantic diagnostic").code,
+        "VALIDATION_ERROR"
+    );
+
+    let before = conn.cypher("MATCH (n) RETURN count(n) AS c").unwrap()[0]
+        .get::<i64>("c")
+        .unwrap();
+    assert!(conn.validate("CREATE (:Issue16Probe)").unwrap().valid);
+    let after = conn.cypher("MATCH (n) RETURN count(n) AS c").unwrap()[0]
+        .get::<i64>("c")
+        .unwrap();
+    assert_eq!(before, after);
+
+    let graph = test_graph();
+    assert!(graph.validate("RETURN 1").unwrap().valid);
+}
+
 /// Verifies concurrent parsing: multiple threads each run Cypher queries in parallel.
 /// The reentrant Flex scanner enables this without process-level serialization.
 #[test]
