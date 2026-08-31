@@ -2,7 +2,7 @@
 
 TypeScript bulk insert가 행·속성마다 수행하던 정적 SQL `prepare()`를 bulk 호출당 한 번으로 제한했습니다. prepared statement 실행부는 `bulk-sql.ts`로 분리했고, 반복 관계 타입 sanitization도 호출 범위 캐시로 줄였습니다. 공개 package export, 트랜잭션/rollback, property type routing, endpoint lookup 동작과 C 코어는 변경하지 않았습니다.
 
-구현 커밋: `7ecda7ae198a665308f6d8970c7b1e35bd40cc1e`
+구현 커밋: `7ecda7ae198a665308f6d8970c7b1e35bd40cc1e`, 게이트 정리 커밋: `c5a56155`
 
 ## 성능 비교
 
@@ -26,24 +26,21 @@ TypeScript bulk insert가 행·속성마다 수행하던 정적 SQL `prepare()`�
 - `bindings/typescript/src/graph/bulk-sql.ts` — node/edge/property prepared statement 묶음과 실행 helper 추가
 - `bindings/typescript/src/graph/bulk.ts` — bulk 호출 범위 statement·관계 타입 캐시 재사용
 - `bindings/typescript/test/bulk.test.ts` — 입력 크기와 무관한 정적 SQL prepare 횟수 회귀 테스트 추가
+- `bindings/typescript/test/paths.test.ts` — #64 이후 A* 실제 경로 반환과 남아 있던 통합 기대값 정렬
+- `bindings/typescript/src/graph/nodes.ts` — `nodeData.id` 제외 시 미사용 destructuring binding 제거
 
 ## 검증
 
 - `test/bulk.test.ts`: 16/16 통과
+- 전체 `npm test`: 225 tests, 218 pass, 7 skip, 0 fail
 - `npm run typecheck`: 통과
-- 변경 파일 ESLint: 통과
+- 전체 `npm run lint`: 통과
 - `npm run build`: 통과
 - parity results/cypher: Python↔TS, Rust↔TS 모두 mismatch 0으로 통과
 - 변경 TypeScript 파일 pure LOC: 212 / 154 / 216으로 모두 250 이하
 - `src/index.ts` 해시가 `origin/main`과 동일해 공개 package export 무변경 확인
 - C/Python/Rust 소스 무변경 확인
 
-## 선행 게이트 상태
-
-- 전체 `npm test`는 변경하지 않은 `test/paths.test.ts`의 기존 기대값 불일치 1건으로 실패하며, `origin/main`에서도 동일 dylib로 같은 실패를 재현했습니다. 벌크 관련 테스트는 모두 통과합니다.
-- 전체 `npm run lint`는 변경하지 않은 `src/graph/nodes.ts:109`의 기존 `_ignoredId` 미사용 오류 1건으로 실패합니다. 변경 파일 lint는 통과합니다.
-- programming no-excuse 검사기는 프로젝트 TypeScript 5.x에 없는 TypeScript 7 `unstable/*` API를 요구해 실행할 수 없었습니다. 타입 검사·ESLint·빌드는 통과했습니다.
-
 ## 남은 이슈
 
-- #102 범위 내 미해결 항목 없음. 위 선행 게이트 2건은 별도 정리가 필요합니다.
+- #102 범위 내 미해결 항목 없음.
